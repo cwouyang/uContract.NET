@@ -1,0 +1,67 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Target Framework -->
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+
+    <!-- Code Quality -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Assembly Information -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Copyright>Copyright (c) 2025 uContract.NET Contributors</Copyright>
+
+    <!-- Package Metadata -->
+    <PackageId>uContract</PackageId>
+    <Version>1.0.0-alpha.1</Version>
+    <Authors>uContract.NET Contributors</Authors>
+    <Company>uContract.NET</Company>
+    <Product>uContract.NET</Product>
+    <Description>Design by Contract library for .NET 8+. A direct port of the Java uContract library with .NET-specific improvements.
+
+Features:
+• Zero overhead when disabled (lazy evaluation)
+• AsyncLocal support for async/await
+• 18 contract methods (Require, Ensure, Invariant, Old, etc.)
+• Zero external dependencies
+• Full nullable reference type support
+• Thread-safe with recursion guard
+• Reflection-based field comparison (EnsureAssignable)
+• JSON-based state capture (Old&lt;T&gt;)
+
+Perfect for DDD aggregates, value objects, and domain services.</Description>
+    <PackageTags>dbc;design-by-contract;contracts;ddd;domain-driven-design;invariants;preconditions;postconditions;dotnet;csharp</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/cwouyang/uContract.NET</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cwouyang/uContract.NET</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>See https://github.com/cwouyang/uContract.NET/blob/master/CHANGELOG.md for release notes.</PackageReleaseNotes>
+
+    <!-- Documentation -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\uContract.xml</DocumentationFile>
+
+    <!-- Symbols and Debugging -->
+    <DebugType>embedded</DebugType>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Package References for Source Link -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+  <!-- Include README in package -->
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
