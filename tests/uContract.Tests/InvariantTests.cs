@@ -5,7 +5,7 @@ namespace uContract.Tests;
 public class InvariantTests
 {
     [Fact]
-    public void Invariant_DoesNotThrow_WhenConditionIsTrue()
+    public void Invariant_WhenConditionIsTrue_DoesNotThrow()
     {
         const int balance = 100;
 
@@ -18,7 +18,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public void Invariant_ThrowsInvariantViolationException_WhenConditionIsFalse()
+    public void Invariant_WhenConditionIsFalse_ThrowsInvariantViolationException()
     {
         const int balance = -1;
 
@@ -31,7 +31,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public void Invariant_ExceptionMessage_HasCorrectFormat()
+    public void Invariant_WhenConditionIsFalse_ExceptionMessageHasCorrectFormat()
     {
         const int balance = -1;
         const string description = "balance must be non-negative";
@@ -45,7 +45,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public void Invariant_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void Invariant_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
 
@@ -58,7 +58,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public void Invariant_ThrowsArgumentNullException_WhenConditionIsNull()
+    public void Invariant_WhenConditionIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? condition = null;
 
@@ -71,7 +71,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public void Invariant_DoesNotRecurse_WhenConditionCallsInvariant()
+    public void Invariant_WhenConditionCallsInvariant_DoesNotRecurse()
     {
         int callCount = 0;
 
@@ -94,7 +94,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public async Task Invariant_WorksCorrectly_InAsyncContext()
+    public async Task Invariant_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const int balance = 100;
 
@@ -109,7 +109,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public async Task Invariant_ThrowsException_InAsyncContext_WhenConditionIsFalse()
+    public async Task Invariant_WhenConditionIsFalseInAsyncContext_ThrowsException()
     {
         const int balance = -1;
 
@@ -127,7 +127,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public void Invariant_EvaluatesConditionLazily()
+    public void Invariant_WhenCalled_EvaluatesConditionLazily()
     {
         bool conditionEvaluated = false;
 
@@ -144,7 +144,7 @@ public class InvariantTests
     }
 
     [Fact]
-    public void Invariant_PropagatesException_WhenConditionThrows()
+    public void Invariant_WhenConditionThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("test error");
 
@@ -160,7 +160,7 @@ public class InvariantTests
 public class InvariantNotNullTests
 {
     [Fact]
-    public void InvariantNotNull_DoesNotThrow_WhenValueIsNotNull()
+    public void InvariantNotNull_WhenValueIsNotNull_DoesNotThrow()
     {
         const string value = "not null";
 
@@ -173,7 +173,7 @@ public class InvariantNotNullTests
     }
 
     [Fact]
-    public void InvariantNotNull_ThrowsInvariantViolationException_WhenValueIsNull()
+    public void InvariantNotNull_WhenValueIsNull_ThrowsInvariantViolationException()
     {
         string? value = null;
 
@@ -186,7 +186,7 @@ public class InvariantNotNullTests
     }
 
     [Fact]
-    public void InvariantNotNull_ExceptionMessage_HasCorrectFormat()
+    public void InvariantNotNull_WhenValueIsNull_ExceptionMessageHasCorrectFormat()
     {
         string? value = null;
         const string description = "Value must not be null";
@@ -200,7 +200,7 @@ public class InvariantNotNullTests
     }
 
     [Fact]
-    public void InvariantNotNull_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void InvariantNotNull_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
         const string value = "not null";
@@ -214,7 +214,7 @@ public class InvariantNotNullTests
     }
 
     [Fact]
-    public void InvariantNotNull_DoesNotRecurse_WhenRecursionGuardActive()
+    public void InvariantNotNull_WhenRecursionGuardActive_DoesNotRecurse()
     {
         int callCount = 0;
         string? nullValue = null;
@@ -238,7 +238,7 @@ public class InvariantNotNullTests
     }
 
     [Fact]
-    public async Task InvariantNotNull_WorksCorrectly_InAsyncContext()
+    public async Task InvariantNotNull_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const string value = "not null";
 
@@ -253,7 +253,7 @@ public class InvariantNotNullTests
     }
 
     [Fact]
-    public async Task InvariantNotNull_ThrowsException_InAsyncContext_WhenValueIsNull()
+    public async Task InvariantNotNull_WhenValueIsNullInAsyncContext_ThrowsException()
     {
         string? value = null;
 
@@ -271,7 +271,7 @@ public class InvariantNotNullTests
     }
 
     [Fact]
-    public void InvariantNotNull_SupportsReferenceTypes()
+    public void InvariantNotNull_WhenUsedWithReferenceTypes_Works()
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 

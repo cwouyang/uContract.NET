@@ -7,7 +7,7 @@ namespace uContract.Tests;
 public class CheckTests
 {
     [Fact]
-    public void Check_DoesNotThrow_WhenConditionIsTrue()
+    public void Check_WhenConditionIsTrue_DoesNotThrow()
     {
         const int value = 10;
 
@@ -20,7 +20,7 @@ public class CheckTests
     }
 
     [Fact]
-    public void Check_ThrowsCheckViolationException_WhenConditionIsFalse()
+    public void Check_WhenConditionIsFalse_ThrowsCheckViolationException()
     {
         const int value = -1;
 
@@ -33,7 +33,7 @@ public class CheckTests
     }
 
     [Fact]
-    public void Check_ExceptionMessage_HasCorrectFormat()
+    public void Check_WhenConditionIsFalse_ExceptionMessageHasCorrectFormat()
     {
         const int value = -1;
         const string description = "value must be positive";
@@ -47,7 +47,7 @@ public class CheckTests
     }
 
     [Fact]
-    public void Check_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void Check_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
 
@@ -60,7 +60,7 @@ public class CheckTests
     }
 
     [Fact]
-    public void Check_ThrowsArgumentNullException_WhenConditionIsNull()
+    public void Check_WhenConditionIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? condition = null;
 
@@ -73,7 +73,7 @@ public class CheckTests
     }
 
     [Fact]
-    public void Check_DoesNotRecurse_WhenConditionCallsCheck()
+    public void Check_WhenConditionCallsCheck_DoesNotRecurse()
     {
         int callCount = 0;
 
@@ -96,7 +96,7 @@ public class CheckTests
     }
 
     [Fact]
-    public async Task Check_WorksCorrectly_InAsyncContext()
+    public async Task Check_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const int value = 10;
 
@@ -111,7 +111,7 @@ public class CheckTests
     }
 
     [Fact]
-    public async Task Check_ThrowsException_InAsyncContext_WhenConditionIsFalse()
+    public async Task Check_WhenConditionIsFalseInAsyncContext_ThrowsException()
     {
         const int value = -1;
 
@@ -129,7 +129,7 @@ public class CheckTests
     }
 
     [Fact]
-    public void Check_EvaluatesConditionLazily()
+    public void Check_WhenCalled_EvaluatesConditionLazily()
     {
         bool conditionEvaluated = false;
 
@@ -146,7 +146,7 @@ public class CheckTests
     }
 
     [Fact]
-    public void Check_PropagatesException_WhenConditionThrows()
+    public void Check_WhenConditionThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("test error");
 
@@ -162,7 +162,7 @@ public class CheckTests
 public class IgnoreTests
 {
     [Fact]
-    public void Ignore_ReturnsTrue_WhenConditionIsTrue()
+    public void Ignore_WhenConditionIsTrue_ReturnsTrue()
     {
         const int x = 10;
 
@@ -172,7 +172,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public void Ignore_ReturnsFalse_WhenConditionIsFalse()
+    public void Ignore_WhenConditionIsFalse_ReturnsFalse()
     {
         const int x = -1;
 
@@ -182,7 +182,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public void Ignore_ThrowsArgumentNullException_WhenReasonIsNull()
+    public void Ignore_WhenReasonIsNull_ThrowsArgumentNullException()
     {
         string? reason = null;
 
@@ -195,7 +195,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public void Ignore_ThrowsArgumentNullException_WhenConditionIsNull()
+    public void Ignore_WhenConditionIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? condition = null;
 
@@ -208,7 +208,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public void Ignore_ReturnsFalse_WhenRecursionGuardActive()
+    public void Ignore_WhenRecursionGuardActive_ReturnsFalse()
     {
         bool innerResult = true;
 
@@ -227,7 +227,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public async Task Ignore_WorksCorrectly_InAsyncContext()
+    public async Task Ignore_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const int value = 10;
 
@@ -240,7 +240,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public async Task Ignore_ReturnsFalse_InAsyncContext_WhenConditionIsFalse()
+    public async Task Ignore_WhenConditionIsFalseInAsyncContext_ReturnsFalse()
     {
         const int value = -1;
 
@@ -253,7 +253,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public void Ignore_EvaluatesConditionLazily()
+    public void Ignore_WhenCalled_EvaluatesConditionLazily()
     {
         bool conditionEvaluated = false;
 
@@ -270,7 +270,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public void Ignore_PropagatesException_WhenConditionThrows()
+    public void Ignore_WhenConditionThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("test error");
 
@@ -283,7 +283,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public void Ignore_SupportsEarlyReturnPattern()
+    public void Ignore_WhenUsedForEarlyReturn_Works()
     {
         const string currentEmail = "test@example.com";
         const string newEmail = "test@example.com";
@@ -306,7 +306,7 @@ public class IgnoreTests
     }
 
     [Fact]
-    public void Ignore_AllowsMethodExecution_WhenConditionFalse()
+    public void Ignore_WhenConditionIsFalse_AllowsMethodExecution()
     {
         const string currentEmail = "old@example.com";
         const string newEmail = "new@example.com";
@@ -332,7 +332,7 @@ public class IgnoreTests
 public class ImplyTests
 {
     [Fact]
-    public void Imply_ReturnsTrue_WhenAntecedentFalseAndConsequentFalse()
+    public void Imply_WhenAntecedentFalseAndConsequentFalse_ReturnsTrue()
     {
         // False → False = True
         bool result = Contract.Imply(() => false, () => false);
@@ -341,7 +341,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_ReturnsTrue_WhenAntecedentFalseAndConsequentTrue()
+    public void Imply_WhenAntecedentFalseAndConsequentTrue_ReturnsTrue()
     {
         // False → True = True
         bool result = Contract.Imply(() => false, () => true);
@@ -350,7 +350,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_ReturnsFalse_WhenAntecedentTrueAndConsequentFalse()
+    public void Imply_WhenAntecedentTrueAndConsequentFalse_ReturnsFalse()
     {
         // True → False = False
         bool result = Contract.Imply(() => true, () => false);
@@ -359,7 +359,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_ReturnsTrue_WhenAntecedentTrueAndConsequentTrue()
+    public void Imply_WhenAntecedentTrueAndConsequentTrue_ReturnsTrue()
     {
         // True → True = True
         bool result = Contract.Imply(() => true, () => true);
@@ -368,7 +368,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_ThrowsArgumentNullException_WhenAntecedentIsNull()
+    public void Imply_WhenAntecedentIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? antecedent = null;
 
@@ -381,7 +381,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_ThrowsArgumentNullException_WhenConsequentIsNull()
+    public void Imply_WhenConsequentIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? consequent = null;
 
@@ -394,7 +394,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_EvaluatesBothLambdas()
+    public void Imply_WhenCalled_EvaluatesBothLambdas()
     {
         bool antecedentEvaluated = false;
         bool consequentEvaluated = false;
@@ -418,7 +418,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_PropagatesException_WhenAntecedentThrows()
+    public void Imply_WhenAntecedentThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("antecedent error");
 
@@ -431,7 +431,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_PropagatesException_WhenConsequentThrows()
+    public void Imply_WhenConsequentThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("consequent error");
 
@@ -444,7 +444,7 @@ public class ImplyTests
     }
 
     [Fact]
-    public void Imply_WorksInContractCondition()
+    public void Imply_WhenUsedInContractCondition_Works()
     {
         const bool isVip = true;
         const int discount = 10;
@@ -466,7 +466,7 @@ public class ImplyTests
 public class IfAndOnlyIfTests
 {
     [Fact]
-    public void IfAndOnlyIf_ReturnsTrue_WhenBothTrue()
+    public void IfAndOnlyIf_WhenBothTrue_ReturnsTrue()
     {
         // True ⟺ True = True
         bool result = Contract.IfAndOnlyIf(() => true, () => true);
@@ -475,7 +475,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_ReturnsFalse_WhenFirstTrueSecondFalse()
+    public void IfAndOnlyIf_WhenFirstTrueSecondFalse_ReturnsFalse()
     {
         // True ⟺ False = False
         bool result = Contract.IfAndOnlyIf(() => true, () => false);
@@ -484,7 +484,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_ReturnsFalse_WhenFirstFalseSecondTrue()
+    public void IfAndOnlyIf_WhenFirstFalseSecondTrue_ReturnsFalse()
     {
         // False ⟺ True = False
         bool result = Contract.IfAndOnlyIf(() => false, () => true);
@@ -493,7 +493,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_ReturnsTrue_WhenBothFalse()
+    public void IfAndOnlyIf_WhenBothFalse_ReturnsTrue()
     {
         // False ⟺ False = True
         bool result = Contract.IfAndOnlyIf(() => false, () => false);
@@ -502,7 +502,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_ThrowsArgumentNullException_WhenFirstIsNull()
+    public void IfAndOnlyIf_WhenFirstIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? a = null;
 
@@ -515,7 +515,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_ThrowsArgumentNullException_WhenSecondIsNull()
+    public void IfAndOnlyIf_WhenSecondIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? b = null;
 
@@ -528,7 +528,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_EvaluatesBothLambdas()
+    public void IfAndOnlyIf_WhenCalled_EvaluatesBothLambdas()
     {
         bool aEvaluated = false;
         bool bEvaluated = false;
@@ -552,7 +552,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_PropagatesException_WhenFirstThrows()
+    public void IfAndOnlyIf_WhenFirstThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("first error");
 
@@ -565,7 +565,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_PropagatesException_WhenSecondThrows()
+    public void IfAndOnlyIf_WhenSecondThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("second error");
 
@@ -578,7 +578,7 @@ public class IfAndOnlyIfTests
     }
 
     [Fact]
-    public void IfAndOnlyIf_WorksInContractCondition()
+    public void IfAndOnlyIf_WhenUsedInContractCondition_Works()
     {
         const bool isPaid = true;
         const bool paymentCompleted = true;
@@ -600,7 +600,7 @@ public class IfAndOnlyIfTests
 public class CheckUnsupportedOperationTests
 {
     [Fact]
-    public void CheckUnsupportedOperation_ReturnsTrue_WhenNotSupportedExceptionThrown()
+    public void CheckUnsupportedOperation_WhenNotSupportedExceptionThrown_ReturnsTrue()
     {
         bool result = Contract.CheckUnsupportedOperation
         (() =>
@@ -611,7 +611,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public void CheckUnsupportedOperation_ReturnsFalse_WhenNoExceptionThrown()
+    public void CheckUnsupportedOperation_WhenNoExceptionThrown_ReturnsFalse()
     {
         bool result = Contract.CheckUnsupportedOperation
         (() =>
@@ -624,7 +624,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public void CheckUnsupportedOperation_ReturnsFalse_WhenOtherExceptionThrown()
+    public void CheckUnsupportedOperation_WhenOtherExceptionThrown_ReturnsFalse()
     {
         bool result = Contract.CheckUnsupportedOperation
         (() =>
@@ -635,7 +635,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public void CheckUnsupportedOperation_ReturnsFalse_WhenArgumentExceptionThrown()
+    public void CheckUnsupportedOperation_WhenArgumentExceptionThrown_ReturnsFalse()
     {
         bool result = Contract.CheckUnsupportedOperation
         (() =>
@@ -646,7 +646,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public void CheckUnsupportedOperation_ThrowsArgumentNullException_WhenActionIsNull()
+    public void CheckUnsupportedOperation_WhenActionIsNull_ThrowsArgumentNullException()
     {
         Action? action = null;
 
@@ -659,7 +659,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public void CheckUnsupportedOperation_WorksWithImmutableList()
+    public void CheckUnsupportedOperation_WhenUsedWithImmutableList_Works()
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice", "Bob");
 
@@ -675,7 +675,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public void CheckUnsupportedOperation_WorksWithImmutableArray()
+    public void CheckUnsupportedOperation_WhenUsedWithImmutableArray_Works()
     {
         ImmutableArray<int> immutableArray = ImmutableArray.Create(1, 2, 3);
 
@@ -691,7 +691,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public void CheckUnsupportedOperation_ReturnsFalse_WithMutableList()
+    public void CheckUnsupportedOperation_WhenUsedWithMutableList_ReturnsFalse()
     {
         List<string> mutableList = new() { "Alice", "Bob" };
 
@@ -705,7 +705,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public void CheckUnsupportedOperation_CanBeUsedInContract()
+    public void CheckUnsupportedOperation_WhenUsedInContract_Works()
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice");
 
@@ -728,7 +728,7 @@ public class CheckUnsupportedOperationTests
     }
 
     [Fact]
-    public async Task CheckUnsupportedOperation_WorksCorrectly_InAsyncContext()
+    public async Task CheckUnsupportedOperation_WhenUsedInAsyncContext_WorksCorrectly()
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice");
 

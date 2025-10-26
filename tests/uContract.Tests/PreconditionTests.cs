@@ -5,7 +5,7 @@ namespace uContract.Tests;
 public class RequireTests
 {
     [Fact]
-    public void Require_DoesNotThrow_WhenConditionIsTrue()
+    public void Require_WhenConditionIsTrue_DoesNotThrow()
     {
         const int x = 10;
 
@@ -18,7 +18,7 @@ public class RequireTests
     }
 
     [Fact]
-    public void Require_ThrowsPreconditionViolationException_WhenConditionIsFalse()
+    public void Require_WhenConditionIsFalse_ThrowsPreconditionViolationException()
     {
         const int x = -1;
 
@@ -31,7 +31,7 @@ public class RequireTests
     }
 
     [Fact]
-    public void Require_ExceptionMessage_HasCorrectFormat()
+    public void Require_WhenConditionIsFalse_ExceptionMessageHasCorrectFormat()
     {
         const int x = -1;
         const string description = "x must be positive";
@@ -45,7 +45,7 @@ public class RequireTests
     }
 
     [Fact]
-    public void Require_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void Require_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
 
@@ -58,7 +58,7 @@ public class RequireTests
     }
 
     [Fact]
-    public void Require_ThrowsArgumentNullException_WhenConditionIsNull()
+    public void Require_WhenConditionIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? condition = null;
 
@@ -71,7 +71,7 @@ public class RequireTests
     }
 
     [Fact]
-    public void Require_DoesNotRecurse_WhenConditionCallsRequire()
+    public void Require_WhenConditionCallsRequire_DoesNotRecurse()
     {
         int callCount = 0;
 
@@ -94,7 +94,7 @@ public class RequireTests
     }
 
     [Fact]
-    public async Task Require_WorksCorrectly_InAsyncContext()
+    public async Task Require_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const int x = 10;
 
@@ -109,7 +109,7 @@ public class RequireTests
     }
 
     [Fact]
-    public async Task Require_ThrowsException_InAsyncContext_WhenConditionIsFalse()
+    public async Task Require_WhenConditionIsFalseInAsyncContext_ThrowsException()
     {
         const int x = -1;
 
@@ -127,7 +127,7 @@ public class RequireTests
     }
 
     [Fact]
-    public void Require_EvaluatesConditionLazily()
+    public void Require_WhenCalled_EvaluatesConditionLazily()
     {
         bool conditionEvaluated = false;
 
@@ -144,7 +144,7 @@ public class RequireTests
     }
 
     [Fact]
-    public void Require_PropagatesException_WhenConditionThrows()
+    public void Require_WhenConditionThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("test error");
 
@@ -160,7 +160,7 @@ public class RequireTests
 public class RequireNotNullTests
 {
     [Fact]
-    public void RequireNotNull_DoesNotThrow_WhenValueIsNotNull()
+    public void RequireNotNull_WhenValueIsNotNull_DoesNotThrow()
     {
         const string value = "not null";
 
@@ -173,7 +173,7 @@ public class RequireNotNullTests
     }
 
     [Fact]
-    public void RequireNotNull_ThrowsPreconditionViolationException_WhenValueIsNull()
+    public void RequireNotNull_WhenValueIsNull_ThrowsPreconditionViolationException()
     {
         string? value = null;
 
@@ -186,7 +186,7 @@ public class RequireNotNullTests
     }
 
     [Fact]
-    public void RequireNotNull_ExceptionMessage_HasCorrectFormat()
+    public void RequireNotNull_WhenValueIsNull_ExceptionMessageHasCorrectFormat()
     {
         string? value = null;
         const string description = "Value must not be null";
@@ -200,7 +200,7 @@ public class RequireNotNullTests
     }
 
     [Fact]
-    public void RequireNotNull_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void RequireNotNull_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
         const string value = "not null";
@@ -214,7 +214,7 @@ public class RequireNotNullTests
     }
 
     [Fact]
-    public void RequireNotNull_DoesNotRecurse_WhenRecursionGuardActive()
+    public void RequireNotNull_WhenRecursionGuardActive_DoesNotRecurse()
     {
         int callCount = 0;
         string? nullValue = null;
@@ -238,7 +238,7 @@ public class RequireNotNullTests
     }
 
     [Fact]
-    public async Task RequireNotNull_WorksCorrectly_InAsyncContext()
+    public async Task RequireNotNull_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const string value = "not null";
 
@@ -253,7 +253,7 @@ public class RequireNotNullTests
     }
 
     [Fact]
-    public async Task RequireNotNull_ThrowsException_InAsyncContext_WhenValueIsNull()
+    public async Task RequireNotNull_WhenValueIsNullInAsyncContext_ThrowsException()
     {
         string? value = null;
 
@@ -271,7 +271,7 @@ public class RequireNotNullTests
     }
 
     [Fact]
-    public void RequireNotNull_SupportsReferenceTypes()
+    public void RequireNotNull_WhenUsedWithReferenceTypes_Works()
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
@@ -287,7 +287,7 @@ public class RequireNotNullTests
 public class RequireNotEmptyTests
 {
     [Fact]
-    public void RequireNotEmpty_DoesNotThrow_WhenValueIsNotEmpty()
+    public void RequireNotEmpty_WhenValueIsNotEmpty_DoesNotThrow()
     {
         const string value = "not empty";
 
@@ -300,7 +300,7 @@ public class RequireNotEmptyTests
     }
 
     [Fact]
-    public void RequireNotEmpty_ThrowsPreconditionViolationException_WhenValueIsEmpty()
+    public void RequireNotEmpty_WhenValueIsEmpty_ThrowsPreconditionViolationException()
     {
         const string value = "";
 
@@ -313,7 +313,7 @@ public class RequireNotEmptyTests
     }
 
     [Fact]
-    public void RequireNotEmpty_ThrowsPreconditionViolationException_WhenValueIsNull()
+    public void RequireNotEmpty_WhenValueIsNull_ThrowsPreconditionViolationException()
     {
         string? value = null;
 
@@ -326,7 +326,7 @@ public class RequireNotEmptyTests
     }
 
     [Fact]
-    public void RequireNotEmpty_ExceptionMessage_HasCorrectFormat()
+    public void RequireNotEmpty_WhenValueIsEmpty_ExceptionMessageHasCorrectFormat()
     {
         const string value = "";
         const string description = "Value must not be empty";
@@ -340,7 +340,7 @@ public class RequireNotEmptyTests
     }
 
     [Fact]
-    public void RequireNotEmpty_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void RequireNotEmpty_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
         const string value = "not empty";
@@ -354,7 +354,7 @@ public class RequireNotEmptyTests
     }
 
     [Fact]
-    public void RequireNotEmpty_DoesNotRecurse_WhenRecursionGuardActive()
+    public void RequireNotEmpty_WhenRecursionGuardActive_DoesNotRecurse()
     {
         int callCount = 0;
         const string emptyValue = "";
@@ -378,7 +378,7 @@ public class RequireNotEmptyTests
     }
 
     [Fact]
-    public async Task RequireNotEmpty_WorksCorrectly_InAsyncContext()
+    public async Task RequireNotEmpty_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const string value = "not empty";
 

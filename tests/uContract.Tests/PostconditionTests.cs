@@ -7,7 +7,7 @@ namespace uContract.Tests;
 public class EnsureTests
 {
     [Fact]
-    public void Ensure_DoesNotThrow_WhenConditionIsTrue()
+    public void Ensure_WhenConditionIsTrue_DoesNotThrow()
     {
         const int x = 10;
 
@@ -20,7 +20,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public void Ensure_ThrowsPostconditionViolationException_WhenConditionIsFalse()
+    public void Ensure_WhenConditionIsFalse_ThrowsPostconditionViolationException()
     {
         const int x = -1;
 
@@ -33,7 +33,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public void Ensure_ExceptionMessage_HasCorrectFormat()
+    public void Ensure_WhenConditionIsFalse_ExceptionMessageHasCorrectFormat()
     {
         const int x = -1;
         const string description = "x must be positive";
@@ -47,7 +47,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public void Ensure_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void Ensure_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
 
@@ -60,7 +60,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public void Ensure_ThrowsArgumentNullException_WhenConditionIsNull()
+    public void Ensure_WhenConditionIsNull_ThrowsArgumentNullException()
     {
         Func<bool>? condition = null;
 
@@ -73,7 +73,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public void Ensure_DoesNotRecurse_WhenConditionCallsEnsure()
+    public void Ensure_WhenConditionCallsEnsure_DoesNotRecurse()
     {
         int callCount = 0;
 
@@ -96,7 +96,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public async Task Ensure_WorksCorrectly_InAsyncContext()
+    public async Task Ensure_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const int x = 10;
 
@@ -111,7 +111,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public async Task Ensure_ThrowsException_InAsyncContext_WhenConditionIsFalse()
+    public async Task Ensure_WhenConditionIsFalseInAsyncContext_ThrowsException()
     {
         const int x = -1;
 
@@ -129,7 +129,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public void Ensure_EvaluatesConditionLazily()
+    public void Ensure_WhenCalled_EvaluatesConditionLazily()
     {
         bool conditionEvaluated = false;
 
@@ -146,7 +146,7 @@ public class EnsureTests
     }
 
     [Fact]
-    public void Ensure_PropagatesException_WhenConditionThrows()
+    public void Ensure_WhenConditionThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("test error");
 
@@ -162,7 +162,7 @@ public class EnsureTests
 public class OldTests
 {
     [Fact]
-    public void Old_CapturesValue_WhenPostconditionsEnabled()
+    public void Old_WhenPostconditionsEnabled_CapturesValue()
     {
         const decimal balance = 100m;
 
@@ -172,7 +172,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_CreatesDeepCopy_NotReference()
+    public void Old_WhenCalled_CreatesDeepCopyNotReference()
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
@@ -188,7 +188,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_SupportsReferenceTypes()
+    public void Old_WhenUsedWithReferenceTypes_Works()
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
@@ -200,7 +200,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_SupportsValueTypes()
+    public void Old_WhenUsedWithValueTypes_Works()
     {
         TestPoint point = new() { X = 10, Y = 20 };
 
@@ -211,7 +211,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_SupportsPrimitiveTypes()
+    public void Old_WhenUsedWithPrimitiveTypes_Works()
     {
         const int value = 42;
 
@@ -221,7 +221,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_SupportsStrings()
+    public void Old_WhenUsedWithStrings_Works()
     {
         const string text = "Hello";
 
@@ -231,7 +231,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_ReturnsDefault_WhenSupplierReturnsNull()
+    public void Old_WhenSupplierReturnsNull_ReturnsDefault()
     {
         TestAccount? account = null;
 
@@ -241,7 +241,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_ThrowsArgumentNullException_WhenSupplierIsNull()
+    public void Old_WhenSupplierIsNull_ThrowsArgumentNullException()
     {
         Func<int>? supplier = null;
 
@@ -254,7 +254,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_ReturnsDefault_WhenRecursionGuardActive()
+    public void Old_WhenRecursionGuardActive_ReturnsDefault()
     {
         const int outerValue = 100;
         int innerValue = 0;
@@ -273,7 +273,7 @@ public class OldTests
     }
 
     [Fact]
-    public async Task Old_WorksCorrectly_InAsyncContext()
+    public async Task Old_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const decimal balance = 100m;
 
@@ -286,7 +286,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_EvaluatesSupplierLazily()
+    public void Old_WhenCalled_EvaluatesSupplierLazily()
     {
         bool supplierEvaluated = false;
 
@@ -302,7 +302,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_ThrowsInvalidOperationException_WhenTypeNotSerializable()
+    public void Old_WhenTypeNotSerializable_ThrowsInvalidOperationException()
     {
         NonSerializableType obj = new();
 
@@ -316,7 +316,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_UsedInPostcondition()
+    public void Old_WhenUsedInPostcondition_Works()
     {
         decimal balance = 100m;
         // ReSharper disable once AccessToModifiedClosure
@@ -330,7 +330,7 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_PropagatesException_WhenSupplierThrows()
+    public void Old_WhenSupplierThrows_PropagatesException()
     {
         InvalidOperationException expectedException = new("test error");
 
@@ -346,7 +346,7 @@ public class OldTests
 public class EnsureNotNullTests
 {
     [Fact]
-    public void EnsureNotNull_DoesNotThrow_WhenValueIsNotNull()
+    public void EnsureNotNull_WhenValueIsNotNull_DoesNotThrow()
     {
         const string value = "not null";
 
@@ -372,7 +372,7 @@ public class EnsureNotNullTests
     }
 
     [Fact]
-    public void EnsureNotNull_ExceptionMessage_HasCorrectFormat()
+    public void EnsureNotNull_WhenValueIsNull_ExceptionMessageHasCorrectFormat()
     {
         string? value = null;
         const string description = "Value must not be null";
@@ -386,7 +386,7 @@ public class EnsureNotNullTests
     }
 
     [Fact]
-    public void EnsureNotNull_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void EnsureNotNull_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
         const string value = "not null";
@@ -400,7 +400,7 @@ public class EnsureNotNullTests
     }
 
     [Fact]
-    public void EnsureNotNull_DoesNotRecurse_WhenRecursionGuardActive()
+    public void EnsureNotNull_WhenRecursionGuardActive_DoesNotRecurse()
     {
         int callCount = 0;
         string? nullValue = null;
@@ -424,7 +424,7 @@ public class EnsureNotNullTests
     }
 
     [Fact]
-    public async Task EnsureNotNull_WorksCorrectly_InAsyncContext()
+    public async Task EnsureNotNull_WhenUsedInAsyncContext_WorksCorrectly()
     {
         const string value = "not null";
 
@@ -439,7 +439,7 @@ public class EnsureNotNullTests
     }
 
     [Fact]
-    public async Task EnsureNotNull_ThrowsException_InAsyncContext_WhenValueIsNull()
+    public async Task EnsureNotNull_WhenValueIsNullInAsyncContext_ThrowsException()
     {
         string? value = null;
 
@@ -457,7 +457,7 @@ public class EnsureNotNullTests
     }
 
     [Fact]
-    public void EnsureNotNull_SupportsReferenceTypes()
+    public void EnsureNotNull_WhenUsedWithReferenceTypes_Works()
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
@@ -473,7 +473,7 @@ public class EnsureNotNullTests
 public class EnsureResultTests
 {
     [Fact]
-    public void EnsureResult_ReturnsResult_WhenAssertionIsTrue()
+    public void EnsureResult_WhenAssertionIsTrue_ReturnsResult()
     {
         const int value = 42;
 
@@ -483,7 +483,7 @@ public class EnsureResultTests
     }
 
     [Fact]
-    public void EnsureResult_ThrowsPostconditionViolationException_WhenAssertionIsFalse()
+    public void EnsureResult_WhenAssertionIsFalse_ThrowsPostconditionViolationException()
     {
         const int value = -1;
 
@@ -496,7 +496,7 @@ public class EnsureResultTests
     }
 
     [Fact]
-    public void EnsureResult_ExceptionMessage_HasCorrectFormat()
+    public void EnsureResult_WhenAssertionIsFalse_ExceptionMessageHasCorrectFormat()
     {
         const int value = -1;
         const string description = "Value must be positive";
@@ -510,7 +510,7 @@ public class EnsureResultTests
     }
 
     [Fact]
-    public void EnsureResult_ThrowsArgumentNullException_WhenDescriptionIsNull()
+    public void EnsureResult_WhenDescriptionIsNull_ThrowsArgumentNullException()
     {
         string? description = null;
         const int value = 42;
@@ -524,7 +524,7 @@ public class EnsureResultTests
     }
 
     [Fact]
-    public void EnsureResult_ThrowsArgumentNullException_WhenAssertionIsNull()
+    public void EnsureResult_WhenAssertionIsNull_ThrowsArgumentNullException()
     {
         const int value = 42;
         Func<int, bool>? assertion = null;
@@ -538,7 +538,7 @@ public class EnsureResultTests
     }
 
     [Fact]
-    public void EnsureResult_ReturnsResult_WhenRecursionGuardActive()
+    public void EnsureResult_WhenRecursionGuardActive_ReturnsResult()
     {
         const int outerValue = 100;
         int innerResult = 0;
@@ -560,7 +560,7 @@ public class EnsureResultTests
     }
 
     [Fact]
-    public void EnsureResult_SupportsChaining()
+    public void EnsureResult_WhenCalled_SupportsChaining()
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
@@ -580,7 +580,7 @@ public class EnsureResultTests
 public class EnsureImmutableCollectionTests
 {
     [Fact]
-    public void EnsureImmutableCollection_ReturnsCollection_WhenImmutableList()
+    public void EnsureImmutableCollection_WhenImmutableList_ReturnsCollection()
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice", "Bob");
 
@@ -591,7 +591,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_ReturnsCollection_WhenImmutableArray()
+    public void EnsureImmutableCollection_WhenImmutableArray_ReturnsCollection()
     {
         ImmutableArray<int> immutableArray = [1, 2, 3];
 
@@ -601,7 +601,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_ReturnsCollection_WhenImmutableDictionary()
+    public void EnsureImmutableCollection_WhenImmutableDictionary_ReturnsCollection()
     {
         ImmutableDictionary<string, int> immutableDict =
             ImmutableDictionary.Create<string, int>().Add("key", 42);
@@ -612,7 +612,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_ReturnsCollection_WhenImmutableHashSet()
+    public void EnsureImmutableCollection_WhenImmutableHashSet_ReturnsCollection()
     {
         ImmutableHashSet<string> immutableSet = ImmutableHashSet.Create("A", "B");
 
@@ -622,7 +622,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_ThrowsPostconditionViolationException_WhenMutableList()
+    public void EnsureImmutableCollection_WhenMutableList_ThrowsPostconditionViolationException()
     {
         List<string> mutableList = ["Alice", "Bob"];
 
@@ -635,7 +635,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_ThrowsPostconditionViolationException_WhenArray()
+    public void EnsureImmutableCollection_WhenArray_ThrowsPostconditionViolationException()
     {
         int[] mutableArray = [1, 2, 3];
 
@@ -648,7 +648,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_ThrowsPostconditionViolationException_WhenDictionary()
+    public void EnsureImmutableCollection_WhenDictionary_ThrowsPostconditionViolationException()
     {
         Dictionary<string, int> mutableDict = new() { { "key", 42 } };
 
@@ -661,7 +661,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_ThrowsArgumentNullException_WhenCollectionIsNull()
+    public void EnsureImmutableCollection_WhenCollectionIsNull_ThrowsArgumentNullException()
     {
         ImmutableList<string>? collection = null;
 
@@ -674,7 +674,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_ReturnsCollection_WhenRecursionGuardActive()
+    public void EnsureImmutableCollection_WhenRecursionGuardActive_ReturnsCollection()
     {
         List<string> mutableList = ["Alice", "Bob"];
         List<string> innerResult = null!;
@@ -696,7 +696,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_SupportsMethodChaining()
+    public void EnsureImmutableCollection_WhenCalled_SupportsMethodChaining()
     {
         ImmutableList<string> result = GetNames();
 
@@ -712,7 +712,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public async Task EnsureImmutableCollection_WorksCorrectly_InAsyncContext()
+    public async Task EnsureImmutableCollection_WhenUsedInAsyncContext_WorksCorrectly()
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice", "Bob");
 
@@ -725,7 +725,7 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
-    public async Task EnsureImmutableCollection_ThrowsException_InAsyncContext_WhenMutable()
+    public async Task EnsureImmutableCollection_WhenMutableInAsyncContext_ThrowsException()
     {
         List<string> mutableList = ["Alice", "Bob"];
 
@@ -744,7 +744,7 @@ public class EnsureImmutableCollectionTests
 public class EnsureAssignableTests
 {
     [Fact]
-    public void EnsureAssignable_DoesNotThrow_WhenNoFieldsModified()
+    public void EnsureAssignable_WhenNoFieldsModified_DoesNotThrow()
     {
         TestPerson person1 = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
         TestPerson person2 = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
@@ -758,7 +758,7 @@ public class EnsureAssignableTests
     }
 
     [Fact]
-    public void EnsureAssignable_DoesNotThrow_WhenOnlyAssignableFieldModified()
+    public void EnsureAssignable_WhenOnlyAssignableFieldModified_DoesNotThrow()
     {
         TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
         TestPerson newPerson = new() { Name = "Alice", Age = 30, Email = "newemail@example.com" };
