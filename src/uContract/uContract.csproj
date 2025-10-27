@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- Target Framework -->
@@ -26,7 +26,7 @@
 Features:
 • Zero overhead when disabled (lazy evaluation)
 • AsyncLocal support for async/await
-• 18 contract methods (Require, Ensure, Invariant, Old, etc.)
+• 16 contract methods (Require, Ensure, Invariant, Old, etc.)
 • Zero external dependencies
 • Full nullable reference type support
 • Thread-safe with recursion guard
@@ -53,11 +53,6 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
-
-  <!-- Package References for Source Link -->
-  <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
-  </ItemGroup>
 
   <!-- Include README in package -->
   <ItemGroup>
