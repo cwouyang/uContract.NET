@@ -996,7 +996,7 @@ public static class Contract
             return false;
         }
 
-        return patterns.Any(pattern => Regex.IsMatch(fieldName, pattern));
+        return patterns.Any(pattern => Regex.IsMatch(fieldName, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
     }
 
     private static bool _AreEqual(object? actual, object? expected, Type memberType)

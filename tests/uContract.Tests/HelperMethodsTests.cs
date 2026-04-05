@@ -92,7 +92,7 @@ public class CheckTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message);
+        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -296,7 +296,7 @@ public class IgnoreTests
 
         void ChangeEmail(string email)
         {
-            if (Contract.Ignore("Email unchanged", () => currentEmail == email))
+            if (Contract.Ignore("Email unchanged", () => string.Equals(currentEmail, email, StringComparison.Ordinal)))
             {
                 return;
             }
@@ -319,7 +319,7 @@ public class IgnoreTests
 
         void ChangeEmail(string email)
         {
-            if (Contract.Ignore("Email unchanged", () => currentEmail == email))
+            if (Contract.Ignore("Email unchanged", () => string.Equals(currentEmail, email, StringComparison.Ordinal)))
             {
                 return;
             }

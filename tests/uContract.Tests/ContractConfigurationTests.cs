@@ -4,6 +4,7 @@ namespace uContract.Tests;
 ///     Tests for <see cref="ContractConfiguration" /> class.
 ///     Verifies environment variable parsing, precedence, and Debug/Release defaults.
 /// </summary>
+[Collection("EnvironmentVariables")]
 public class ContractConfigurationTests
 {
 #region Setup Helpers

@@ -90,7 +90,7 @@ public class InvariantTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message);
+        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public class InvariantNotNullTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message);
+        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -92,7 +92,7 @@ public class EnsureTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message);
+        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -311,7 +311,7 @@ public class OldTests
              Contract.Old(() => obj)
         );
 
-        Assert.Contains("cannot be serialized", exception.Message);
+        Assert.Contains("cannot be serialized", exception.Message, StringComparison.Ordinal);
         Assert.IsType<NotSupportedException>(exception.InnerException);
     }
 
@@ -420,7 +420,7 @@ public class EnsureNotNullTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message);
+        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -631,7 +631,7 @@ public class EnsureImmutableCollectionTests
              Contract.EnsureImmutableCollection(mutableList)
         );
 
-        Assert.Contains("immutable collection", exception.Message);
+        Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -644,20 +644,20 @@ public class EnsureImmutableCollectionTests
              Contract.EnsureImmutableCollection(mutableArray)
         );
 
-        Assert.Contains("immutable collection", exception.Message);
+        Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void EnsureImmutableCollection_WhenDictionary_ThrowsPostconditionViolationException()
     {
-        Dictionary<string, int> mutableDict = new() { { "key", 42 } };
+        Dictionary<string, int> mutableDict = new(StringComparer.Ordinal) { { "key", 42 } };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
         (() =>
              Contract.EnsureImmutableCollection(mutableDict)
         );
 
-        Assert.Contains("immutable collection", exception.Message);
+        Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -782,8 +782,8 @@ public class EnsureAssignableTests
              Contract.EnsureAssignable(newPerson, oldPerson, "Email")
         );
 
-        Assert.Contains("Name", exception.Message);
-        Assert.Contains("not marked as assignable", exception.Message);
+        Assert.Contains("Name", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("not marked as assignable", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -825,8 +825,8 @@ public class EnsureAssignableTests
              Contract.EnsureAssignable(newPerson, oldPerson, "Email")
         );
 
-        Assert.Contains("Name", exception.Message);
-        Assert.Contains("Age", exception.Message);
+        Assert.Contains("Name", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Age", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -868,7 +868,7 @@ public class EnsureAssignableTests
              Contract.EnsureAssignable(newPoint, oldPoint, "Y")
         );
 
-        Assert.Contains("X", exception.Message);
+        Assert.Contains("X", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -882,7 +882,7 @@ public class EnsureAssignableTests
              Contract.EnsureAssignable(newPoint, oldPoint, "X")
         );
 
-        Assert.Contains("Y", exception.Message);
+        Assert.Contains("Y", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -952,7 +952,7 @@ public class EnsureAssignableTests
              Contract.EnsureAssignable(newPerson, oldPerson, "email")
         );
 
-        Assert.Contains("Email", exception.Message);
+        Assert.Contains("Email", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -980,7 +980,7 @@ public class EnsureAssignableTests
              Contract.EnsureAssignable(newOrder, oldOrder, "OrderId")
         );
 
-        Assert.Contains("Customer", exception.Message);
+        Assert.Contains("Customer", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
