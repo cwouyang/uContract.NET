@@ -31,6 +31,7 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     <RepositoryUrl>https://github.com/cwouyang/uContract.NET</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageReleaseNotes>See https://github.com/cwouyang/uContract.NET/blob/master/CHANGELOG.md for release notes.</PackageReleaseNotes>
 
     <!-- Documentation -->
@@ -45,9 +46,10 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
-  <!-- Include README in package -->
+  <!-- Include README and icon in package -->
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
