@@ -1075,7 +1075,7 @@ public class EnsureAssignableTests
         );
     }
 
-    private class TestPerson
+    private sealed class TestPerson
     {
         public string Name { get; set; } = "";
         public int Age { get; set; }
@@ -1083,7 +1083,7 @@ public class EnsureAssignableTests
         public string Email { get; set; } = "";
     }
 
-    private record TestPersonRecord(string Name, int Age, string Email);
+    private sealed record TestPersonRecord(string Name, int Age, string Email);
 
     private struct TestPoint
     {
@@ -1099,7 +1099,7 @@ public class EnsureAssignableTests
 
     private record struct TestPointRecordStruct(int X, int Y);
 
-    private class TestOrder
+    private sealed class TestOrder
     {
         public int OrderId { get; set; }
         public TestPerson Customer { get; set; } = new();

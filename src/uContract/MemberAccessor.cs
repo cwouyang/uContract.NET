@@ -6,7 +6,7 @@ namespace uContract;
 /// <summary>
 ///     Unified accessor for both PropertyInfo and FieldInfo members.
 /// </summary>
-internal class MemberAccessor
+internal sealed class MemberAccessor
 {
     private readonly FieldInfo? _field;
     private readonly PropertyInfo? _property;

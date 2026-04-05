@@ -803,9 +803,9 @@ public static class Contract
             string? namespaceName = collectionType.Namespace;
 
             // Check if type is from System.Collections.Immutable namespace
-            bool isImmutable = namespaceName?.StartsWith("System.Collections.Immutable") == true
-                               || typeName.StartsWith("Immutable")
-                               || typeName.StartsWith("ReadOnly");
+            bool isImmutable = namespaceName?.StartsWith("System.Collections.Immutable", StringComparison.Ordinal) == true
+                               || typeName.StartsWith("Immutable", StringComparison.Ordinal)
+                               || typeName.StartsWith("ReadOnly", StringComparison.Ordinal);
 
             if (!isImmutable)
             {
