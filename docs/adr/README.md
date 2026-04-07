@@ -99,6 +99,9 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 **Fifth Priority (Design Constraints from Root Contracting Paper)**:
 - [ADR-0013: No Subcontracting Support](0013-no-subcontracting-support.md) — 2025-10-29
 
+**Sixth Priority (Diagnostics)**:
+- [ADR-0014: Diagnostic Logging via EventSource](0014-diagnostic-logging-eventsource.md) — 2026-04-07
+
 ---
 
 ## Notes for Maintainers

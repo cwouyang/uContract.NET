@@ -21,7 +21,7 @@ Initial alpha release. Direct port of [Java uContract 2.0.1](https://gitlab.com/
 - Runtime configuration via environment variables (`DBC`, `DBC_PRE`, `DBC_POST`, `DBC_INV`, `DBC_CHECK`)
 - Exception hierarchy rooted at `ContractViolationException`
 - 216 tests with 100% pass rate
-- Documentation: API reference, usage examples, DDD integration guide, 13 ADRs
+- Documentation: API reference, usage examples, DDD integration guide, 14 ADRs
 
 ### Changed
 - Method naming from camelCase to PascalCase (`require()` → `Require()`)
