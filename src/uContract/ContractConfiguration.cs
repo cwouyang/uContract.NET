@@ -26,7 +26,7 @@ namespace uContract;
 ///                 <term>DBC_CHECK</term><description>Check statements only</description>
 ///             </item>
 ///             <item>
-///                 <term>DBC_DOC</term><description>Documentation generation flag</description>
+///                 <term>DBC_DOC</term><description>Diagnostic output flag</description>
 ///             </item>
 ///         </list>
 ///     </para>
@@ -55,6 +55,7 @@ public class ContractConfiguration
     {
         // Determine default based on build configuration
         bool defaultEnabled = IsDebugBuild();
+        string defaultSource = IsDebugBuild() ? "default: Debug" : "default: Release";
 
         // Read global DBC setting (acts as default when specific flags are not set)
         bool? globalDbc = ParseEnvironmentVariable("DBC");
@@ -75,8 +76,23 @@ public class ContractConfiguration
         InvariantsEnabled = invariantsDbc ?? globalDbc ?? defaultEnabled;
         CheckEnabled = checkDbc ?? globalDbc ?? defaultEnabled;
 
+        // Track the source of each resolved setting
+        PreconditionsSource = ResolveSource(preconditionsDbc, "DBC_PRE", globalDbc, "DBC", defaultSource);
+        PostconditionsSource = ResolveSource(postconditionsDbc, "DBC_POST", globalDbc, "DBC", defaultSource);
+        InvariantsSource = ResolveSource(invariantsDbc, "DBC_INV", globalDbc, "DBC", defaultSource);
+        CheckSource = ResolveSource(checkDbc, "DBC_CHECK", globalDbc, "DBC", defaultSource);
+
         // Documentation is off by default
         DocumentationEnabled = ParseEnvironmentVariable("DBC_DOC") ?? false;
+
+        // Fire EventSource event and optional stderr output
+        string summary = FormatSummary();
+        ContractEventSource.Log.ConfigurationLoaded(summary);
+
+        if (DocumentationEnabled)
+        {
+            WriteDiagnosticOutput(summary);
+        }
     }
 
     /// <summary>
@@ -132,13 +148,97 @@ public class ContractConfiguration
     public bool CheckEnabled { get; }
 
     /// <summary>
-    ///     Gets a value indicating whether documentation generation is enabled.
+    ///     Gets a value indicating whether diagnostic output is enabled.
     /// </summary>
     /// <remarks>
     ///     Determined by DBC_DOC environment variable.
+    ///     When enabled, a formatted summary of the resolved configuration is written to stderr.
     ///     Default: false
     /// </remarks>
     public bool DocumentationEnabled { get; }
+
+    /// <summary>
+    ///     Gets the source that determined the <see cref="PreconditionsEnabled" /> value.
+    /// </summary>
+    public string PreconditionsSource { get; }
+
+    /// <summary>
+    ///     Gets the source that determined the <see cref="PostconditionsEnabled" /> value.
+    /// </summary>
+    public string PostconditionsSource { get; }
+
+    /// <summary>
+    ///     Gets the source that determined the <see cref="InvariantsEnabled" /> value.
+    /// </summary>
+    public string InvariantsSource { get; }
+
+    /// <summary>
+    ///     Gets the source that determined the <see cref="CheckEnabled" /> value.
+    /// </summary>
+    public string CheckSource { get; }
+
+    /// <summary>
+    ///     Determines which source provided the resolved value, following the precedence chain.
+    /// </summary>
+    private static string ResolveSource(
+        bool? specificValue, string specificName,
+        bool? globalValue, string globalName,
+        string defaultSource)
+    {
+        if (specificValue.HasValue)
+        {
+            return specificName;
+        }
+
+        if (globalValue.HasValue)
+        {
+            return globalName;
+        }
+
+        return defaultSource;
+    }
+
+    /// <summary>
+    ///     Formats a human-readable summary of the resolved configuration.
+    /// </summary>
+    private string FormatSummary()
+    {
+        return string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            "Preconditions: {0} (from {1}), Postconditions: {2} (from {3}), Invariants: {4} (from {5}), Check: {6} (from {7})",
+            PreconditionsEnabled ? "on" : "off", PreconditionsSource,
+            PostconditionsEnabled ? "on" : "off", PostconditionsSource,
+            InvariantsEnabled ? "on" : "off", InvariantsSource,
+            CheckEnabled ? "on" : "off", CheckSource);
+    }
+
+    /// <summary>
+    ///     Writes a formatted diagnostic summary to stderr.
+    /// </summary>
+    private void WriteDiagnosticOutput(string summary)
+    {
+        Console.Error.WriteLine("[uContract] Configuration loaded:");
+        Console.Error.WriteLine(
+            string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "[uContract]   Preconditions: {0} (from {1})",
+                PreconditionsEnabled ? "on" : "off", PreconditionsSource));
+        Console.Error.WriteLine(
+            string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "[uContract]   Postconditions: {0} (from {1})",
+                PostconditionsEnabled ? "on" : "off", PostconditionsSource));
+        Console.Error.WriteLine(
+            string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "[uContract]   Invariants: {0} (from {1})",
+                InvariantsEnabled ? "on" : "off", InvariantsSource));
+        Console.Error.WriteLine(
+            string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "[uContract]   Check: {0} (from {1})",
+                CheckEnabled ? "on" : "off", CheckSource));
+    }
 
     /// <summary>
     ///     Parses an environment variable as a boolean.

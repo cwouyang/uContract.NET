@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Diagnostic logging via `EventSource` (ADR-0014) — `DBC_DOC=on` prints contract configuration to stderr
+- Configuration source tracking — each setting reports where it came from (`DBC_PRE`, `DBC`, `default: Debug`, etc.)
+
 ---
 
 ## [1.0.0-alpha.1] - 2025-10-27
@@ -20,7 +24,7 @@ Initial alpha release. Direct port of [Java uContract 2.0.1](https://gitlab.com/
 - 16 public API methods: preconditions, postconditions, invariants, and helpers
 - Runtime configuration via environment variables (`DBC`, `DBC_PRE`, `DBC_POST`, `DBC_INV`, `DBC_CHECK`)
 - Exception hierarchy rooted at `ContractViolationException`
-- 216 tests with 100% pass rate
+- 226 tests with 100% pass rate
 - Documentation: API reference, usage examples, DDD integration guide, 14 ADRs
 
 ### Changed

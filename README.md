@@ -17,7 +17,7 @@ A modern Design by Contract (DBC) library for .NET. This is a direct port of the
 **Current Version**: `1.0.0-alpha.1`
 
 - ✅ **16 public methods** — Core API, advanced features, convenience methods
-- ✅ **216 tests passing (100%)**
+- ✅ **226 tests passing (100%)**
 - ✅ **Zero external dependencies**
 
 ---
