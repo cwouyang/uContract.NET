@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -363,6 +364,8 @@ public static class Contract
     /// }
     /// </code>
     /// </example>
+    [RequiresUnreferencedCode("Old<T> uses System.Text.Json serialization for deep copy, which requires unreferenced code.")]
+    [RequiresDynamicCode("Old<T> uses System.Text.Json serialization, which requires dynamic code generation.")]
     public static T Old<T>(Func<T> supplier)
     {
         // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
@@ -904,6 +907,7 @@ public static class Contract
     /// }
     /// </code>
     /// </example>
+    [RequiresUnreferencedCode("EnsureAssignable uses reflection to enumerate and compare fields and properties.")]
     public static void EnsureAssignable<T>(T actual, T expected, params string[] assignableFieldPatterns)
     {
         // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
@@ -968,6 +972,8 @@ public static class Contract
         return differences;
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode].")]
     private static TypeMetadata _GetOrCacheMetadata(Type type)
     {
         return MetadataCache.GetOrAdd

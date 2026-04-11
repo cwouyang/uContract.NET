@@ -38,6 +38,10 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\uContract.xml</DocumentationFile>
 
+    <!-- Trimming and AOT -->
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+
     <!-- Symbols and Debugging -->
     <DebugType>embedded</DebugType>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
