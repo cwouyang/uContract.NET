@@ -10,5 +10,5 @@ internal sealed class TypeMetadata
     /// <summary>
     ///     List of members (properties and fields) for a given type.
     /// </summary>
-    public List<MemberAccessor> Members { get; set; } = new();
+    public List<MemberAccessor> Members { get; set; } = [];
 }

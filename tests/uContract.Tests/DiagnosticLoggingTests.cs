@@ -225,7 +225,7 @@ public sealed class DiagnosticLoggingTests : IDisposable
 
     private sealed class TestEventListener : EventListener
     {
-        public List<EventWrittenEventArgs> Events { get; } = new();
+        public List<EventWrittenEventArgs> Events { get; } = [];
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {

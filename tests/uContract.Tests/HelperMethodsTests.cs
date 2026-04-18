@@ -635,7 +635,7 @@ public class CheckUnsupportedOperationTests
     [Fact]
     public void CheckUnsupportedOperation_WhenUsedWithMutableList_ReturnsFalse()
     {
-        List<string> mutableList = new() { "Alice", "Bob" };
+        List<string> mutableList = ["Alice", "Bob"];
 
         bool result = Contract.CheckUnsupportedOperation(() => mutableList.Add("Charlie"));
 
