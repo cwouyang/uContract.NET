@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Diagnostic logging via `EventSource` (ADR-0014) — `DBC_DOC=on` prints contract configuration to stderr
 - Configuration source tracking — each setting reports where it came from (`DBC_PRE`, `DBC`, `default: Debug`, etc.)
+- CSharpier 1.2.6 as the canonical formatter (dotnet tool, `printWidth: 120`)
+- Roslynator.Analyzers 4.15.0 for broader code-smell coverage alongside Meziantou
+- GitHub Actions CI gate that runs `dotnet csharpier check .` on every push/PR
+- ADR-0015 capturing the adopted code quality tooling decisions
+- Development setup and tool-upgrade workflow in `CONTRIBUTING.md`
+- `.gitattributes` entries enforcing LF line endings for cross-platform CI
+
+### Changed
+- `.editorconfig` coding-convention and naming rules promoted from `suggestion` to `warning` (Level Z) — violations now fail the build under `TreatWarningsAsErrors=true`
+- `.editorconfig` C# Formatting Rules section removed — formatting delegated to CSharpier
+- `.github/workflows/build-and-test.yml` — `push` trigger expanded to run on all branches (was master-only); added `dotnet tool restore` + `dotnet csharpier check .` steps before build
+- `.csharpierrc.yaml` `endOfLine` switched from `crlf` to `lf` for cross-platform CI consistency
 
 ---
 

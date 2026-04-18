@@ -102,6 +102,9 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 **Sixth Priority (Diagnostics)**:
 - [ADR-0014: Diagnostic Logging via EventSource](0014-diagnostic-logging-eventsource.md) — 2026-04-07
 
+**Seventh Priority (Tooling and Quality)**:
+- [ADR-0015: Code Quality Tooling](0015-code-quality-tooling.md) — 2026-04-18
+
 ---
 
 ## Notes for Maintainers
