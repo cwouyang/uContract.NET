@@ -9,9 +9,8 @@ public class InvariantTests
     {
         const int balance = 100;
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.Invariant("balance must be non-negative", () => balance >= 0)
+        Exception? exception = Record.Exception(() =>
+            Contract.Invariant("balance must be non-negative", () => balance >= 0)
         );
 
         Assert.Null(exception);
@@ -22,9 +21,8 @@ public class InvariantTests
     {
         const int balance = -1;
 
-        InvariantViolationException exception = Assert.Throws<InvariantViolationException>
-        (() =>
-             Contract.Invariant("balance must be non-negative", () => balance >= 0)
+        InvariantViolationException exception = Assert.Throws<InvariantViolationException>(() =>
+            Contract.Invariant("balance must be non-negative", () => balance >= 0)
         );
 
         Assert.NotNull(exception);
@@ -36,9 +34,8 @@ public class InvariantTests
         const int balance = -1;
         const string description = "balance must be non-negative";
 
-        InvariantViolationException exception = Assert.Throws<InvariantViolationException>
-        (() =>
-             Contract.Invariant(description, () => balance >= 0)
+        InvariantViolationException exception = Assert.Throws<InvariantViolationException>(() =>
+            Contract.Invariant(description, () => balance >= 0)
         );
 
         Assert.Equal($"Invariant violated: {description}", exception.Message);
@@ -49,9 +46,8 @@ public class InvariantTests
     {
         string? description = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Invariant(description!, () => true)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Invariant(description!, () => true)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -62,9 +58,8 @@ public class InvariantTests
     {
         Func<bool>? condition = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Invariant("some description", condition!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Invariant("some description", condition!)
         );
 
         Assert.Equal("condition", exception.ParamName);
@@ -75,18 +70,17 @@ public class InvariantTests
     {
         int callCount = 0;
 
-        InvariantViolationException exception = Assert.Throws<InvariantViolationException>
-        (() =>
-             Contract.Invariant
-             (
-                 "outer", () =>
-                 {
-                     callCount++;
-                     // This inner Invariant should be ignored due to recursion guard
-                     Contract.Invariant("inner", () => false);
-                     return false;
-                 }
-             )
+        InvariantViolationException exception = Assert.Throws<InvariantViolationException>(() =>
+            Contract.Invariant(
+                "outer",
+                () =>
+                {
+                    callCount++;
+                    // This inner Invariant should be ignored due to recursion guard
+                    Contract.Invariant("inner", () => false);
+                    return false;
+                }
+            )
         );
 
         Assert.Equal(1, callCount);
@@ -98,12 +92,10 @@ public class InvariantTests
     {
         const int balance = 100;
 
-        await Task.Run
-        (() =>
-            {
-                Contract.Invariant("balance must be non-negative", () => balance >= 0);
-            }
-        );
+        await Task.Run(() =>
+        {
+            Contract.Invariant("balance must be non-negative", () => balance >= 0);
+        });
 
         Assert.True(true);
     }
@@ -113,17 +105,13 @@ public class InvariantTests
     {
         const int balance = -1;
 
-        await Assert.ThrowsAsync<InvariantViolationException>
-        (async () =>
+        await Assert.ThrowsAsync<InvariantViolationException>(async () =>
+        {
+            await Task.Run(() =>
             {
-                await Task.Run
-                (() =>
-                    {
-                        Contract.Invariant("balance must be non-negative", () => balance >= 0);
-                    }
-                );
-            }
-        );
+                Contract.Invariant("balance must be non-negative", () => balance >= 0);
+            });
+        });
     }
 
     [Fact]
@@ -131,9 +119,9 @@ public class InvariantTests
     {
         bool conditionEvaluated = false;
 
-        Contract.Invariant
-        (
-            "test", () =>
+        Contract.Invariant(
+            "test",
+            () =>
             {
                 conditionEvaluated = true;
                 return true;
@@ -148,9 +136,8 @@ public class InvariantTests
     {
         InvalidOperationException expectedException = new("test error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Invariant("test", () => throw expectedException)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Invariant("test", () => throw expectedException)
         );
 
         Assert.Same(expectedException, exception);
@@ -164,10 +151,7 @@ public class InvariantNotNullTests
     {
         const string value = "not null";
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.InvariantNotNull("Value", value)
-        );
+        Exception? exception = Record.Exception(() => Contract.InvariantNotNull("Value", value));
 
         Assert.Null(exception);
     }
@@ -177,9 +161,8 @@ public class InvariantNotNullTests
     {
         string? value = null;
 
-        InvariantViolationException exception = Assert.Throws<InvariantViolationException>
-        (() =>
-             Contract.InvariantNotNull("Value", value)
+        InvariantViolationException exception = Assert.Throws<InvariantViolationException>(() =>
+            Contract.InvariantNotNull("Value", value)
         );
 
         Assert.NotNull(exception);
@@ -191,9 +174,8 @@ public class InvariantNotNullTests
         string? value = null;
         const string description = "Value must not be null";
 
-        InvariantViolationException exception = Assert.Throws<InvariantViolationException>
-        (() =>
-             Contract.InvariantNotNull(description, value)
+        InvariantViolationException exception = Assert.Throws<InvariantViolationException>(() =>
+            Contract.InvariantNotNull(description, value)
         );
 
         Assert.Equal($"Invariant violated: {description}", exception.Message);
@@ -205,9 +187,8 @@ public class InvariantNotNullTests
         string? description = null;
         const string value = "not null";
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.InvariantNotNull(description!, value)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.InvariantNotNull(description!, value)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -219,18 +200,17 @@ public class InvariantNotNullTests
         int callCount = 0;
         string? nullValue = null;
 
-        InvariantViolationException exception = Assert.Throws<InvariantViolationException>
-        (() =>
-             Contract.Invariant
-             (
-                 "outer", () =>
-                 {
-                     callCount++;
-                     // This inner InvariantNotNull should be ignored due to recursion guard
-                     Contract.InvariantNotNull("inner", nullValue);
-                     return false;
-                 }
-             )
+        InvariantViolationException exception = Assert.Throws<InvariantViolationException>(() =>
+            Contract.Invariant(
+                "outer",
+                () =>
+                {
+                    callCount++;
+                    // This inner InvariantNotNull should be ignored due to recursion guard
+                    Contract.InvariantNotNull("inner", nullValue);
+                    return false;
+                }
+            )
         );
 
         Assert.Equal(1, callCount);
@@ -242,12 +222,10 @@ public class InvariantNotNullTests
     {
         const string value = "not null";
 
-        await Task.Run
-        (() =>
-            {
-                Contract.InvariantNotNull("Value", value);
-            }
-        );
+        await Task.Run(() =>
+        {
+            Contract.InvariantNotNull("Value", value);
+        });
 
         Assert.True(true);
     }
@@ -257,17 +235,13 @@ public class InvariantNotNullTests
     {
         string? value = null;
 
-        await Assert.ThrowsAsync<InvariantViolationException>
-        (async () =>
+        await Assert.ThrowsAsync<InvariantViolationException>(async () =>
+        {
+            await Task.Run(() =>
             {
-                await Task.Run
-                (() =>
-                    {
-                        Contract.InvariantNotNull("Value", value);
-                    }
-                );
-            }
-        );
+                Contract.InvariantNotNull("Value", value);
+            });
+        });
     }
 
     [Fact]
@@ -275,10 +249,7 @@ public class InvariantNotNullTests
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.InvariantNotNull("Account", account)
-        );
+        Exception? exception = Record.Exception(() => Contract.InvariantNotNull("Account", account));
 
         Assert.Null(exception);
     }

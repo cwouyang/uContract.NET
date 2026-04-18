@@ -29,7 +29,7 @@ public sealed class DiagnosticLoggingTests : IDisposable
         Environment.SetEnvironmentVariable("DBC_DOC", null);
     }
 
-#region Source Tracking Tests
+    #region Source Tracking Tests
 
     [Fact]
     public void Constructor_WhenSpecificEnvVarSet_TracksSourceAsSpecificVariable()
@@ -84,9 +84,9 @@ public sealed class DiagnosticLoggingTests : IDisposable
         Assert.Equal("DBC_CHECK", config.CheckSource);
     }
 
-#endregion
+    #endregion
 
-#region EventSource Tests
+    #region EventSource Tests
 
     [Fact]
     public void Constructor_WhenCreated_FiresConfigurationLoadedEvent()
@@ -95,8 +95,9 @@ public sealed class DiagnosticLoggingTests : IDisposable
 
         ContractConfiguration config = new();
 
-        EventWrittenEventArgs? configEvent = listener.Events
-            .Find(e => string.Equals(e.EventName, "ConfigurationLoaded", StringComparison.Ordinal));
+        EventWrittenEventArgs? configEvent = listener.Events.Find(e =>
+            string.Equals(e.EventName, "ConfigurationLoaded", StringComparison.Ordinal)
+        );
         Assert.NotNull(configEvent);
     }
 
@@ -110,8 +111,9 @@ public sealed class DiagnosticLoggingTests : IDisposable
 
         ContractConfiguration config = new();
 
-        EventWrittenEventArgs? configEvent = listener.Events
-            .Find(e => string.Equals(e.EventName, "ConfigurationLoaded", StringComparison.Ordinal));
+        EventWrittenEventArgs? configEvent = listener.Events.Find(e =>
+            string.Equals(e.EventName, "ConfigurationLoaded", StringComparison.Ordinal)
+        );
         Assert.NotNull(configEvent);
 
         string? summary = configEvent.Payload?[0] as string;
@@ -120,9 +122,9 @@ public sealed class DiagnosticLoggingTests : IDisposable
         Assert.Contains("Postconditions: off (from DBC_POST)", summary, StringComparison.Ordinal);
     }
 
-#endregion
+    #endregion
 
-#region Stderr Output Tests
+    #region Stderr Output Tests
 
     [Fact]
     public void Constructor_WhenDbcDocOn_WritesFormattedOutputToStderr()
@@ -217,9 +219,9 @@ public sealed class DiagnosticLoggingTests : IDisposable
         }
     }
 
-#endregion
+    #endregion
 
-#region Test Helpers
+    #region Test Helpers
 
     private sealed class TestEventListener : EventListener
     {
@@ -239,5 +241,5 @@ public sealed class DiagnosticLoggingTests : IDisposable
         }
     }
 
-#endregion
+    #endregion
 }

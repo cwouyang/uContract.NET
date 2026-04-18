@@ -44,5 +44,5 @@ public enum ContractType
     ///     Controlled by the <c>DBC_CHECK</c> environment variable.
     ///     Note: Check functionality is part of Phase 2 implementation.
     /// </remarks>
-    Check
+    Check,
 }

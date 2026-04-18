@@ -7,10 +7,9 @@ namespace uContract.Tests;
 [Collection("EnvironmentVariables")]
 public class ContractConfigurationTests
 {
-#region Setup Helpers
+    #region Setup Helpers
 
-    private static void _SetupEnvironment
-    (
+    private static void _SetupEnvironment(
         string? dbc = null,
         string? dbcPre = null,
         string? dbcPost = null,
@@ -59,9 +58,9 @@ public class ContractConfigurationTests
         }
     }
 
-#endregion
+    #endregion
 
-#region Default Configuration Tests
+    #region Default Configuration Tests
 
     [Fact]
     public void Constructor_WhenNoEnvironmentVariablesSet_UsesCorrectBuildDefaults()
@@ -82,9 +81,9 @@ public class ContractConfigurationTests
         Assert.False(config.DocumentationEnabled); // Always false by default
     }
 
-#endregion
+    #endregion
 
-#region Invalid Value Handling Tests
+    #region Invalid Value Handling Tests
 
     [Theory]
     [InlineData("maybe")]
@@ -115,9 +114,9 @@ public class ContractConfigurationTests
         Assert.Equal(expectedDefault, config.CheckEnabled);
     }
 
-#endregion
+    #endregion
 
-#region Boolean Parsing Tests
+    #region Boolean Parsing Tests
 
     [Theory]
     [InlineData("true")]
@@ -161,9 +160,9 @@ public class ContractConfigurationTests
         Assert.False(config.CheckEnabled);
     }
 
-#endregion
+    #endregion
 
-#region Global DBC Flag Tests
+    #region Global DBC Flag Tests
 
     [Fact]
     public void Constructor_WhenGlobalDbcTrue_EnablesAllContractTypes()
@@ -191,9 +190,9 @@ public class ContractConfigurationTests
         Assert.False(config.CheckEnabled);
     }
 
-#endregion
+    #endregion
 
-#region Specific Contract Type Tests
+    #region Specific Contract Type Tests
 
     [Fact]
     public void Constructor_WhenOnlyDbcPreIsTrue_EnablesPreconditionsAndUsesDefaultsForOthers()
@@ -267,17 +266,16 @@ public class ContractConfigurationTests
         Assert.True(config.CheckEnabled); // Explicitly set
     }
 
-#endregion
+    #endregion
 
-#region Precedence Rules Tests
+    #region Precedence Rules Tests
 
     [Theory]
     [InlineData("true", "false", "true", "false", "true", false, true, false, true)]
     [InlineData("false", "true", "false", "true", "false", true, false, true, false)]
     [InlineData("true", "true", "true", "true", "true", true, true, true, true)]
     [InlineData("false", "false", "false", "false", "false", false, false, false, false)]
-    public void Constructor_WhenAllSpecificFlagsSet_RespectsEachIndividually
-    (
+    public void Constructor_WhenAllSpecificFlagsSet_RespectsEachIndividually(
         string globalDbc,
         string dbcPre,
         string dbcPost,
@@ -298,16 +296,15 @@ public class ContractConfigurationTests
         Assert.Equal(expectedInv, config.InvariantsEnabled);
         Assert.Equal(expectedCheck, config.CheckEnabled);
     }
-    
+
     [Fact]
     public void Constructor_WhenRedundantSpecificSetting_SpecificStillWins()
     {
         // Even when values are the same, specific should take precedence
         // This verifies the precedence logic path is executed correctly
-        _SetupEnvironment
-        (
-            "true",  // Global true
-            "true",  // Pre also true (redundant but valid)
+        _SetupEnvironment(
+            "true", // Global true
+            "true", // Pre also true (redundant but valid)
             null,
             null,
             null
@@ -324,8 +321,7 @@ public class ContractConfigurationTests
     [Fact]
     public void Constructor_WhenOnlySpecificFlagsSet_IgnoresDefaults()
     {
-        _SetupEnvironment
-        (
+        _SetupEnvironment(
             null, // Global unset
             "true", // Pre set
             "false", // Post set
@@ -347,38 +343,36 @@ public class ContractConfigurationTests
     {
         // Verifies the null-coalescing chain when specific flag is invalid
         // DBC=true (valid global), DBC_PRE=invalid (should fallback to global)
-        _SetupEnvironment
-        (
-            "true",          // DBC = true (valid global)
-            "invalid_value"  // DBC_PRE = invalid (should be treated as null)
+        _SetupEnvironment(
+            "true", // DBC = true (valid global)
+            "invalid_value" // DBC_PRE = invalid (should be treated as null)
         );
 
         ContractConfiguration config = new();
 
         // PreconditionsEnabled should use global DBC=true (not build default)
         // This verifies the null-coalescing chain: DBC_PRE (null) ?? DBC (true) ?? default
-        Assert.True(config.PreconditionsEnabled);  // Fallback to global true
+        Assert.True(config.PreconditionsEnabled); // Fallback to global true
         Assert.True(config.PostconditionsEnabled); // Uses global true
-        Assert.True(config.InvariantsEnabled);     // Uses global true
-        Assert.True(config.CheckEnabled);          // Uses global true
+        Assert.True(config.InvariantsEnabled); // Uses global true
+        Assert.True(config.CheckEnabled); // Uses global true
     }
 
-#endregion
+    #endregion
 
-#region ADR Scenario Tests
+    #region ADR Scenario Tests
 
     [Fact]
     public void Constructor_WhenGlobalFalseAndSpecificTrue_SpecificEnablesIndividualContracts()
     {
         // ADR-0004 Example 5: Production debugging scenario
         // Key advantage of Option B: Can enable specific types even when global is disabled
-        _SetupEnvironment
-        (
+        _SetupEnvironment(
             "false", // Global disabled
-            "true",  // Pre enabled
-            "true",  // Post enabled
-            "true",  // Inv enabled
-            "true"   // Check enabled
+            "true", // Pre enabled
+            "true", // Post enabled
+            "true", // Inv enabled
+            "true" // Check enabled
         );
 
         ContractConfiguration config = new();
@@ -395,27 +389,26 @@ public class ContractConfigurationTests
     {
         // ADR-0004 Example 4: Selective disable scenario
         // Verifies null-coalescing priority in complex scenarios
-        _SetupEnvironment
-        (
-            "true",  // Global enabled
+        _SetupEnvironment(
+            "true", // Global enabled
             "false", // Pre disabled (specific overrides)
-            null,    // Post uses global
+            null, // Post uses global
             "false", // Inv disabled (specific overrides)
-            null     // Check uses global
+            null // Check uses global
         );
 
         ContractConfiguration config = new();
 
         // Mixed behavior: specific overrides, null falls back to global
         Assert.False(config.PreconditionsEnabled); // Specific false overrides global true
-        Assert.True(config.PostconditionsEnabled);  // Uses global true
-        Assert.False(config.InvariantsEnabled);     // Specific false overrides global true
-        Assert.True(config.CheckEnabled);           // Uses global true
+        Assert.True(config.PostconditionsEnabled); // Uses global true
+        Assert.False(config.InvariantsEnabled); // Specific false overrides global true
+        Assert.True(config.CheckEnabled); // Uses global true
     }
 
-#endregion
+    #endregion
 
-#region Documentation Flag Tests
+    #region Documentation Flag Tests
 
     [Fact]
     public void Constructor_WhenDbcDocTrue_EnablesDocumentation()
@@ -450,8 +443,7 @@ public class ContractConfigurationTests
     [Fact]
     public void Constructor_WhenDocEnabledAndContractsDisabled_DocumentationRemainsIndependent()
     {
-        _SetupEnvironment
-        (
+        _SetupEnvironment(
             "false", // All contracts disabled
             null,
             null,
@@ -473,8 +465,7 @@ public class ContractConfigurationTests
     [Fact]
     public void Constructor_WhenDocDisabledAndContractsEnabled_DocumentationRemainsIndependent()
     {
-        _SetupEnvironment
-        (
+        _SetupEnvironment(
             "true", // All contracts enabled
             null,
             null,
@@ -493,5 +484,5 @@ public class ContractConfigurationTests
         Assert.False(config.DocumentationEnabled); // Independent of contracts
     }
 
-#endregion
+    #endregion
 }

@@ -181,9 +181,12 @@ public class ContractConfiguration
     ///     Determines which source provided the resolved value, following the precedence chain.
     /// </summary>
     private static string ResolveSource(
-        bool? specificValue, string specificName,
-        bool? globalValue, string globalName,
-        string defaultSource)
+        bool? specificValue,
+        string specificName,
+        bool? globalValue,
+        string globalName,
+        string defaultSource
+    )
     {
         if (specificValue.HasValue)
         {
@@ -206,10 +209,15 @@ public class ContractConfiguration
         return string.Format(
             System.Globalization.CultureInfo.InvariantCulture,
             "Preconditions: {0} (from {1}), Postconditions: {2} (from {3}), Invariants: {4} (from {5}), Check: {6} (from {7})",
-            PreconditionsEnabled ? "on" : "off", PreconditionsSource,
-            PostconditionsEnabled ? "on" : "off", PostconditionsSource,
-            InvariantsEnabled ? "on" : "off", InvariantsSource,
-            CheckEnabled ? "on" : "off", CheckSource);
+            PreconditionsEnabled ? "on" : "off",
+            PreconditionsSource,
+            PostconditionsEnabled ? "on" : "off",
+            PostconditionsSource,
+            InvariantsEnabled ? "on" : "off",
+            InvariantsSource,
+            CheckEnabled ? "on" : "off",
+            CheckSource
+        );
     }
 
     /// <summary>
@@ -222,22 +230,34 @@ public class ContractConfiguration
             string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "[uContract]   Preconditions: {0} (from {1})",
-                PreconditionsEnabled ? "on" : "off", PreconditionsSource));
+                PreconditionsEnabled ? "on" : "off",
+                PreconditionsSource
+            )
+        );
         Console.Error.WriteLine(
             string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "[uContract]   Postconditions: {0} (from {1})",
-                PostconditionsEnabled ? "on" : "off", PostconditionsSource));
+                PostconditionsEnabled ? "on" : "off",
+                PostconditionsSource
+            )
+        );
         Console.Error.WriteLine(
             string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "[uContract]   Invariants: {0} (from {1})",
-                InvariantsEnabled ? "on" : "off", InvariantsSource));
+                InvariantsEnabled ? "on" : "off",
+                InvariantsSource
+            )
+        );
         Console.Error.WriteLine(
             string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "[uContract]   Check: {0} (from {1})",
-                CheckEnabled ? "on" : "off", CheckSource));
+                CheckEnabled ? "on" : "off",
+                CheckSource
+            )
+        );
     }
 
     /// <summary>
@@ -265,7 +285,7 @@ public class ContractConfiguration
         {
             "true" or "1" or "yes" or "on" => true,
             "false" or "0" or "no" or "off" => false,
-            _ => null
+            _ => null,
         };
     }
 

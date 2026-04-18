@@ -35,7 +35,12 @@ public class ContractViolationException : Exception
     /// <param name="violationType">The type of contract that was violated.</param>
     /// <param name="message">The formatted exception message.</param>
     /// <param name="innerException">The exception that is the cause of the current exception.</param>
-    public ContractViolationException(string description, ContractType violationType, string message, Exception innerException)
+    public ContractViolationException(
+        string description,
+        ContractType violationType,
+        string message,
+        Exception innerException
+    )
         : base(message, innerException)
     {
         Description = description;

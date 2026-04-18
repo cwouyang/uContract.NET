@@ -9,7 +9,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
-
 using uContract.Exceptions;
 
 namespace uContract;
@@ -38,7 +37,7 @@ public static class Contract
         ReferenceHandler = ReferenceHandler.IgnoreCycles,
         WriteIndented = false,
         IncludeFields = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.Never
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
     private static readonly ConcurrentDictionary<Type, TypeMetadata> MetadataCache = new();
@@ -295,7 +294,7 @@ public static class Contract
     /// {
     ///     if (Contract.Ignore("Email unchanged", () => _email == newEmail))
     ///         return;  // Early return - no work needed
-    /// 
+    ///
     ///     // ... rest of method
     ///     _email = newEmail;
     /// }
@@ -357,14 +356,16 @@ public static class Contract
     /// public void Transfer(decimal amount)
     /// {
     ///     var oldBalance = Contract.Old(() => _balance);
-    /// 
+    ///
     ///     _balance -= amount;
-    /// 
+    ///
     ///     Contract.Ensure("Balance decreased", () => _balance &lt; oldBalance);
     /// }
     /// </code>
     /// </example>
-    [RequiresUnreferencedCode("Old<T> uses System.Text.Json serialization for deep copy, which requires unreferenced code.")]
+    [RequiresUnreferencedCode(
+        "Old<T> uses System.Text.Json serialization for deep copy, which requires unreferenced code."
+    )]
     [RequiresDynamicCode("Old<T> uses System.Text.Json serialization, which requires dynamic code generation.")]
     public static T Old<T>(Func<T> supplier)
     {
@@ -400,10 +401,8 @@ public static class Contract
         }
         catch (NotSupportedException ex)
         {
-            throw new InvalidOperationException
-            (
-                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " +
-                "Ensure the type is JSON-serializable.",
+            throw new InvalidOperationException(
+                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.",
                 ex
             );
         }
@@ -806,16 +805,14 @@ public static class Contract
             string? namespaceName = collectionType.Namespace;
 
             // Check if type is from System.Collections.Immutable namespace
-            bool isImmutable = namespaceName?.StartsWith("System.Collections.Immutable", StringComparison.Ordinal) == true
-                               || typeName.StartsWith("Immutable", StringComparison.Ordinal)
-                               || typeName.StartsWith("ReadOnly", StringComparison.Ordinal);
+            bool isImmutable =
+                namespaceName?.StartsWith("System.Collections.Immutable", StringComparison.Ordinal) == true
+                || typeName.StartsWith("Immutable", StringComparison.Ordinal)
+                || typeName.StartsWith("ReadOnly", StringComparison.Ordinal);
 
             if (!isImmutable)
             {
-                throw new PostconditionViolationException
-                (
-                    "Ensure resultingCollection is an immutable collection"
-                );
+                throw new PostconditionViolationException("Ensure resultingCollection is an immutable collection");
             }
 
             return collection;
@@ -936,8 +933,9 @@ public static class Contract
 
             if (differences.Count > 0)
             {
-                string message = "Postcondition violated: Fields were modified that are not marked as assignable:\n" +
-                                 string.Join("\n", differences.Select(d => $"  - {d}"));
+                string message =
+                    "Postcondition violated: Fields were modified that are not marked as assignable:\n"
+                    + string.Join("\n", differences.Select(d => $"  - {d}"));
                 throw new PostconditionViolationException(message);
             }
         }
@@ -972,23 +970,26 @@ public static class Contract
         return differences;
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2070",
-        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode].")]
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]."
+    )]
     private static TypeMetadata _GetOrCacheMetadata(Type type)
     {
-        return MetadataCache.GetOrAdd
-        (
-            type, t =>
+        return MetadataCache.GetOrAdd(
+            type,
+            t =>
             {
                 PropertyInfo[] properties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
                 FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
                 List<MemberAccessor> members = properties
-                                               .Where(p => p.GetIndexParameters().Length == 0)
-                                               .Cast<MemberInfo>()
-                                               .Concat(fields)
-                                               .Select(m => new MemberAccessor(m))
-                                               .ToList();
+                    .Where(p => p.GetIndexParameters().Length == 0)
+                    .Cast<MemberInfo>()
+                    .Concat(fields)
+                    .Select(m => new MemberAccessor(m))
+                    .ToList();
 
                 return new TypeMetadata { Members = members };
             }

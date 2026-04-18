@@ -29,9 +29,7 @@ public sealed class PostconditionViolationException : ContractViolationException
     /// </summary>
     /// <param name="description">The description of the postcondition that was violated.</param>
     public PostconditionViolationException(string description)
-        : base(description, ContractType.Postcondition, $"Postcondition violated: {description}")
-    {
-    }
+        : base(description, ContractType.Postcondition, $"Postcondition violated: {description}") { }
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="PostconditionViolationException" /> class
@@ -40,7 +38,5 @@ public sealed class PostconditionViolationException : ContractViolationException
     /// <param name="description">The description of the postcondition that was violated.</param>
     /// <param name="innerException">The exception that is the cause of the current exception.</param>
     public PostconditionViolationException(string description, Exception innerException)
-        : base(description, ContractType.Postcondition, $"Postcondition violated: {description}", innerException)
-    {
-    }
+        : base(description, ContractType.Postcondition, $"Postcondition violated: {description}", innerException) { }
 }

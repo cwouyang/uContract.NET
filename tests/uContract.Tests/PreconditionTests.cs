@@ -9,10 +9,7 @@ public class RequireTests
     {
         const int x = 10;
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.Require("x must be positive", () => x > 0)
-        );
+        Exception? exception = Record.Exception(() => Contract.Require("x must be positive", () => x > 0));
 
         Assert.Null(exception);
     }
@@ -22,9 +19,8 @@ public class RequireTests
     {
         const int x = -1;
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.Require("x must be positive", () => x > 0)
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.Require("x must be positive", () => x > 0)
         );
 
         Assert.NotNull(exception);
@@ -36,9 +32,8 @@ public class RequireTests
         const int x = -1;
         const string description = "x must be positive";
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.Require(description, () => x > 0)
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.Require(description, () => x > 0)
         );
 
         Assert.Equal($"Precondition violated: {description}", exception.Message);
@@ -49,9 +44,8 @@ public class RequireTests
     {
         string? description = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Require(description!, () => true)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Require(description!, () => true)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -62,9 +56,8 @@ public class RequireTests
     {
         Func<bool>? condition = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Require("some description", condition!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Require("some description", condition!)
         );
 
         Assert.Equal("condition", exception.ParamName);
@@ -75,18 +68,17 @@ public class RequireTests
     {
         int callCount = 0;
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.Require
-             (
-                 "outer", () =>
-                 {
-                     callCount++;
-                     // This inner Require should be ignored due to recursion guard
-                     Contract.Require("inner", () => false);
-                     return false;
-                 }
-             )
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.Require(
+                "outer",
+                () =>
+                {
+                    callCount++;
+                    // This inner Require should be ignored due to recursion guard
+                    Contract.Require("inner", () => false);
+                    return false;
+                }
+            )
         );
 
         Assert.Equal(1, callCount);
@@ -98,12 +90,10 @@ public class RequireTests
     {
         const int x = 10;
 
-        await Task.Run
-        (() =>
-            {
-                Contract.Require("x must be positive", () => x > 0);
-            }
-        );
+        await Task.Run(() =>
+        {
+            Contract.Require("x must be positive", () => x > 0);
+        });
 
         Assert.True(true);
     }
@@ -113,17 +103,13 @@ public class RequireTests
     {
         const int x = -1;
 
-        await Assert.ThrowsAsync<PreconditionViolationException>
-        (async () =>
+        await Assert.ThrowsAsync<PreconditionViolationException>(async () =>
+        {
+            await Task.Run(() =>
             {
-                await Task.Run
-                (() =>
-                    {
-                        Contract.Require("x must be positive", () => x > 0);
-                    }
-                );
-            }
-        );
+                Contract.Require("x must be positive", () => x > 0);
+            });
+        });
     }
 
     [Fact]
@@ -131,9 +117,9 @@ public class RequireTests
     {
         bool conditionEvaluated = false;
 
-        Contract.Require
-        (
-            "test", () =>
+        Contract.Require(
+            "test",
+            () =>
             {
                 conditionEvaluated = true;
                 return true;
@@ -148,9 +134,8 @@ public class RequireTests
     {
         InvalidOperationException expectedException = new("test error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Require("test", () => throw expectedException)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Require("test", () => throw expectedException)
         );
 
         Assert.Same(expectedException, exception);
@@ -164,10 +149,7 @@ public class RequireNotNullTests
     {
         const string value = "not null";
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.RequireNotNull("Value", value)
-        );
+        Exception? exception = Record.Exception(() => Contract.RequireNotNull("Value", value));
 
         Assert.Null(exception);
     }
@@ -177,9 +159,8 @@ public class RequireNotNullTests
     {
         string? value = null;
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.RequireNotNull("Value", value)
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.RequireNotNull("Value", value)
         );
 
         Assert.NotNull(exception);
@@ -191,9 +172,8 @@ public class RequireNotNullTests
         string? value = null;
         const string description = "Value must not be null";
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.RequireNotNull(description, value)
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.RequireNotNull(description, value)
         );
 
         Assert.Equal($"Precondition violated: {description}", exception.Message);
@@ -205,9 +185,8 @@ public class RequireNotNullTests
         string? description = null;
         const string value = "not null";
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.RequireNotNull(description!, value)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.RequireNotNull(description!, value)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -219,18 +198,17 @@ public class RequireNotNullTests
         int callCount = 0;
         string? nullValue = null;
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.Require
-             (
-                 "outer", () =>
-                 {
-                     callCount++;
-                     // This inner RequireNotNull should be ignored due to recursion guard
-                     Contract.RequireNotNull("inner", nullValue);
-                     return false;
-                 }
-             )
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.Require(
+                "outer",
+                () =>
+                {
+                    callCount++;
+                    // This inner RequireNotNull should be ignored due to recursion guard
+                    Contract.RequireNotNull("inner", nullValue);
+                    return false;
+                }
+            )
         );
 
         Assert.Equal(1, callCount);
@@ -242,12 +220,10 @@ public class RequireNotNullTests
     {
         const string value = "not null";
 
-        await Task.Run
-        (() =>
-            {
-                Contract.RequireNotNull("Value", value);
-            }
-        );
+        await Task.Run(() =>
+        {
+            Contract.RequireNotNull("Value", value);
+        });
 
         Assert.True(true);
     }
@@ -257,17 +233,13 @@ public class RequireNotNullTests
     {
         string? value = null;
 
-        await Assert.ThrowsAsync<PreconditionViolationException>
-        (async () =>
+        await Assert.ThrowsAsync<PreconditionViolationException>(async () =>
+        {
+            await Task.Run(() =>
             {
-                await Task.Run
-                (() =>
-                    {
-                        Contract.RequireNotNull("Value", value);
-                    }
-                );
-            }
-        );
+                Contract.RequireNotNull("Value", value);
+            });
+        });
     }
 
     [Fact]
@@ -275,10 +247,7 @@ public class RequireNotNullTests
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.RequireNotNull("Account", account)
-        );
+        Exception? exception = Record.Exception(() => Contract.RequireNotNull("Account", account));
 
         Assert.Null(exception);
     }
@@ -291,10 +260,7 @@ public class RequireNotEmptyTests
     {
         const string value = "not empty";
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.RequireNotEmpty("Value", value)
-        );
+        Exception? exception = Record.Exception(() => Contract.RequireNotEmpty("Value", value));
 
         Assert.Null(exception);
     }
@@ -304,9 +270,8 @@ public class RequireNotEmptyTests
     {
         const string value = "";
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.RequireNotEmpty("Value", value)
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.RequireNotEmpty("Value", value)
         );
 
         Assert.NotNull(exception);
@@ -317,9 +282,8 @@ public class RequireNotEmptyTests
     {
         string? value = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.RequireNotEmpty("Value", value!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.RequireNotEmpty("Value", value!)
         );
 
         Assert.Equal("value", exception.ParamName);
@@ -331,9 +295,8 @@ public class RequireNotEmptyTests
         const string value = "";
         const string description = "Value must not be empty";
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.RequireNotEmpty(description, value)
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.RequireNotEmpty(description, value)
         );
 
         Assert.Equal($"Precondition violated: {description}", exception.Message);
@@ -345,9 +308,8 @@ public class RequireNotEmptyTests
         string? description = null;
         const string value = "not empty";
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.RequireNotEmpty(description!, value)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.RequireNotEmpty(description!, value)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -359,18 +321,17 @@ public class RequireNotEmptyTests
         int callCount = 0;
         const string emptyValue = "";
 
-        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>
-        (() =>
-             Contract.Require
-             (
-                 "outer", () =>
-                 {
-                     callCount++;
-                     // This inner RequireNotEmpty should be ignored due to recursion guard
-                     Contract.RequireNotEmpty("inner", emptyValue);
-                     return false;
-                 }
-             )
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.Require(
+                "outer",
+                () =>
+                {
+                    callCount++;
+                    // This inner RequireNotEmpty should be ignored due to recursion guard
+                    Contract.RequireNotEmpty("inner", emptyValue);
+                    return false;
+                }
+            )
         );
 
         Assert.Equal(1, callCount);
@@ -382,12 +343,10 @@ public class RequireNotEmptyTests
     {
         const string value = "not empty";
 
-        await Task.Run
-        (() =>
-            {
-                Contract.RequireNotEmpty("Value", value);
-            }
-        );
+        await Task.Run(() =>
+        {
+            Contract.RequireNotEmpty("Value", value);
+        });
 
         Assert.True(true);
     }

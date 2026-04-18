@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -11,10 +10,7 @@ public class CheckTests
     {
         const int value = 10;
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.Check("value must be positive", () => value > 0)
-        );
+        Exception? exception = Record.Exception(() => Contract.Check("value must be positive", () => value > 0));
 
         Assert.Null(exception);
     }
@@ -24,9 +20,8 @@ public class CheckTests
     {
         const int value = -1;
 
-        CheckViolationException exception = Assert.Throws<CheckViolationException>
-        (() =>
-             Contract.Check("value must be positive", () => value > 0)
+        CheckViolationException exception = Assert.Throws<CheckViolationException>(() =>
+            Contract.Check("value must be positive", () => value > 0)
         );
 
         Assert.NotNull(exception);
@@ -38,9 +33,8 @@ public class CheckTests
         const int value = -1;
         const string description = "value must be positive";
 
-        CheckViolationException exception = Assert.Throws<CheckViolationException>
-        (() =>
-             Contract.Check(description, () => value > 0)
+        CheckViolationException exception = Assert.Throws<CheckViolationException>(() =>
+            Contract.Check(description, () => value > 0)
         );
 
         Assert.Equal($"Check failed: {description}", exception.Message);
@@ -51,9 +45,8 @@ public class CheckTests
     {
         string? description = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Check(description!, () => true)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Check(description!, () => true)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -64,9 +57,8 @@ public class CheckTests
     {
         Func<bool>? condition = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Check("some description", condition!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Check("some description", condition!)
         );
 
         Assert.Equal("condition", exception.ParamName);
@@ -77,18 +69,17 @@ public class CheckTests
     {
         int callCount = 0;
 
-        CheckViolationException exception = Assert.Throws<CheckViolationException>
-        (() =>
-             Contract.Check
-             (
-                 "outer", () =>
-                 {
-                     callCount++;
-                     // This inner Check should be ignored due to recursion guard
-                     Contract.Check("inner", () => false);
-                     return false;
-                 }
-             )
+        CheckViolationException exception = Assert.Throws<CheckViolationException>(() =>
+            Contract.Check(
+                "outer",
+                () =>
+                {
+                    callCount++;
+                    // This inner Check should be ignored due to recursion guard
+                    Contract.Check("inner", () => false);
+                    return false;
+                }
+            )
         );
 
         Assert.Equal(1, callCount);
@@ -100,12 +91,10 @@ public class CheckTests
     {
         const int value = 10;
 
-        await Task.Run
-        (() =>
-            {
-                Contract.Check("value must be positive", () => value > 0);
-            }
-        );
+        await Task.Run(() =>
+        {
+            Contract.Check("value must be positive", () => value > 0);
+        });
 
         Assert.True(true);
     }
@@ -115,17 +104,13 @@ public class CheckTests
     {
         const int value = -1;
 
-        await Assert.ThrowsAsync<CheckViolationException>
-        (async () =>
+        await Assert.ThrowsAsync<CheckViolationException>(async () =>
+        {
+            await Task.Run(() =>
             {
-                await Task.Run
-                (() =>
-                    {
-                        Contract.Check("value must be positive", () => value > 0);
-                    }
-                );
-            }
-        );
+                Contract.Check("value must be positive", () => value > 0);
+            });
+        });
     }
 
     [Fact]
@@ -133,9 +118,9 @@ public class CheckTests
     {
         bool conditionEvaluated = false;
 
-        Contract.Check
-        (
-            "test", () =>
+        Contract.Check(
+            "test",
+            () =>
             {
                 conditionEvaluated = true;
                 return true;
@@ -150,9 +135,8 @@ public class CheckTests
     {
         InvalidOperationException expectedException = new("test error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Check("test", () => throw expectedException)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Check("test", () => throw expectedException)
         );
 
         Assert.Same(expectedException, exception);
@@ -186,9 +170,8 @@ public class IgnoreTests
     {
         string? reason = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Ignore(reason!, () => true)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Ignore(reason!, () => true)
         );
 
         Assert.Equal("reason", exception.ParamName);
@@ -199,9 +182,8 @@ public class IgnoreTests
     {
         Func<bool>? condition = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Ignore("some reason", condition!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Ignore("some reason", condition!)
         );
 
         Assert.Equal("condition", exception.ParamName);
@@ -212,9 +194,9 @@ public class IgnoreTests
     {
         bool innerResult = true;
 
-        bool outerResult = Contract.Ignore
-        (
-            "outer", () =>
+        bool outerResult = Contract.Ignore(
+            "outer",
+            () =>
             {
                 // This inner Ignore should return false due to recursion guard
                 innerResult = Contract.Ignore("inner", () => true);
@@ -231,10 +213,7 @@ public class IgnoreTests
     {
         const int value = 10;
 
-        bool result = await Task.Run
-        (() =>
-             Contract.Ignore("value is positive", () => value > 0)
-        );
+        bool result = await Task.Run(() => Contract.Ignore("value is positive", () => value > 0));
 
         Assert.True(result);
     }
@@ -244,10 +223,7 @@ public class IgnoreTests
     {
         const int value = -1;
 
-        bool result = await Task.Run
-        (() =>
-             Contract.Ignore("value is positive", () => value > 0)
-        );
+        bool result = await Task.Run(() => Contract.Ignore("value is positive", () => value > 0));
 
         Assert.False(result);
     }
@@ -257,9 +233,9 @@ public class IgnoreTests
     {
         bool conditionEvaluated = false;
 
-        Contract.Ignore
-        (
-            "test", () =>
+        Contract.Ignore(
+            "test",
+            () =>
             {
                 conditionEvaluated = true;
                 return true;
@@ -274,9 +250,8 @@ public class IgnoreTests
     {
         InvalidOperationException expectedException = new("test error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Ignore("test", () => throw expectedException)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Ignore("test", () => throw expectedException)
         );
 
         Assert.Same(expectedException, exception);
@@ -372,9 +347,8 @@ public class ImplyTests
     {
         Func<bool>? antecedent = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Imply(antecedent!, () => true)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Imply(antecedent!, () => true)
         );
 
         Assert.Equal("antecedent", exception.ParamName);
@@ -385,9 +359,8 @@ public class ImplyTests
     {
         Func<bool>? consequent = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Imply(() => true, consequent!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Imply(() => true, consequent!)
         );
 
         Assert.Equal("consequent", exception.ParamName);
@@ -399,8 +372,7 @@ public class ImplyTests
         bool antecedentEvaluated = false;
         bool consequentEvaluated = false;
 
-        Contract.Imply
-        (
+        Contract.Imply(
             () =>
             {
                 antecedentEvaluated = true;
@@ -422,9 +394,8 @@ public class ImplyTests
     {
         InvalidOperationException expectedException = new("antecedent error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Imply(() => throw expectedException, () => true)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Imply(() => throw expectedException, () => true)
         );
 
         Assert.Same(expectedException, exception);
@@ -435,9 +406,8 @@ public class ImplyTests
     {
         InvalidOperationException expectedException = new("consequent error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Imply(() => true, () => throw expectedException)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Imply(() => true, () => throw expectedException)
         );
 
         Assert.Same(expectedException, exception);
@@ -450,13 +420,8 @@ public class ImplyTests
         const int discount = 10;
 
         // If customer is VIP, then discount must be > 0
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.Require
-             (
-                 "VIP discount rule",
-                 () => Contract.Imply(() => isVip, () => discount > 0)
-             )
+        Exception? exception = Record.Exception(() =>
+            Contract.Require("VIP discount rule", () => Contract.Imply(() => isVip, () => discount > 0))
         );
 
         Assert.Null(exception);
@@ -506,9 +471,8 @@ public class IfAndOnlyIfTests
     {
         Func<bool>? a = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.IfAndOnlyIf(a!, () => true)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.IfAndOnlyIf(a!, () => true)
         );
 
         Assert.Equal("a", exception.ParamName);
@@ -519,9 +483,8 @@ public class IfAndOnlyIfTests
     {
         Func<bool>? b = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.IfAndOnlyIf(() => true, b!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.IfAndOnlyIf(() => true, b!)
         );
 
         Assert.Equal("b", exception.ParamName);
@@ -533,8 +496,7 @@ public class IfAndOnlyIfTests
         bool aEvaluated = false;
         bool bEvaluated = false;
 
-        Contract.IfAndOnlyIf
-        (
+        Contract.IfAndOnlyIf(
             () =>
             {
                 aEvaluated = true;
@@ -556,9 +518,8 @@ public class IfAndOnlyIfTests
     {
         InvalidOperationException expectedException = new("first error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.IfAndOnlyIf(() => throw expectedException, () => true)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.IfAndOnlyIf(() => throw expectedException, () => true)
         );
 
         Assert.Same(expectedException, exception);
@@ -569,9 +530,8 @@ public class IfAndOnlyIfTests
     {
         InvalidOperationException expectedException = new("second error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.IfAndOnlyIf(() => true, () => throw expectedException)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.IfAndOnlyIf(() => true, () => throw expectedException)
         );
 
         Assert.Same(expectedException, exception);
@@ -584,13 +544,8 @@ public class IfAndOnlyIfTests
         const bool paymentCompleted = true;
 
         // Order is paid if and only if payment is completed
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.Invariant
-             (
-                 "Payment consistency",
-                 () => Contract.IfAndOnlyIf(() => isPaid, () => paymentCompleted)
-             )
+        Exception? exception = Record.Exception(() =>
+            Contract.Invariant("Payment consistency", () => Contract.IfAndOnlyIf(() => isPaid, () => paymentCompleted))
         );
 
         Assert.Null(exception);
@@ -602,9 +557,8 @@ public class CheckUnsupportedOperationTests
     [Fact]
     public void CheckUnsupportedOperation_WhenNotSupportedExceptionThrown_ReturnsTrue()
     {
-        bool result = Contract.CheckUnsupportedOperation
-        (() =>
-             throw new NotSupportedException("Operation not supported")
+        bool result = Contract.CheckUnsupportedOperation(() =>
+            throw new NotSupportedException("Operation not supported")
         );
 
         Assert.True(result);
@@ -613,12 +567,9 @@ public class CheckUnsupportedOperationTests
     [Fact]
     public void CheckUnsupportedOperation_WhenNoExceptionThrown_ReturnsFalse()
     {
-        bool result = Contract.CheckUnsupportedOperation
-        (() =>
-            {
-                // Do nothing - no exception
-            }
-        );
+        bool result = Contract.CheckUnsupportedOperation(() => {
+            // Do nothing - no exception
+        });
 
         Assert.False(result);
     }
@@ -626,9 +577,8 @@ public class CheckUnsupportedOperationTests
     [Fact]
     public void CheckUnsupportedOperation_WhenOtherExceptionThrown_ReturnsFalse()
     {
-        bool result = Contract.CheckUnsupportedOperation
-        (() =>
-             throw new InvalidOperationException("Different exception")
+        bool result = Contract.CheckUnsupportedOperation(() =>
+            throw new InvalidOperationException("Different exception")
         );
 
         Assert.False(result);
@@ -637,10 +587,7 @@ public class CheckUnsupportedOperationTests
     [Fact]
     public void CheckUnsupportedOperation_WhenArgumentExceptionThrown_ReturnsFalse()
     {
-        bool result = Contract.CheckUnsupportedOperation
-        (() =>
-             throw new ArgumentException("Argument exception")
-        );
+        bool result = Contract.CheckUnsupportedOperation(() => throw new ArgumentException("Argument exception"));
 
         Assert.False(result);
     }
@@ -650,9 +597,8 @@ public class CheckUnsupportedOperationTests
     {
         Action? action = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.CheckUnsupportedOperation(action!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.CheckUnsupportedOperation(action!)
         );
 
         Assert.Equal("action", exception.ParamName);
@@ -663,13 +609,11 @@ public class CheckUnsupportedOperationTests
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice", "Bob");
 
-        bool result = Contract.CheckUnsupportedOperation
-        (() =>
-            {
-                IList<string> list = immutableList;
-                list.Add("Charlie");
-            }
-        );
+        bool result = Contract.CheckUnsupportedOperation(() =>
+        {
+            IList<string> list = immutableList;
+            list.Add("Charlie");
+        });
 
         Assert.True(result);
     }
@@ -679,13 +623,11 @@ public class CheckUnsupportedOperationTests
     {
         ImmutableArray<int> immutableArray = ImmutableArray.Create(1, 2, 3);
 
-        bool result = Contract.CheckUnsupportedOperation
-        (() =>
-            {
-                IList<int> list = immutableArray;
-                list.Add(4);
-            }
-        );
+        bool result = Contract.CheckUnsupportedOperation(() =>
+        {
+            IList<int> list = immutableArray;
+            list.Add(4);
+        });
 
         Assert.True(result);
     }
@@ -695,10 +637,7 @@ public class CheckUnsupportedOperationTests
     {
         List<string> mutableList = new() { "Alice", "Bob" };
 
-        bool result = Contract.CheckUnsupportedOperation
-        (() =>
-             mutableList.Add("Charlie")
-        );
+        bool result = Contract.CheckUnsupportedOperation(() => mutableList.Add("Charlie"));
 
         Assert.False(result);
         Assert.Equal(3, mutableList.Count);
@@ -709,19 +648,16 @@ public class CheckUnsupportedOperationTests
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice");
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.Check
-             (
-                 "List is immutable",
-                 () => Contract.CheckUnsupportedOperation
-                 (() =>
-                     {
-                         IList<string> list = immutableList;
-                         list.Add("Bob");
-                     }
-                 )
-             )
+        Exception? exception = Record.Exception(() =>
+            Contract.Check(
+                "List is immutable",
+                () =>
+                    Contract.CheckUnsupportedOperation(() =>
+                    {
+                        IList<string> list = immutableList;
+                        list.Add("Bob");
+                    })
+            )
         );
 
         Assert.Null(exception);
@@ -732,15 +668,12 @@ public class CheckUnsupportedOperationTests
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice");
 
-        bool result = await Task.Run
-        (() =>
-             Contract.CheckUnsupportedOperation
-             (() =>
-                 {
-                     IList<string> list = immutableList;
-                     list.Add("Bob");
-                 }
-             )
+        bool result = await Task.Run(() =>
+            Contract.CheckUnsupportedOperation(() =>
+            {
+                IList<string> list = immutableList;
+                list.Add("Bob");
+            })
         );
 
         Assert.True(result);

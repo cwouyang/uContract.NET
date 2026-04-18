@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -11,10 +10,7 @@ public class EnsureTests
     {
         const int x = 10;
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.Ensure("x must be positive", () => x > 0)
-        );
+        Exception? exception = Record.Exception(() => Contract.Ensure("x must be positive", () => x > 0));
 
         Assert.Null(exception);
     }
@@ -24,9 +20,8 @@ public class EnsureTests
     {
         const int x = -1;
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.Ensure("x must be positive", () => x > 0)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.Ensure("x must be positive", () => x > 0)
         );
 
         Assert.NotNull(exception);
@@ -38,9 +33,8 @@ public class EnsureTests
         const int x = -1;
         const string description = "x must be positive";
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.Ensure(description, () => x > 0)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.Ensure(description, () => x > 0)
         );
 
         Assert.Equal($"Postcondition violated: {description}", exception.Message);
@@ -51,9 +45,8 @@ public class EnsureTests
     {
         string? description = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Ensure(description!, () => true)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Ensure(description!, () => true)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -64,9 +57,8 @@ public class EnsureTests
     {
         Func<bool>? condition = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Ensure("some description", condition!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Ensure("some description", condition!)
         );
 
         Assert.Equal("condition", exception.ParamName);
@@ -77,18 +69,17 @@ public class EnsureTests
     {
         int callCount = 0;
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.Ensure
-             (
-                 "outer", () =>
-                 {
-                     callCount++;
-                     // This inner Ensure should be ignored due to recursion guard
-                     Contract.Ensure("inner", () => false);
-                     return false;
-                 }
-             )
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.Ensure(
+                "outer",
+                () =>
+                {
+                    callCount++;
+                    // This inner Ensure should be ignored due to recursion guard
+                    Contract.Ensure("inner", () => false);
+                    return false;
+                }
+            )
         );
 
         Assert.Equal(1, callCount);
@@ -100,12 +91,10 @@ public class EnsureTests
     {
         const int x = 10;
 
-        await Task.Run
-        (() =>
-            {
-                Contract.Ensure("x must be positive", () => x > 0);
-            }
-        );
+        await Task.Run(() =>
+        {
+            Contract.Ensure("x must be positive", () => x > 0);
+        });
 
         Assert.True(true);
     }
@@ -115,17 +104,13 @@ public class EnsureTests
     {
         const int x = -1;
 
-        await Assert.ThrowsAsync<PostconditionViolationException>
-        (async () =>
+        await Assert.ThrowsAsync<PostconditionViolationException>(async () =>
+        {
+            await Task.Run(() =>
             {
-                await Task.Run
-                (() =>
-                    {
-                        Contract.Ensure("x must be positive", () => x > 0);
-                    }
-                );
-            }
-        );
+                Contract.Ensure("x must be positive", () => x > 0);
+            });
+        });
     }
 
     [Fact]
@@ -133,9 +118,9 @@ public class EnsureTests
     {
         bool conditionEvaluated = false;
 
-        Contract.Ensure
-        (
-            "test", () =>
+        Contract.Ensure(
+            "test",
+            () =>
             {
                 conditionEvaluated = true;
                 return true;
@@ -150,9 +135,8 @@ public class EnsureTests
     {
         InvalidOperationException expectedException = new("test error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Ensure("test", () => throw expectedException)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Ensure("test", () => throw expectedException)
         );
 
         Assert.Same(expectedException, exception);
@@ -245,10 +229,7 @@ public class OldTests
     {
         Func<int>? supplier = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.Old(supplier!)
-        );
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() => Contract.Old(supplier!));
 
         Assert.Equal("supplier", exception.ParamName);
     }
@@ -259,14 +240,12 @@ public class OldTests
         const int outerValue = 100;
         int innerValue = 0;
 
-        int outerOld = Contract.Old
-        (() =>
-            {
-                // This inner Old should return default due to recursion guard
-                innerValue = Contract.Old(() => 42);
-                return outerValue;
-            }
-        );
+        int outerOld = Contract.Old(() =>
+        {
+            // This inner Old should return default due to recursion guard
+            innerValue = Contract.Old(() => 42);
+            return outerValue;
+        });
 
         Assert.Equal(100, outerOld);
         Assert.Equal(0, innerValue);
@@ -277,10 +256,7 @@ public class OldTests
     {
         const decimal balance = 100m;
 
-        decimal oldBalance = await Task.Run
-        (() =>
-             Contract.Old(() => balance)
-        );
+        decimal oldBalance = await Task.Run(() => Contract.Old(() => balance));
 
         Assert.Equal(100m, oldBalance);
     }
@@ -290,13 +266,11 @@ public class OldTests
     {
         bool supplierEvaluated = false;
 
-        Contract.Old
-        (() =>
-            {
-                supplierEvaluated = true;
-                return 42;
-            }
-        );
+        Contract.Old(() =>
+        {
+            supplierEvaluated = true;
+            return 42;
+        });
 
         Assert.True(supplierEvaluated);
     }
@@ -306,10 +280,7 @@ public class OldTests
     {
         NonSerializableType obj = new();
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Old(() => obj)
-        );
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => Contract.Old(() => obj));
 
         Assert.Contains("cannot be serialized", exception.Message, StringComparison.Ordinal);
         Assert.IsType<NotSupportedException>(exception.InnerException);
@@ -334,9 +305,8 @@ public class OldTests
     {
         InvalidOperationException expectedException = new("test error");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>
-        (() =>
-             Contract.Old<int>(() => throw expectedException)
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Old<int>(() => throw expectedException)
         );
 
         Assert.Same(expectedException, exception);
@@ -350,10 +320,7 @@ public class EnsureNotNullTests
     {
         const string value = "not null";
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureNotNull("Value", value)
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureNotNull("Value", value));
 
         Assert.Null(exception);
     }
@@ -363,9 +330,8 @@ public class EnsureNotNullTests
     {
         string? value = null;
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureNotNull("Value", value)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureNotNull("Value", value)
         );
 
         Assert.NotNull(exception);
@@ -377,9 +343,8 @@ public class EnsureNotNullTests
         string? value = null;
         const string description = "Value must not be null";
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureNotNull(description, value)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureNotNull(description, value)
         );
 
         Assert.Equal($"Postcondition violated: {description}", exception.Message);
@@ -391,9 +356,8 @@ public class EnsureNotNullTests
         string? description = null;
         const string value = "not null";
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.EnsureNotNull(description!, value)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureNotNull(description!, value)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -405,18 +369,17 @@ public class EnsureNotNullTests
         int callCount = 0;
         string? nullValue = null;
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.Ensure
-             (
-                 "outer", () =>
-                 {
-                     callCount++;
-                     // This inner EnsureNotNull should be ignored due to recursion guard
-                     Contract.EnsureNotNull("inner", nullValue);
-                     return false;
-                 }
-             )
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.Ensure(
+                "outer",
+                () =>
+                {
+                    callCount++;
+                    // This inner EnsureNotNull should be ignored due to recursion guard
+                    Contract.EnsureNotNull("inner", nullValue);
+                    return false;
+                }
+            )
         );
 
         Assert.Equal(1, callCount);
@@ -428,12 +391,10 @@ public class EnsureNotNullTests
     {
         const string value = "not null";
 
-        await Task.Run
-        (() =>
-            {
-                Contract.EnsureNotNull("Value", value);
-            }
-        );
+        await Task.Run(() =>
+        {
+            Contract.EnsureNotNull("Value", value);
+        });
 
         Assert.True(true);
     }
@@ -443,17 +404,13 @@ public class EnsureNotNullTests
     {
         string? value = null;
 
-        await Assert.ThrowsAsync<PostconditionViolationException>
-        (async () =>
+        await Assert.ThrowsAsync<PostconditionViolationException>(async () =>
+        {
+            await Task.Run(() =>
             {
-                await Task.Run
-                (() =>
-                    {
-                        Contract.EnsureNotNull("Value", value);
-                    }
-                );
-            }
-        );
+                Contract.EnsureNotNull("Value", value);
+            });
+        });
     }
 
     [Fact]
@@ -461,10 +418,7 @@ public class EnsureNotNullTests
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureNotNull("Account", account)
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureNotNull("Account", account));
 
         Assert.Null(exception);
     }
@@ -487,9 +441,8 @@ public class EnsureResultTests
     {
         const int value = -1;
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureResult("Value is positive", value, v => v > 0)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureResult("Value is positive", value, v => v > 0)
         );
 
         Assert.NotNull(exception);
@@ -501,9 +454,8 @@ public class EnsureResultTests
         const int value = -1;
         const string description = "Value must be positive";
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureResult(description, value, v => v > 0)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureResult(description, value, v => v > 0)
         );
 
         Assert.Equal($"Postcondition violated: {description}", exception.Message);
@@ -515,9 +467,8 @@ public class EnsureResultTests
         string? description = null;
         const int value = 42;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.EnsureResult(description!, value, v => v > 0)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureResult(description!, value, v => v > 0)
         );
 
         Assert.Equal("description", exception.ParamName);
@@ -529,9 +480,8 @@ public class EnsureResultTests
         const int value = 42;
         Func<int, bool>? assertion = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.EnsureResult("test", value, assertion!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureResult("test", value, assertion!)
         );
 
         Assert.Equal("assertion", exception.ParamName);
@@ -543,8 +493,7 @@ public class EnsureResultTests
         const int outerValue = 100;
         int innerResult = 0;
 
-        int result = Contract.EnsureResult
-        (
+        int result = Contract.EnsureResult(
             "outer",
             outerValue,
             v =>
@@ -564,8 +513,7 @@ public class EnsureResultTests
     {
         TestAccount account = new() { Balance = 100m, Owner = "John" };
 
-        TestAccount result = Contract.EnsureResult
-        (
+        TestAccount result = Contract.EnsureResult(
             "Account valid",
             account,
             a => a.Balance > 0 && !string.IsNullOrEmpty(a.Owner)
@@ -603,8 +551,7 @@ public class EnsureImmutableCollectionTests
     [Fact]
     public void EnsureImmutableCollection_WhenImmutableDictionary_ReturnsCollection()
     {
-        ImmutableDictionary<string, int> immutableDict =
-            ImmutableDictionary.Create<string, int>().Add("key", 42);
+        ImmutableDictionary<string, int> immutableDict = ImmutableDictionary.Create<string, int>().Add("key", 42);
 
         ImmutableDictionary<string, int> result = Contract.EnsureImmutableCollection(immutableDict);
 
@@ -626,9 +573,8 @@ public class EnsureImmutableCollectionTests
     {
         List<string> mutableList = ["Alice", "Bob"];
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureImmutableCollection(mutableList)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureImmutableCollection(mutableList)
         );
 
         Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
@@ -639,9 +585,8 @@ public class EnsureImmutableCollectionTests
     {
         int[] mutableArray = [1, 2, 3];
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureImmutableCollection(mutableArray)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureImmutableCollection(mutableArray)
         );
 
         Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
@@ -652,9 +597,8 @@ public class EnsureImmutableCollectionTests
     {
         Dictionary<string, int> mutableDict = new(StringComparer.Ordinal) { { "key", 42 } };
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureImmutableCollection(mutableDict)
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureImmutableCollection(mutableDict)
         );
 
         Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
@@ -665,9 +609,8 @@ public class EnsureImmutableCollectionTests
     {
         ImmutableList<string>? collection = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.EnsureImmutableCollection(collection!)
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureImmutableCollection(collection!)
         );
 
         Assert.Equal("collection", exception.ParamName);
@@ -679,8 +622,7 @@ public class EnsureImmutableCollectionTests
         List<string> mutableList = ["Alice", "Bob"];
         List<string> innerResult = null!;
 
-        List<string> result = Contract.EnsureResult
-        (
+        List<string> result = Contract.EnsureResult(
             "outer",
             mutableList,
             list =>
@@ -716,10 +658,7 @@ public class EnsureImmutableCollectionTests
     {
         ImmutableList<string> immutableList = ImmutableList.Create("Alice", "Bob");
 
-        ImmutableList<string> result = await Task.Run
-        (() =>
-             Contract.EnsureImmutableCollection(immutableList)
-        );
+        ImmutableList<string> result = await Task.Run(() => Contract.EnsureImmutableCollection(immutableList));
 
         Assert.Same(immutableList, result);
     }
@@ -729,15 +668,10 @@ public class EnsureImmutableCollectionTests
     {
         List<string> mutableList = ["Alice", "Bob"];
 
-        await Assert.ThrowsAsync<PostconditionViolationException>
-        (async () =>
-            {
-                await Task.Run
-                (() =>
-                     Contract.EnsureImmutableCollection(mutableList)
-                );
-            }
-        );
+        await Assert.ThrowsAsync<PostconditionViolationException>(async () =>
+        {
+            await Task.Run(() => Contract.EnsureImmutableCollection(mutableList));
+        });
     }
 }
 
@@ -746,13 +680,20 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_WhenNoFieldsModified_DoesNotThrow()
     {
-        TestPerson person1 = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson person2 = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
+        TestPerson person1 = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson person2 = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(person1, person2, "Name")
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(person1, person2, "Name"));
 
         Assert.Null(exception);
     }
@@ -760,12 +701,21 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_WhenOnlyAssignableFieldModified_DoesNotThrow()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Alice", Age = 30, Email = "newemail@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "newemail@example.com",
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, "Email", "_email")
+        Exception? exception = Record.Exception(() =>
+            Contract.EnsureAssignable(newPerson, oldPerson, "Email", "_email")
         );
 
         Assert.Null(exception);
@@ -774,12 +724,21 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_ThrowsException_WhenNonAssignableFieldModified()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Bob", Age = 30, Email = "alice@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Bob",
+            Age = 30,
+            Email = "alice@example.com",
+        };
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, "Email")
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(newPerson, oldPerson, "Email")
         );
 
         Assert.Contains("Name", exception.Message, StringComparison.Ordinal);
@@ -792,10 +751,7 @@ public class EnsureAssignableTests
         TestPersonRecord oldRecord = new("Alice", 30, "alice@example.com");
         TestPersonRecord newRecord = new("Alice", 30, "newemail@example.com");
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newRecord, oldRecord, "Email")
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(newRecord, oldRecord, "Email"));
 
         Assert.Null(exception);
     }
@@ -803,12 +759,21 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_SupportsMultipleAssignableFields()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Bob", Age = 31, Email = "bob@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Bob",
+            Age = 31,
+            Email = "bob@example.com",
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, "Name", "Age", "Email", "_email")
+        Exception? exception = Record.Exception(() =>
+            Contract.EnsureAssignable(newPerson, oldPerson, "Name", "Age", "Email", "_email")
         );
 
         Assert.Null(exception);
@@ -817,12 +782,21 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_ThrowsException_WhenMultipleFieldsModified()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Bob", Age = 31, Email = "bob@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Bob",
+            Age = 31,
+            Email = "bob@example.com",
+        };
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, "Email")
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(newPerson, oldPerson, "Email")
         );
 
         Assert.Contains("Name", exception.Message, StringComparison.Ordinal);
@@ -835,10 +809,7 @@ public class EnsureAssignableTests
         TestPoint oldPoint = new(0, 0);
         TestPoint newPoint = new(5, 0);
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newPoint, oldPoint, "X")
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(newPoint, oldPoint, "X"));
 
         Assert.Null(exception);
     }
@@ -849,10 +820,7 @@ public class EnsureAssignableTests
         TestPointRecordStruct oldPoint = new(0, 0);
         TestPointRecordStruct newPoint = new(5, 0);
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newPoint, oldPoint, "X")
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(newPoint, oldPoint, "X"));
 
         Assert.Null(exception);
     }
@@ -863,9 +831,8 @@ public class EnsureAssignableTests
         TestPoint oldPoint = new(0, 0);
         TestPoint newPoint = new(5, 0);
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureAssignable(newPoint, oldPoint, "Y")
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(newPoint, oldPoint, "Y")
         );
 
         Assert.Contains("X", exception.Message, StringComparison.Ordinal);
@@ -877,9 +844,8 @@ public class EnsureAssignableTests
         TestPoint oldPoint = new(0, 0);
         TestPoint newPoint = new(0, 5);
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureAssignable(newPoint, oldPoint, "X")
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(newPoint, oldPoint, "X")
         );
 
         Assert.Contains("Y", exception.Message, StringComparison.Ordinal);
@@ -888,12 +854,21 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_SupportsLiteralFieldName()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Alice", Age = 30, Email = "newemail@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "newemail@example.com",
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, "Email", "_email")
+        Exception? exception = Record.Exception(() =>
+            Contract.EnsureAssignable(newPerson, oldPerson, "Email", "_email")
         );
 
         Assert.Null(exception);
@@ -902,13 +877,20 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_SupportsRegexPattern_EndsWith()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Alice", Age = 30, Email = "newemail@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "newemail@example.com",
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, ".*mail")
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(newPerson, oldPerson, ".*mail"));
 
         Assert.Null(exception);
     }
@@ -916,13 +898,20 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_SupportsRegexPattern_StartsWith()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Alice", Age = 30, Email = "newemail@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "newemail@example.com",
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, "^_.*", "Email")
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(newPerson, oldPerson, "^_.*", "Email"));
 
         Assert.Null(exception);
     }
@@ -930,12 +919,21 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_SupportsRegexPattern_Or()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Bob", Age = 30, Email = "newemail@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Bob",
+            Age = 30,
+            Email = "newemail@example.com",
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, "Name|Email|_email")
+        Exception? exception = Record.Exception(() =>
+            Contract.EnsureAssignable(newPerson, oldPerson, "Name|Email|_email")
         );
 
         Assert.Null(exception);
@@ -944,12 +942,21 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_RegexPatternIsCaseSensitive()
     {
-        TestPerson oldPerson = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
-        TestPerson newPerson = new() { Name = "Alice", Age = 30, Email = "newemail@example.com" };
+        TestPerson oldPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson newPerson = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "newemail@example.com",
+        };
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureAssignable(newPerson, oldPerson, "email")
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(newPerson, oldPerson, "email")
         );
 
         Assert.Contains("Email", exception.Message, StringComparison.Ordinal);
@@ -958,13 +965,28 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_ComparesNestedObjects()
     {
-        TestOrder oldOrder = new() { OrderId = 1, Customer = new TestPerson { Name = "Alice", Age = 30, Email = "alice@example.com" } };
-        TestOrder newOrder = new() { OrderId = 1, Customer = new TestPerson { Name = "Alice", Age = 30, Email = "alice@example.com" } };
+        TestOrder oldOrder = new()
+        {
+            OrderId = 1,
+            Customer = new TestPerson
+            {
+                Name = "Alice",
+                Age = 30,
+                Email = "alice@example.com",
+            },
+        };
+        TestOrder newOrder = new()
+        {
+            OrderId = 1,
+            Customer = new TestPerson
+            {
+                Name = "Alice",
+                Age = 30,
+                Email = "alice@example.com",
+            },
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newOrder, oldOrder, "OrderId")
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(newOrder, oldOrder, "OrderId"));
 
         Assert.Null(exception);
     }
@@ -972,12 +994,29 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_DetectsNestedObjectChanges()
     {
-        TestOrder oldOrder = new() { OrderId = 1, Customer = new TestPerson { Name = "Alice", Age = 30, Email = "alice@example.com" } };
-        TestOrder newOrder = new() { OrderId = 1, Customer = new TestPerson { Name = "Bob", Age = 30, Email = "alice@example.com" } };
+        TestOrder oldOrder = new()
+        {
+            OrderId = 1,
+            Customer = new TestPerson
+            {
+                Name = "Alice",
+                Age = 30,
+                Email = "alice@example.com",
+            },
+        };
+        TestOrder newOrder = new()
+        {
+            OrderId = 1,
+            Customer = new TestPerson
+            {
+                Name = "Bob",
+                Age = 30,
+                Email = "alice@example.com",
+            },
+        };
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureAssignable(newOrder, oldOrder, "OrderId")
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(newOrder, oldOrder, "OrderId")
         );
 
         Assert.Contains("Customer", exception.Message, StringComparison.Ordinal);
@@ -986,13 +1025,28 @@ public class EnsureAssignableTests
     [Fact]
     public void EnsureAssignable_AllowsNestedObjectChangesWhenMarkedAssignable()
     {
-        TestOrder oldOrder = new() { OrderId = 1, Customer = new TestPerson { Name = "Alice", Age = 30, Email = "alice@example.com" } };
-        TestOrder newOrder = new() { OrderId = 1, Customer = new TestPerson { Name = "Bob", Age = 30, Email = "alice@example.com" } };
+        TestOrder oldOrder = new()
+        {
+            OrderId = 1,
+            Customer = new TestPerson
+            {
+                Name = "Alice",
+                Age = 30,
+                Email = "alice@example.com",
+            },
+        };
+        TestOrder newOrder = new()
+        {
+            OrderId = 1,
+            Customer = new TestPerson
+            {
+                Name = "Bob",
+                Age = 30,
+                Email = "alice@example.com",
+            },
+        };
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(newOrder, oldOrder, "Customer")
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(newOrder, oldOrder, "Customer"));
 
         Assert.Null(exception);
     }
@@ -1003,10 +1057,7 @@ public class EnsureAssignableTests
         List<string> oldList = ["Alice", "Bob"];
         List<string> newList = ["Alice", "Bob"];
 
-        Exception? exception = Record.Exception
-        (() =>
-             Contract.EnsureAssignable(oldList, newList)
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(oldList, newList));
 
         Assert.Null(exception);
     }
@@ -1017,10 +1068,7 @@ public class EnsureAssignableTests
         List<string> oldList = ["Alice", "Bob"];
         List<string> newList = ["Alice", "Bob", "Charlie"];
 
-        Assert.Throws<PostconditionViolationException>
-        (() =>
-             Contract.EnsureAssignable(newList, oldList)
-        );
+        Assert.Throws<PostconditionViolationException>(() => Contract.EnsureAssignable(newList, oldList));
     }
 
     [Fact]
@@ -1029,10 +1077,7 @@ public class EnsureAssignableTests
         TestPerson? actual = null;
         TestPerson expected = new();
 
-        Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.EnsureAssignable(actual, expected, "Name")
-        );
+        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, "Name"));
     }
 
     [Fact]
@@ -1041,10 +1086,7 @@ public class EnsureAssignableTests
         TestPerson actual = new();
         TestPerson? expected = null;
 
-        Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.EnsureAssignable(actual, expected, "Name")
-        );
+        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, "Name"));
     }
 
     [Fact]
@@ -1053,19 +1095,20 @@ public class EnsureAssignableTests
         TestPerson actual = new();
         TestPerson expected = new();
 
-        Assert.Throws<ArgumentNullException>
-        (() =>
-             Contract.EnsureAssignable(actual, expected, null!)
-        );
+        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, null!));
     }
 
     [Fact]
     public void EnsureAssignable_RespectsRecursionGuard()
     {
-        TestPerson person = new() { Name = "Alice", Age = 30, Email = "alice@example.com" };
+        TestPerson person = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
 
-        Contract.Ensure
-        (
+        Contract.Ensure(
             "Outer contract",
             () =>
             {
