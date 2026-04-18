@@ -256,8 +256,8 @@ check covers the whitespace and wrapping that the build cannot see.
 ### Cross-Platform Line Endings
 
 CSharpier is configured with `endOfLine: lf`, and `.gitattributes` declares
-`*.cs text eol=lf` to match. The baseline reformat commit (`e0d4e68`) and the
-line-ending switch (`a580b0c`) converted the repository to LF so that Linux CI
+`*.cs text eol=lf` to match. The baseline reformat commit (`7bdf572`) and the
+line-ending switch (`d1e60b6`) converted the repository to LF so that Linux CI
 and Windows development produce byte-identical output. A future maintainer who
 sees these two settings should understand they move together — changing one
 without the other breaks the CI formatting gate.
