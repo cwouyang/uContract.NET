@@ -1,0 +1,7 @@
+# CSharpier scope: exclude non-C# files.
+#
+# CSharpier 1.x formats .csproj files by default (blank-line normalization inside
+# <Project> elements). We keep project files outside the formatter's scope so the
+# .cs baseline reformat commit stays pure and so future `dotnet csharpier check` runs
+# remain idempotent without touching build configuration.
+*.csproj
