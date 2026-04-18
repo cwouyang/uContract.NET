@@ -1,1 +1,5 @@
 *.pdf  filter=lfs diff=lfs merge=lfs
+# Normalize text file line endings to LF in the repository.
+# Ensures cross-platform consistency between Windows and Linux CI.
+* text=auto eol=lf
+*.sln text eol=crlf
