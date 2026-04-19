@@ -552,6 +552,130 @@ public class IfAndOnlyIfTests
     }
 }
 
+public class FollowsFromTests
+{
+    [Fact]
+    public void FollowsFrom_WhenConsequentFalseAndAntecedentFalse_ReturnsTrue()
+    {
+        // False ⟸ False = True (vacuously, since antecedent does not hold)
+        bool result = Contract.FollowsFrom(() => false, () => false);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenConsequentFalseAndAntecedentTrue_ReturnsFalse()
+    {
+        // False ⟸ True = False (the only failing case: antecedent holds but consequent does not)
+        bool result = Contract.FollowsFrom(() => false, () => true);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenConsequentTrueAndAntecedentFalse_ReturnsTrue()
+    {
+        // True ⟸ False = True
+        bool result = Contract.FollowsFrom(() => true, () => false);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenConsequentTrueAndAntecedentTrue_ReturnsTrue()
+    {
+        // True ⟸ True = True
+        bool result = Contract.FollowsFrom(() => true, () => true);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenConsequentIsNull_ThrowsArgumentNullException()
+    {
+        Func<bool>? consequent = null;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.FollowsFrom(consequent!, () => true)
+        );
+
+        Assert.Equal("consequent", exception.ParamName);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenAntecedentIsNull_ThrowsArgumentNullException()
+    {
+        Func<bool>? antecedent = null;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.FollowsFrom(() => true, antecedent!)
+        );
+
+        Assert.Equal("antecedent", exception.ParamName);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenCalled_EvaluatesBothLambdas()
+    {
+        bool consequentEvaluated = false;
+        bool antecedentEvaluated = false;
+
+        Contract.FollowsFrom(
+            () =>
+            {
+                consequentEvaluated = true;
+                return false;
+            },
+            () =>
+            {
+                antecedentEvaluated = true;
+                return false;
+            }
+        );
+
+        Assert.True(consequentEvaluated);
+        Assert.True(antecedentEvaluated);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenConsequentThrows_PropagatesException()
+    {
+        InvalidOperationException expectedException = new("consequent error");
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.FollowsFrom(() => throw expectedException, () => true)
+        );
+
+        Assert.Same(expectedException, exception);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenAntecedentThrows_PropagatesException()
+    {
+        InvalidOperationException expectedException = new("antecedent error");
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.FollowsFrom(() => false, () => throw expectedException)
+        );
+
+        Assert.Same(expectedException, exception);
+    }
+
+    [Fact]
+    public void FollowsFrom_WhenUsedInContractCondition_Works()
+    {
+        const bool isVip = true;
+        const int discount = 10;
+
+        // Discount greater than zero follows from customer being VIP
+        Exception? exception = Record.Exception(() =>
+            Contract.Require("VIP discount rule", () => Contract.FollowsFrom(() => discount > 0, () => isVip))
+        );
+
+        Assert.Null(exception);
+    }
+}
+
 public class CheckUnsupportedOperationTests
 {
     [Fact]

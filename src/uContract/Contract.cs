@@ -755,6 +755,43 @@ public static class Contract
     }
 
     /// <summary>
+    ///     Evaluates reverse logical implication: <paramref name="consequent" /> follows from <paramref name="antecedent" />.
+    ///     Semantically equivalent to <c>Imply(antecedent, consequent)</c> with arguments swapped (A ⟸ B).
+    /// </summary>
+    /// <param name="consequent">The condition that follows from the antecedent (the "then" side)</param>
+    /// <param name="antecedent">The condition from which the consequent follows (the "if" side)</param>
+    /// <returns>
+    ///     True when either <paramref name="consequent" /> is true, or <paramref name="antecedent" /> is false;
+    ///     false only when the antecedent holds but the consequent does not
+    /// </returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="consequent" /> or <paramref name="antecedent" /> is null
+    /// </exception>
+    /// <remarks>
+    ///     This is a pure logic function used within contract conditions.
+    ///     It does not throw contract violation exceptions and is not controlled by DBC configuration.
+    ///     Reverse implication A ⟸ B is equivalent to A ∨ ¬B, which is logically identical to B → A.
+    ///     <para>
+    ///         Evaluation short-circuits: if <paramref name="consequent" /> returns true,
+    ///         <paramref name="antecedent" /> is never invoked.
+    ///     </para>
+    /// </remarks>
+    /// <example>
+    ///     <code>
+    /// // "Discount greater than zero follows from customer being VIP"
+    /// Contract.Require("VIP discount rule",
+    ///     () => FollowsFrom(() => discount > 0, () => customer.IsVip));
+    ///     </code>
+    /// </example>
+    public static bool FollowsFrom(Func<bool> consequent, Func<bool> antecedent)
+    {
+        ArgumentNullException.ThrowIfNull(consequent);
+        ArgumentNullException.ThrowIfNull(antecedent);
+
+        return consequent() || !antecedent();
+    }
+
+    /// <summary>
     ///     Ensures that the specified collection is immutable in postconditions.
     ///     Returns the collection if it is immutable, or throws <see cref="PostconditionViolationException" /> if mutable.
     /// </summary>
