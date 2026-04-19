@@ -229,6 +229,9 @@ uContract.NET maintains **semantic parity** with the Java version while leveragi
 | **Configuration** | ⚠️ Public static fields | ✅ Encapsulated ContractConfiguration class |
 | **Nullability** | ⚠️ Annotations only | ✅ Compiler-enforced nullable reference types |
 | **`Old<T>()` overloads** | ⚠️ Two overloads (Jackson `TypeReference<T>` needed for generics) | ✅ Single `Old<T>(Func<T>)` — reified generics make the type hint unnecessary |
+| **Description auto-capture** | ❌ Annotation mandatory on every call | ✅ Condition-based methods (Require/Ensure/Invariant/Check) have `[CallerArgumentExpression]` overloads — compiler captures the condition's source text when description is omitted |
+
+> **Note on description auto-capture**: C# 10's `[CallerArgumentExpression]` lets `Contract.Require(() => balance >= 0)` work without a manual description — the compiler embeds the condition's source text at compile time, so the exception message shows exactly what failed. Available on the four condition-based methods; value-based null-check methods (`RequireNotNull`, `RequireNotEmpty`, `EnsureNotNull`, `InvariantNotNull`) do not have CAE overloads due to C# overload-resolution collisions with their existing generic signatures. See [ADR-0018](docs/adr/0018-optional-description-via-cae.md) for the full rationale and limitations.
 
 > **Note on `Old<T>()`**: Java's `old(Supplier<T>, TypeReference<T>)` overload exists to work around type erasure. .NET's reified generics preserve full generic type information at runtime, so `JsonSerializer.Deserialize<T>(json)` already receives the closed-generic type with no external hint needed. See [ADR-0016](docs/adr/0016-no-type-reference-overload-for-old.md) for the full rationale.
 
