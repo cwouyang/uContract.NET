@@ -25,6 +25,9 @@ insert_final_newline = false
 # Suppressed: ContractViolationException hierarchy intentionally requires domain-specific constructor parameters (description, ContractType, message); adding parameterless/(string)/(string,Exception) constructors would break API contract per ADR-0011.
 dotnet_diagnostic.RCS1194.severity = none
 
+# Suppressed: RS0027 (PublicApiAnalyzers) requires a non-optional overload for any method that has an optional parameter. This conflicts structurally with [CallerArgumentExpression] per ADR-0018: CAE-driven overloads MUST declare the description parameter as optional with a default value, otherwise the compile-time capture mechanism never triggers. Microsoft's own Roslyn codebase disables RS0027 on csproj level for this same reason. Level Z still catches real backward-compat breaks via the rest of PublicApiAnalyzers' rule set (RS0016/RS0017/RS0036/RS0037); only the optional-parameter forward-compat rule is relaxed.
+dotnet_diagnostic.RS0027.severity = none
+
 # Suppressed in test files only: xUnit's Assert.Contains/DoesNotContain string overloads in the xUnit version used here do not accept a StringComparison argument; the generic collection overload matches instead, producing an unrelated conversion error. Test assertions use xUnit's default comparison semantics, which are appropriate for test code. Production-code string operations remain enforced at Level Z.
 [tests/**/*.cs]
 dotnet_diagnostic.MA0074.severity = none

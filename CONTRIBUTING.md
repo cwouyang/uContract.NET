@@ -78,16 +78,20 @@ Land each step as its own commit so the formatting-only commit can be added to `
 ## Releasing
 
 1. Update `<Version>` in `src/uContract/uContract.csproj`
-2. Update `CHANGELOG.md` -- move Unreleased items under the new version heading
-3. Commit: `release: prepare v{version}`
-4. Push to master
-5. On GitHub, create a Release with tag `v{version}` targeting master
-6. The publish workflow runs automatically:
+2. Promote the public API baseline (per [ADR-0019](docs/adr/0019-public-api-baseline-tracking.md)):
+   - Move every entry from `src/uContract/PublicAPI.Unshipped.txt` to `src/uContract/PublicAPI.Shipped.txt`
+   - Keep the `#nullable enable` header in both files; Unshipped retains only the header after promotion
+   - This makes `PublicAPI.Shipped.txt` the canonical record of the APIs committed at `v{version}`
+3. Update `CHANGELOG.md` -- move Unreleased items under the new version heading
+4. Commit: `release: prepare v{version}` (version bump, baseline promotion, and CHANGELOG in a single commit)
+5. Push to master
+6. On GitHub, create a Release with tag `v{version}` targeting master
+7. The publish workflow runs automatically:
    - Validates tag matches csproj version
    - Runs tests and packs the NuGet package
    - Waits for manual approval (check the Actions tab)
-7. Approve the deployment in the Actions tab
-8. Package is published to NuGet.org and attached to the GitHub Release
+8. Approve the deployment in the Actions tab
+9. Package is published to NuGet.org and attached to the GitHub Release
 
 ### One-Time Setup
 
