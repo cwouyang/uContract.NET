@@ -95,6 +95,7 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 
 **Fourth Priority (Cross-Language Considerations)**:
 - [ADR-0012: .NET Improvements Over Java Implementation](0012-dotnet-improvements-over-java.md) — 2025-10-19
+- [ADR-0016: No TypeReference Overload for Old<T>()](0016-no-type-reference-overload-for-old.md) — 2026-04-19
 
 **Fifth Priority (Design Constraints from Root Contracting Paper)**:
 - [ADR-0013: No Subcontracting Support](0013-no-subcontracting-support.md) — 2025-10-29
