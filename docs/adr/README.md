@@ -107,6 +107,7 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 
 **Seventh Priority (Tooling and Quality)**:
 - [ADR-0015: Code Quality Tooling](0015-code-quality-tooling.md) — 2026-04-18
+- [ADR-0019: Public API Baseline Tracking](0019-public-api-baseline-tracking.md) — 2026-04-19
 
 ---
 
