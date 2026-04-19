@@ -15,11 +15,7 @@ A modern Design by Contract (DBC) library for .NET. This is a direct port of the
 
 ## Status
 
-**Current Version**: `1.0.0-alpha.1`
-
-- ✅ **16 public methods** — Core API, advanced features, convenience methods
-- ✅ **226 tests passing (100%)**
-- ✅ **Zero external dependencies**
+uContract.NET is in pre-1.0 alpha. The public API is stable in shape; minor refinements remain possible before the first stable release based on adoption feedback. Changes between releases are tracked in [CHANGELOG.md](CHANGELOG.md). The current version is shown by the NuGet badge above.
 
 ---
 
@@ -131,14 +127,14 @@ Traditional Design by Contract tools face a sustainability challenge - most exte
 
 > 📖 **Complete Documentation**: [API_REFERENCE.md](docs/examples/API_REFERENCE.md) — configuration, exceptions, best practices, and performance
 
-uContract.NET provides **16 public methods** organized into 4 categories:
+uContract.NET's public API is organized into 4 categories:
 
 | Category | Methods | Purpose |
 |----------|---------|---------|
-| **Preconditions** (3) | `Require`, `RequireNotNull`, `RequireNotEmpty` | Validate inputs at method entry |
-| **Postconditions** (5) | `Ensure`, `EnsureNotNull`, `EnsureResult`, `EnsureImmutableCollection`, `EnsureAssignable` | Verify results and state changes |
-| **Invariants** (2) | `Invariant`, `InvariantNotNull` | Enforce class-level constraints |
-| **Helpers** (6) | `Check`, `Ignore`, `Old`, `Imply`, `IfAndOnlyIf`, `CheckUnsupportedOperation` | Runtime assertions and utilities |
+| **Preconditions** | `Require`, `RequireNotNull`, `RequireNotEmpty` | Validate inputs at method entry |
+| **Postconditions** | `Ensure`, `EnsureNotNull`, `EnsureResult`, `EnsureImmutableCollection`, `EnsureAssignable` | Verify results and state changes |
+| **Invariants** | `Invariant`, `InvariantNotNull` | Enforce class-level constraints |
+| **Helpers** | `Check`, `Ignore`, `Old`, `Imply`, `IfAndOnlyIf`, `FollowsFrom`, `CheckUnsupportedOperation` | Runtime assertions and utilities |
 
 ---
 
