@@ -228,6 +228,9 @@ uContract.NET maintains **semantic parity** with the Java version while leveragi
 | **Async support** | ❌ ThreadLocal (no async) | ✅ AsyncLocal (async/await safe) |
 | **Configuration** | ⚠️ Public static fields | ✅ Encapsulated ContractConfiguration class |
 | **Nullability** | ⚠️ Annotations only | ✅ Compiler-enforced nullable reference types |
+| **`Old<T>()` overloads** | ⚠️ Two overloads (Jackson `TypeReference<T>` needed for generics) | ✅ Single `Old<T>(Func<T>)` — reified generics make the type hint unnecessary |
+
+> **Note on `Old<T>()`**: Java's `old(Supplier<T>, TypeReference<T>)` overload exists to work around type erasure. .NET's reified generics preserve full generic type information at runtime, so `JsonSerializer.Deserialize<T>(json)` already receives the closed-generic type with no external hint needed. See [ADR-0016](docs/adr/0016-no-type-reference-overload-for-old.md) for the full rationale.
 
 ### Example Comparison
 
