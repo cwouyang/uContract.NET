@@ -92,6 +92,7 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 **Third Priority (Publishing and Maintenance)**:
 - [ADR-0010: Testing Framework - xUnit](0010-testing-framework-xunit.md) — 2025-10-18
 - [ADR-0011: Zero-Dependency Principle](0011-zero-dependency-principle.md) — 2025-10-18
+- [ADR-0017: Embedded PDB and Source Link](0017-embedded-pdb-and-source-link.md) — 2026-04-19
 
 **Fourth Priority (Cross-Language Considerations)**:
 - [ADR-0012: .NET Improvements Over Java Implementation](0012-dotnet-improvements-over-java.md) — 2025-10-19
