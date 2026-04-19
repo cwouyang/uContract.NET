@@ -6,6 +6,7 @@
 
 A modern Design by Contract (DBC) library for .NET. This is a direct port of the **Java uContract 2.0.1** library with .NET-specific improvements.
 
+[![NuGet](https://img.shields.io/nuget/vpre/uContract?logo=nuget&label=NuGet&color=004880)](https://www.nuget.org/packages/uContract/)
 [![.NET](https://img.shields.io/badge/.NET-8.0+-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
