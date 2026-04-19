@@ -48,6 +48,14 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
+  <!-- Build-time packages (not propagated to consumers) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
   <!-- Include README and icon in package -->
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
