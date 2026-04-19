@@ -25,6 +25,10 @@ insert_final_newline = false
 # Suppressed: ContractViolationException hierarchy intentionally requires domain-specific constructor parameters (description, ContractType, message); adding parameterless/(string)/(string,Exception) constructors would break API contract per ADR-0011.
 dotnet_diagnostic.RCS1194.severity = none
 
+# Suppressed in test files only: xUnit's Assert.Contains/DoesNotContain string overloads in the xUnit version used here do not accept a StringComparison argument; the generic collection overload matches instead, producing an unrelated conversion error. Test assertions use xUnit's default comparison semantics, which are appropriate for test code. Production-code string operations remain enforced at Level Z.
+[tests/**/*.cs]
+dotnet_diagnostic.MA0074.severity = none
+
 #### .NET Coding Conventions ####
 [*.{cs,vb}]
 

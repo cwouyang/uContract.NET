@@ -82,7 +82,7 @@ public class RequireTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("outer", exception.Message);
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class RequireNotNullTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("outer", exception.Message);
     }
 
     [Fact]
@@ -335,7 +335,7 @@ public class RequireNotEmptyTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("outer", exception.Message);
     }
 
     [Fact]
@@ -351,3 +351,64 @@ public class RequireNotEmptyTests
         Assert.True(true);
     }
 }
+
+public class RequireCaeTests
+{
+    [Fact]
+    public void Require_WhenConditionTrueWithoutDescription_DoesNotThrow()
+    {
+        Exception? exception = Record.Exception(() => Contract.Require(() => true));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void Require_WhenConditionFalseWithoutDescription_ThrowsWithCapturedExpression()
+    {
+        const int x = -5;
+
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.Require(() => x > 0)
+        );
+
+        Assert.Contains("x > 0", exception.Message);
+    }
+
+    [Fact]
+    public void Require_WhenExplicitDescriptionProvided_OverridesCapturedExpression()
+    {
+        PreconditionViolationException exception = Assert.Throws<PreconditionViolationException>(() =>
+            Contract.Require(() => false, "my explicit description")
+        );
+
+        Assert.Contains("my explicit description", exception.Message);
+        Assert.DoesNotContain("() => false", exception.Message);
+    }
+
+    [Fact]
+    public void Require_WhenConditionIsNull_ThrowsArgumentNullException()
+    {
+        Func<bool>? condition = null;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() => Contract.Require(condition!));
+
+        Assert.Equal("condition", exception.ParamName);
+    }
+
+    [Fact]
+    public void Require_WhenConditionThrows_PropagatesException()
+    {
+        InvalidOperationException expected = new("inner error");
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Require(() => throw expected)
+        );
+
+        Assert.Same(expected, exception);
+    }
+}
+
+// Value-based CAE overloads (RequireNotNull, RequireNotEmpty) are not available;
+// see the note near the CAE section in Contract.cs for the C# overload-resolution
+// limitations discovered during ADR-0018 implementation. ADR-0018's planned 8
+// overloads reduced to 4 (the condition-based ones only).

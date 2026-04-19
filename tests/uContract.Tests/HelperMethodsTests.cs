@@ -83,7 +83,7 @@ public class CheckTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("outer", exception.Message);
     }
 
     [Fact]
@@ -801,5 +801,61 @@ public class CheckUnsupportedOperationTests
         );
 
         Assert.True(result);
+    }
+}
+
+public class CheckCaeTests
+{
+    [Fact]
+    public void Check_WhenConditionTrueWithoutDescription_DoesNotThrow()
+    {
+        Exception? exception = Record.Exception(() => Contract.Check(() => true));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void Check_WhenConditionFalseWithoutDescription_ThrowsWithCapturedExpression()
+    {
+        const int retries = 10;
+
+        CheckViolationException exception = Assert.Throws<CheckViolationException>(() =>
+            Contract.Check(() => retries < 3)
+        );
+
+        Assert.Contains("retries < 3", exception.Message);
+    }
+
+    [Fact]
+    public void Check_WhenExplicitDescriptionProvided_OverridesCapturedExpression()
+    {
+        CheckViolationException exception = Assert.Throws<CheckViolationException>(() =>
+            Contract.Check(() => false, "my explicit description")
+        );
+
+        Assert.Contains("my explicit description", exception.Message);
+        Assert.DoesNotContain("() => false", exception.Message);
+    }
+
+    [Fact]
+    public void Check_WhenConditionIsNull_ThrowsArgumentNullException()
+    {
+        Func<bool>? condition = null;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() => Contract.Check(condition!));
+
+        Assert.Equal("condition", exception.ParamName);
+    }
+
+    [Fact]
+    public void Check_WhenConditionThrows_PropagatesException()
+    {
+        InvalidOperationException expected = new("inner error");
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Check(() => throw expected)
+        );
+
+        Assert.Same(expected, exception);
     }
 }

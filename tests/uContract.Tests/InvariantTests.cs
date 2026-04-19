@@ -84,7 +84,7 @@ public class InvariantTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("outer", exception.Message);
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class InvariantNotNullTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("outer", exception.Message);
     }
 
     [Fact]
@@ -254,3 +254,61 @@ public class InvariantNotNullTests
         Assert.Null(exception);
     }
 }
+
+public class InvariantCaeTests
+{
+    [Fact]
+    public void Invariant_WhenConditionTrueWithoutDescription_DoesNotThrow()
+    {
+        Exception? exception = Record.Exception(() => Contract.Invariant(() => true));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void Invariant_WhenConditionFalseWithoutDescription_ThrowsWithCapturedExpression()
+    {
+        const int count = -1;
+
+        InvariantViolationException exception = Assert.Throws<InvariantViolationException>(() =>
+            Contract.Invariant(() => count >= 0)
+        );
+
+        Assert.Contains("count >= 0", exception.Message);
+    }
+
+    [Fact]
+    public void Invariant_WhenExplicitDescriptionProvided_OverridesCapturedExpression()
+    {
+        InvariantViolationException exception = Assert.Throws<InvariantViolationException>(() =>
+            Contract.Invariant(() => false, "my explicit description")
+        );
+
+        Assert.Contains("my explicit description", exception.Message);
+        Assert.DoesNotContain("() => false", exception.Message);
+    }
+
+    [Fact]
+    public void Invariant_WhenConditionIsNull_ThrowsArgumentNullException()
+    {
+        Func<bool>? condition = null;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() => Contract.Invariant(condition!));
+
+        Assert.Equal("condition", exception.ParamName);
+    }
+
+    [Fact]
+    public void Invariant_WhenConditionThrows_PropagatesException()
+    {
+        InvalidOperationException expected = new("inner error");
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Invariant(() => throw expected)
+        );
+
+        Assert.Same(expected, exception);
+    }
+}
+
+// InvariantNotNull has no CAE overload — see the note near the CAE section in Contract.cs.

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -1121,4 +1122,227 @@ public static class Contract
 
         return true;
     }
+
+    // ============================================================
+    // CallerArgumentExpression overloads (ADR-0018)
+    // ------------------------------------------------------------
+    // These overloads let callers omit the description parameter;
+    // the compiler captures the source text of the condition or
+    // value argument via [CallerArgumentExpression]. The existing
+    // description-first overloads above remain available unchanged.
+    // ============================================================
+
+    /// <summary>
+    ///     Precondition overload that captures the source text of <paramref name="condition" /> via
+    ///     <see cref="CallerArgumentExpressionAttribute" /> when <paramref name="description" /> is omitted.
+    ///     See <see cref="Require(string, Func{bool})" /> for full semantics.
+    /// </summary>
+    /// <param name="condition">Lazy-evaluated boolean condition that must be true.</param>
+    /// <param name="description">
+    ///     Optional explicit description. When omitted, the compiler captures the source text of
+    ///     <paramref name="condition" />.
+    /// </param>
+    /// <exception cref="PreconditionViolationException">Thrown when the condition evaluates to false.</exception>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="condition" /> is null, or when <paramref name="description" /> is
+    ///     explicitly passed as null.
+    /// </exception>
+    /// <remarks>Added per ADR-0018.</remarks>
+    public static void Require(
+        Func<bool> condition,
+        [CallerArgumentExpression(nameof(condition))] string? description = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(condition);
+        ArgumentNullException.ThrowIfNull(description);
+
+        if (Entered.Value)
+        {
+            return;
+        }
+
+        if (!Config.PreconditionsEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            Entered.Value = true;
+            if (!condition())
+            {
+                throw new PreconditionViolationException(description);
+            }
+        }
+        finally
+        {
+            Entered.Value = false;
+        }
+    }
+
+    /// <summary>
+    ///     Postcondition overload that captures the source text of <paramref name="condition" /> via
+    ///     <see cref="CallerArgumentExpressionAttribute" /> when <paramref name="description" /> is omitted.
+    ///     See <see cref="Ensure(string, Func{bool})" /> for full semantics.
+    /// </summary>
+    /// <param name="condition">Lazy-evaluated boolean condition that must be true.</param>
+    /// <param name="description">
+    ///     Optional explicit description. When omitted, the compiler captures the source text of
+    ///     <paramref name="condition" />.
+    /// </param>
+    /// <exception cref="PostconditionViolationException">Thrown when the condition evaluates to false.</exception>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="condition" /> is null, or when <paramref name="description" /> is
+    ///     explicitly passed as null.
+    /// </exception>
+    /// <remarks>Added per ADR-0018.</remarks>
+    public static void Ensure(
+        Func<bool> condition,
+        [CallerArgumentExpression(nameof(condition))] string? description = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(condition);
+        ArgumentNullException.ThrowIfNull(description);
+
+        if (Entered.Value)
+        {
+            return;
+        }
+
+        if (!Config.PostconditionsEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            Entered.Value = true;
+            if (!condition())
+            {
+                throw new PostconditionViolationException(description);
+            }
+        }
+        finally
+        {
+            Entered.Value = false;
+        }
+    }
+
+    /// <summary>
+    ///     Invariant overload that captures the source text of <paramref name="condition" /> via
+    ///     <see cref="CallerArgumentExpressionAttribute" /> when <paramref name="description" /> is omitted.
+    ///     See <see cref="Invariant(string, Func{bool})" /> for full semantics.
+    /// </summary>
+    /// <param name="condition">Lazy-evaluated boolean condition that must be true.</param>
+    /// <param name="description">
+    ///     Optional explicit description. When omitted, the compiler captures the source text of
+    ///     <paramref name="condition" />.
+    /// </param>
+    /// <exception cref="InvariantViolationException">Thrown when the condition evaluates to false.</exception>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="condition" /> is null, or when <paramref name="description" /> is
+    ///     explicitly passed as null.
+    /// </exception>
+    /// <remarks>Added per ADR-0018.</remarks>
+    public static void Invariant(
+        Func<bool> condition,
+        [CallerArgumentExpression(nameof(condition))] string? description = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(condition);
+        ArgumentNullException.ThrowIfNull(description);
+
+        if (Entered.Value)
+        {
+            return;
+        }
+
+        if (!Config.InvariantsEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            Entered.Value = true;
+            if (!condition())
+            {
+                throw new InvariantViolationException(description);
+            }
+        }
+        finally
+        {
+            Entered.Value = false;
+        }
+    }
+
+    /// <summary>
+    ///     Check overload that captures the source text of <paramref name="condition" /> via
+    ///     <see cref="CallerArgumentExpressionAttribute" /> when <paramref name="description" /> is omitted.
+    ///     See <see cref="Check(string, Func{bool})" /> for full semantics.
+    /// </summary>
+    /// <param name="condition">Lazy-evaluated boolean condition that must be true.</param>
+    /// <param name="description">
+    ///     Optional explicit description. When omitted, the compiler captures the source text of
+    ///     <paramref name="condition" />.
+    /// </param>
+    /// <exception cref="CheckViolationException">Thrown when the condition evaluates to false.</exception>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="condition" /> is null, or when <paramref name="description" /> is
+    ///     explicitly passed as null.
+    /// </exception>
+    /// <remarks>Added per ADR-0018.</remarks>
+    public static void Check(
+        Func<bool> condition,
+        [CallerArgumentExpression(nameof(condition))] string? description = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(condition);
+        ArgumentNullException.ThrowIfNull(description);
+
+        if (Entered.Value)
+        {
+            return;
+        }
+
+        if (!Config.CheckEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            Entered.Value = true;
+            if (!condition())
+            {
+                throw new CheckViolationException(description);
+            }
+        }
+        finally
+        {
+            Entered.Value = false;
+        }
+    }
+
+    // Note: The value-based null-check methods (RequireNotNull<T>, RequireNotEmpty, EnsureNotNull<T>,
+    // InvariantNotNull<T>) have NO CAE overload, contrary to the initial 8-overload plan in ADR-0018.
+    // Two distinct C# overload-resolution limitations prevented implementation:
+    //
+    //  1) RequireNotEmpty(string, string) vs a proposed RequireNotEmpty(string? value, [CAE] string?
+    //     description) reduce to the same (string, string) signature at the CLR level — nullable
+    //     annotations are metadata, not part of overload resolution → CS0111 duplicate member.
+    //
+    //  2) RequireNotNull<T>(string, T?) where T : class vs a proposed RequireNotNull<T>(T? value,
+    //     [CAE] string? description) where T : class produce an ambiguous call (CS0121) whenever
+    //     T is inferred to be string, because both overloads then accept (string?, string?) and C#
+    //     has no "more specific" tie-breaker between them. Using non-generic object? for the new
+    //     overload resolves the ambiguity but silently accepts value types (e.g. RequireNotNull(42)
+    //     compiles and passes), a footgun the existing where T : class guard prevents.
+    //
+    // Callers wanting CAE-style terse description-less null-checks can use the condition-based
+    // overloads:
+    //     Contract.Require(() => user is not null);
+    //     Contract.Require(() => !string.IsNullOrEmpty(email));
+    // ADR-0018 captures 4 overloads instead of the initially-planned 8; the condition-based
+    // overloads (Require, Ensure, Invariant, Check) above cover the bulk of the UX value.
 }

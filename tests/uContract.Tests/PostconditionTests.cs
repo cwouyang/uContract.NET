@@ -83,7 +83,7 @@ public class EnsureTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("outer", exception.Message);
     }
 
     [Fact]
@@ -282,7 +282,7 @@ public class OldTests
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => Contract.Old(() => obj));
 
-        Assert.Contains("cannot be serialized", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("cannot be serialized", exception.Message);
         Assert.IsType<NotSupportedException>(exception.InnerException);
     }
 
@@ -383,7 +383,7 @@ public class EnsureNotNullTests
         );
 
         Assert.Equal(1, callCount);
-        Assert.Contains("outer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("outer", exception.Message);
     }
 
     [Fact]
@@ -577,7 +577,7 @@ public class EnsureImmutableCollectionTests
             Contract.EnsureImmutableCollection(mutableList)
         );
 
-        Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("immutable collection", exception.Message);
     }
 
     [Fact]
@@ -589,7 +589,7 @@ public class EnsureImmutableCollectionTests
             Contract.EnsureImmutableCollection(mutableArray)
         );
 
-        Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("immutable collection", exception.Message);
     }
 
     [Fact]
@@ -601,7 +601,7 @@ public class EnsureImmutableCollectionTests
             Contract.EnsureImmutableCollection(mutableDict)
         );
 
-        Assert.Contains("immutable collection", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("immutable collection", exception.Message);
     }
 
     [Fact]
@@ -741,8 +741,8 @@ public class EnsureAssignableTests
             Contract.EnsureAssignable(newPerson, oldPerson, "Email")
         );
 
-        Assert.Contains("Name", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("not marked as assignable", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Name", exception.Message);
+        Assert.Contains("not marked as assignable", exception.Message);
     }
 
     [Fact]
@@ -799,8 +799,8 @@ public class EnsureAssignableTests
             Contract.EnsureAssignable(newPerson, oldPerson, "Email")
         );
 
-        Assert.Contains("Name", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("Age", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Name", exception.Message);
+        Assert.Contains("Age", exception.Message);
     }
 
     [Fact]
@@ -835,7 +835,7 @@ public class EnsureAssignableTests
             Contract.EnsureAssignable(newPoint, oldPoint, "Y")
         );
 
-        Assert.Contains("X", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("X", exception.Message);
     }
 
     [Fact]
@@ -848,7 +848,7 @@ public class EnsureAssignableTests
             Contract.EnsureAssignable(newPoint, oldPoint, "X")
         );
 
-        Assert.Contains("Y", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Y", exception.Message);
     }
 
     [Fact]
@@ -959,7 +959,7 @@ public class EnsureAssignableTests
             Contract.EnsureAssignable(newPerson, oldPerson, "email")
         );
 
-        Assert.Contains("Email", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Email", exception.Message);
     }
 
     [Fact]
@@ -1019,7 +1019,7 @@ public class EnsureAssignableTests
             Contract.EnsureAssignable(newOrder, oldOrder, "OrderId")
         );
 
-        Assert.Contains("Customer", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Customer", exception.Message);
     }
 
     [Fact]
@@ -1148,3 +1148,61 @@ public class EnsureAssignableTests
         public TestPerson Customer { get; set; } = new();
     }
 }
+
+public class EnsureCaeTests
+{
+    [Fact]
+    public void Ensure_WhenConditionTrueWithoutDescription_DoesNotThrow()
+    {
+        Exception? exception = Record.Exception(() => Contract.Ensure(() => true));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void Ensure_WhenConditionFalseWithoutDescription_ThrowsWithCapturedExpression()
+    {
+        const int balance = -5;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.Ensure(() => balance >= 0)
+        );
+
+        Assert.Contains("balance >= 0", exception.Message);
+    }
+
+    [Fact]
+    public void Ensure_WhenExplicitDescriptionProvided_OverridesCapturedExpression()
+    {
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.Ensure(() => false, "my explicit description")
+        );
+
+        Assert.Contains("my explicit description", exception.Message);
+        Assert.DoesNotContain("() => false", exception.Message);
+    }
+
+    [Fact]
+    public void Ensure_WhenConditionIsNull_ThrowsArgumentNullException()
+    {
+        Func<bool>? condition = null;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() => Contract.Ensure(condition!));
+
+        Assert.Equal("condition", exception.ParamName);
+    }
+
+    [Fact]
+    public void Ensure_WhenConditionThrows_PropagatesException()
+    {
+        InvalidOperationException expected = new("inner error");
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Ensure(() => throw expected)
+        );
+
+        Assert.Same(expected, exception);
+    }
+}
+
+// EnsureNotNull has no CAE overload — see the note near the CAE section in Contract.cs.
