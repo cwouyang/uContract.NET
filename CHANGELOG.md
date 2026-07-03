@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.0.0] - 2026-07-04
 
 Initial release. Direct port of [Java uContract 2.0.1](https://gitlab.com/TeddyChen/ucontract/)
 (commit `cb1e03f`) to .NET 8+ with idiomatic improvements.
@@ -52,4 +52,4 @@ Initial release. Direct port of [Java uContract 2.0.1](https://gitlab.com/TeddyC
 
 ---
 
-[Unreleased]: https://github.com/cwouyang/uContract.NET/commits/master
+[1.0.0]: https://github.com/cwouyang/uContract.NET/releases/tag/v1.0.0

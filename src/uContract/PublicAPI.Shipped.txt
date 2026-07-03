@@ -1,1 +1,56 @@
 #nullable enable
+static uContract.Contract.Check(string! description, System.Func<bool>! condition) -> void
+static uContract.Contract.Check(System.Func<bool>! condition, string? description = null) -> void
+static uContract.Contract.CheckUnsupportedOperation(System.Action! action) -> bool
+static uContract.Contract.Ensure(string! description, System.Func<bool>! condition) -> void
+static uContract.Contract.Ensure(System.Func<bool>! condition, string? description = null) -> void
+static uContract.Contract.EnsureAssignable<T>(T actual, T expected, params string![]! assignableFieldPatterns) -> void
+static uContract.Contract.EnsureImmutableCollection<T>(T collection) -> T
+static uContract.Contract.EnsureNotNull<T>(string! description, T? value) -> void
+static uContract.Contract.EnsureResult<T>(string! description, T result, System.Func<T, bool>! assertion) -> T
+static uContract.Contract.FollowsFrom(System.Func<bool>! consequent, System.Func<bool>! antecedent) -> bool
+static uContract.Contract.IfAndOnlyIf(System.Func<bool>! a, System.Func<bool>! b) -> bool
+static uContract.Contract.Ignore(string! reason, System.Func<bool>! condition) -> bool
+static uContract.Contract.Imply(System.Func<bool>! antecedent, System.Func<bool>! consequent) -> bool
+static uContract.Contract.Invariant(string! description, System.Func<bool>! condition) -> void
+static uContract.Contract.Invariant(System.Func<bool>! condition, string? description = null) -> void
+static uContract.Contract.InvariantNotNull<T>(string! description, T? value) -> void
+static uContract.Contract.Old<T>(System.Func<T>! supplier) -> T
+static uContract.Contract.Require(string! description, System.Func<bool>! condition) -> void
+static uContract.Contract.Require(System.Func<bool>! condition, string? description = null) -> void
+static uContract.Contract.RequireNotEmpty(string! description, string! value) -> void
+static uContract.Contract.RequireNotNull<T>(string! description, T? value) -> void
+uContract.Contract
+uContract.ContractConfiguration
+uContract.ContractConfiguration.CheckEnabled.get -> bool
+uContract.ContractConfiguration.CheckSource.get -> string!
+uContract.ContractConfiguration.ContractConfiguration() -> void
+uContract.ContractConfiguration.DocumentationEnabled.get -> bool
+uContract.ContractConfiguration.InvariantsEnabled.get -> bool
+uContract.ContractConfiguration.InvariantsSource.get -> string!
+uContract.ContractConfiguration.PostconditionsEnabled.get -> bool
+uContract.ContractConfiguration.PostconditionsSource.get -> string!
+uContract.ContractConfiguration.PreconditionsEnabled.get -> bool
+uContract.ContractConfiguration.PreconditionsSource.get -> string!
+uContract.Exceptions.CheckViolationException
+uContract.Exceptions.CheckViolationException.CheckViolationException(string! description) -> void
+uContract.Exceptions.CheckViolationException.CheckViolationException(string! description, System.Exception! innerException) -> void
+uContract.Exceptions.ContractType
+uContract.Exceptions.ContractType.Check = 3 -> uContract.Exceptions.ContractType
+uContract.Exceptions.ContractType.Invariant = 2 -> uContract.Exceptions.ContractType
+uContract.Exceptions.ContractType.Postcondition = 1 -> uContract.Exceptions.ContractType
+uContract.Exceptions.ContractType.Precondition = 0 -> uContract.Exceptions.ContractType
+uContract.Exceptions.ContractViolationException
+uContract.Exceptions.ContractViolationException.ContractViolationException(string! description, uContract.Exceptions.ContractType violationType, string! message) -> void
+uContract.Exceptions.ContractViolationException.ContractViolationException(string! description, uContract.Exceptions.ContractType violationType, string! message, System.Exception! innerException) -> void
+uContract.Exceptions.ContractViolationException.Description.get -> string!
+uContract.Exceptions.ContractViolationException.ViolationType.get -> uContract.Exceptions.ContractType
+uContract.Exceptions.InvariantViolationException
+uContract.Exceptions.InvariantViolationException.InvariantViolationException(string! description) -> void
+uContract.Exceptions.InvariantViolationException.InvariantViolationException(string! description, System.Exception! innerException) -> void
+uContract.Exceptions.PostconditionViolationException
+uContract.Exceptions.PostconditionViolationException.PostconditionViolationException(string! description) -> void
+uContract.Exceptions.PostconditionViolationException.PostconditionViolationException(string! description, System.Exception! innerException) -> void
+uContract.Exceptions.PreconditionViolationException
+uContract.Exceptions.PreconditionViolationException.PreconditionViolationException(string! description) -> void
+uContract.Exceptions.PreconditionViolationException.PreconditionViolationException(string! description, System.Exception! innerException) -> void

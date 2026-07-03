@@ -6,16 +6,15 @@
 
 A modern Design by Contract (DBC) library for .NET. This is a direct port of the **Java uContract 2.0.1** library with .NET-specific improvements.
 
-[![NuGet](https://img.shields.io/nuget/vpre/uContract?logo=nuget&label=NuGet&color=004880)](https://www.nuget.org/packages/uContract/)
+[![NuGet](https://img.shields.io/nuget/v/uContract?logo=nuget&label=NuGet&color=004880)](https://www.nuget.org/packages/uContract/)
 [![.NET](https://img.shields.io/badge/.NET-8.0+-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
 ---
 
 ## Status
 
-uContract.NET is in pre-1.0 alpha. The public API is stable in shape; minor refinements remain possible before the first stable release based on adoption feedback. Changes between releases are tracked in [CHANGELOG.md](CHANGELOG.md). The current version is shown by the NuGet badge above.
+uContract.NET follows [Semantic Versioning](https://semver.org/); the public API is stable as of 1.0.0. Changes between releases are tracked in [CHANGELOG.md](CHANGELOG.md). The current version is shown by the NuGet badge above.
 
 ---
 
@@ -306,7 +305,7 @@ Before contributing:
 
 ## License
 
-**MIT License** — Copyright (c) 2025 uContract.NET Contributors. See [LICENSE](LICENSE) for details.
+**MIT License** — Copyright (c) 2025-2026 uContract.NET Contributors. See [LICENSE](LICENSE) for details.
 
 This project is a derivative work of the [Java uContract library](https://gitlab.com/TeddyChen/ucontract/)
 by Teddy Chen and contributors, which is licensed under the **Apache License 2.0**.

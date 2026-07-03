@@ -4,11 +4,11 @@
     <!-- Assembly Information -->
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
-    <Copyright>Copyright (c) 2025 uContract.NET Contributors</Copyright>
+    <Copyright>Copyright (c) 2025-2026 uContract.NET Contributors</Copyright>
 
     <!-- Package Metadata -->
     <PackageId>uContract</PackageId>
-    <Version>1.0.0-alpha.1</Version>
+    <Version>1.0.0</Version>
     <Authors>uContract.NET Contributors</Authors>
     <Company>uContract.NET</Company>
     <Product>uContract.NET</Product>
@@ -17,7 +17,7 @@
 Features:
 • Zero overhead when disabled (lazy evaluation)
 • AsyncLocal support for async/await
-• 16 contract methods (Require, Ensure, Invariant, Old, etc.)
+• 17 contract methods (Require, Ensure, Invariant, Old, etc.)
 • Zero external dependencies
 • Full nullable reference type support
 • Thread-safe with recursion guard
