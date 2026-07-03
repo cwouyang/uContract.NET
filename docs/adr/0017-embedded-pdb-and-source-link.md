@@ -151,6 +151,28 @@ No change to `.github/workflows/publish.yml` is required. `dotnet pack` continue
 - Verification: after adding the package reference, run `dotnet pack -c Release` locally and confirm the build succeeds. Optionally, inspect the produced `.nupkg` with NuGet Package Explorer (or `unzip -p`) to confirm the embedded PDB now carries Source Link metadata; the `sourcelink test` CLI (`dotnet tool install -g sourcelink`) can validate the mapping end-to-end.
 - This ADR is immutable once accepted. If a future decision reverses the symbol strategy (e.g., switching to `.snupkg`), a new ADR must be written that supersedes this one rather than editing this document.
 
+### Amendment (2026-07-03): Source Link via SDK in-box, PackageReference removed
+
+The decision itself — embedded PDB carrying Source Link metadata, no `.snupkg` — is
+unchanged. Only the delivery mechanism of Source Link changed:
+
+- Dependabot proposed bumping `Microsoft.SourceLink.GitHub` 8.0.0 → 10.0.203. On the
+  .NET 8 SDK that version is a **silent no-op**: the build succeeds with zero warnings
+  but `obj/**/uContract.sourcelink.json` is never generated, so shipped PDBs would have
+  carried no repo/commit mapping — defeating this ADR's purpose undetectably.
+- Investigation showed the .NET SDK has included Source Link in-box for GitHub (and
+  other major hosts) since .NET 8. Removing the PackageReference entirely and rebuilding
+  produced an identical `sourcelink.json` mapping to `raw.githubusercontent.com`.
+- The explicit PackageReference was therefore removed. This eliminates both the silent
+  failure mode (no standalone package version to mismatch the SDK) and recurring
+  Dependabot bump proposals for it. The MSBuild properties this ADR relies on
+  (`DebugType=embedded`, `EmbedUntrackedSources`, `PublishRepositoryUrl`,
+  conditional `ContinuousIntegrationBuild`) are unchanged and are what the in-box
+  Source Link reads.
+- Verification after removal: `dotnet build -c Release --no-incremental` produces
+  `obj/Release/net8.0/uContract.sourcelink.json` with the expected GitHub raw-URL
+  mapping.
+
 ---
 
 ## References
@@ -169,3 +191,4 @@ No change to `.github/workflows/publish.yml` is required. `dotnet pack` continue
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2026-04-19 | Accepted    | Decision recorded during pre-publish review; confirms the pre-existing embedded-PDB configuration as the deliberate symbol-shipping strategy and authorises adding `Microsoft.SourceLink.GitHub` to complete the debugging chain. |
+| 2026-07-03 | Amended     | `Microsoft.SourceLink.GitHub` PackageReference removed in favour of the .NET 8+ SDK's in-box Source Link, after the standalone package's v10 proved a silent no-op on SDK 8. Symbol strategy unchanged. See Implementation Notes > Amendment. |
