@@ -48,12 +48,10 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
-  <!-- Build-time packages (not propagated to consumers) -->
+  <!-- Build-time packages (not propagated to consumers).
+       Source Link needs no PackageReference: the .NET 8+ SDK generates it in-box
+       (ADR-0017 amendment 2026-07-03). -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.203">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="3.3.4">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
