@@ -66,10 +66,11 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
   </ItemGroup>
 
-  <!-- Include README and icon in package -->
+  <!-- Include README, icon, and third-party notices in package -->
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

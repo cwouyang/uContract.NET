@@ -287,11 +287,11 @@ Before contributing:
 
 ## License
 
-**MIT License** - Same as the [Java uContract library](https://gitlab.com/TeddyChen/ucontract/)
+**MIT License** — Copyright (c) 2025 uContract.NET Contributors. See [LICENSE](LICENSE) for details.
 
-Copyright (c) 2025 uContract.NET Contributors
-
-See [LICENSE](LICENSE) file for details.
+This project is a derivative work of the [Java uContract library](https://gitlab.com/TeddyChen/ucontract/)
+by Teddy Chen and contributors, which is licensed under the **Apache License 2.0**.
+See [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) for the required attribution and license text.
 
 ---
 
