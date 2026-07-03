@@ -232,6 +232,25 @@ uContract.NET maintains **semantic parity** with the Java version while leveragi
 
 > **Note on `Old<T>()`**: Java's `old(Supplier<T>, TypeReference<T>)` overload exists to work around type erasure. .NET's reified generics preserve full generic type information at runtime, so `JsonSerializer.Deserialize<T>(json)` already receives the closed-generic type with no external hint needed. See [ADR-0016](docs/adr/0016-no-type-reference-overload-for-old.md) for the full rationale.
 
+### Migrating from Java
+
+Renames to be aware of when porting Java code that uses uContract:
+
+| Java (2.0.1) | uContract.NET | Notes |
+|--------------|---------------|-------|
+| `reject()` | `Ignore()` | Renamed for semantic clarity |
+| `ClassInvariantViolationException` | `InvariantViolationException` | Shorter name; same role in the exception hierarchy |
+| `old(Supplier<T>, TypeReference<T>)` | *(removed)* | Use `Old<T>(Func<T>)` — no type hint needed ([ADR-0016](docs/adr/0016-no-type-reference-overload-for-old.md)) |
+
+**Exception messages differ.** Java throws with the raw description text
+(`"x positive"`); uContract.NET prefixes the contract type
+(`"Precondition violated: x positive"`). If your tests or log parsers assert
+on exception messages, update them accordingly. The unprefixed description
+remains available via the exception's `Description` property.
+
+Environment variables (`DBC`, `DBC_PRE`, `DBC_POST`, `DBC_INV`, `DBC_CHECK`) keep
+the same names and semantics as the Java version.
+
 ### Example Comparison
 
 **Java:**
