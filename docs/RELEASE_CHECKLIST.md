@@ -1,19 +1,19 @@
 # uContract.NET Release Checklist
 
-> **Current Version**: 1.0.0-alpha.1
+Releases are published by the automated pipeline in `.github/workflows/publish.yml`:
+creating a GitHub Release triggers validation, tests, `dotnet pack`, the NuGet push,
+and attaching the `.nupkg` to the Release. This checklist covers what must happen
+before and around that trigger.
 
 ---
 
 ## First-Time Setup
 
-These steps only need to be done once:
+Already done for this repository; kept for reference:
 
-- [ ] NuGet account created at <https://www.nuget.org>
-- [ ] API key generated with "Push new packages" permission
-- [ ] Store API key:
-  ```bash
-  dotnet nuget push --help  # Follow instructions to set up API key
-  ```
+- [x] NuGet account created at <https://www.nuget.org> (with 2FA enabled)
+- [x] API key generated with "Push new packages" permission, scoped to `uContract`
+- [x] Key stored as the `NUGET_API_KEY` secret in the `nuget` GitHub environment
 
 ---
 
@@ -21,41 +21,32 @@ These steps only need to be done once:
 
 ### 1. CI Green
 
-Confirm the GitHub Actions pipeline passes (build + test + pack):
+- [ ] `Build and Test` passes on master (both Ubuntu and Windows jobs)
 
-- [ ] CI pipeline is green on the release branch
-- [ ] No new compiler warnings introduced
+### 2. Version, Changelog, and API Baseline
 
-### 2. Version & Changelog
-
-- [ ] Update version in `uContract.csproj` (`<Version>`, `<AssemblyVersion>`, `<FileVersion>`)
-- [ ] Move `[Unreleased]` items to new version section in `CHANGELOG.md` with release date
-- [ ] Update "Current Version" in `README.md`
+- [ ] Update `<Version>` in `src/uContract/uContract.csproj`
+- [ ] Retitle the `[Unreleased]` section in `CHANGELOG.md` to the new version with the
+      release date, and update the link reference at the bottom
+- [ ] Promote the public API baseline: move all entries from
+      `src/uContract/PublicAPI.Unshipped.txt` into `PublicAPI.Shipped.txt`
+      (leave `#nullable enable` in both) — see `CONTRIBUTING.md`
 
 ### 3. Local Package Verification
 
-Build and verify the package locally:
-
 ```bash
-dotnet clean && dotnet build -c Release
-dotnet pack -c Release -o ./artifacts
+dotnet clean && dotnet test
+dotnet pack src/uContract/uContract.csproj -c Release -o ./artifacts
 ```
 
-- [ ] Package size is reasonable (< 100 KB for zero-dependency library)
-- [ ] Inspect package contents — verify `lib/net8.0/uContract.dll` and `.xml` exist, no test assemblies included
-- [ ] Install into a fresh console project and run a smoke test:
-  ```csharp
-  using uContract;
-  Contract.Require("Test", () => true);
-  Console.WriteLine("Package works!");
-  ```
-- [ ] IntelliSense (XML docs) works in the test project
+- [ ] All tests pass
+- [ ] Package contains `lib/net8.0/uContract.dll` + `.xml`, `README.md`, `icon.png`,
+      `THIRD-PARTY-NOTICES.txt`; no test assemblies
+- [ ] `obj/Release/net8.0/uContract.sourcelink.json` exists (Source Link intact)
+- [ ] Smoke test: install the package into a fresh console project from a local feed,
+      run a passing and a failing contract with `DBC=on`, confirm IntelliSense works
 
-### 4. Package Metadata
-
-- [ ] Verify in `csproj`: Package ID, version, authors, description, license (MIT), project URL, repository URL, tags, release notes
-
-### 5. Git Tag
+### 4. Tag and Push
 
 ```bash
 git commit -m "chore: prepare release {VERSION}"
@@ -63,23 +54,24 @@ git tag -a v{VERSION} -m "Release {VERSION}"
 git push origin master && git push origin v{VERSION}
 ```
 
-### 6. Publish to NuGet
+The tag version must exactly match `<Version>` in the csproj — the publish workflow
+validates this and fails the release otherwise.
 
-> **Warning**: Once published, a version cannot be deleted — only unlisted.
+### 5. Create the GitHub Release (this triggers publishing)
 
-- [ ] Publish:
-  ```bash
-  dotnet nuget push ./artifacts/uContract.{VERSION}.nupkg \
-    --source https://api.nuget.org/v3/index.json \
-    --api-key YOUR_API_KEY
-  ```
-- [ ] Verify at <https://www.nuget.org/packages/uContract/> (allow 5–10 minutes for indexing)
+- [ ] Create a GitHub Release for tag `v{VERSION}`, pasting the changelog entry as notes
+- [ ] Publishing the Release starts `publish.yml`: it re-runs tests, packs, pushes to
+      NuGet, and attaches the `.nupkg` to the Release
+
+> **Warning**: Once pushed to NuGet, a version cannot be deleted — only unlisted.
+
+### 6. Post-Release Verification
+
+- [ ] `publish.yml` run is green
+- [ ] Package visible at <https://www.nuget.org/packages/uContract/>
+      (allow 5–10 minutes for indexing)
 - [ ] Test install from NuGet.org in a fresh project
-
-### 7. Post-Release
-
-- [ ] Create GitHub Release (tag `v{VERSION}`, attach `.nupkg`, copy changelog entry)
-- [ ] Add `[Unreleased]` section to `CHANGELOG.md`
+- [ ] Add a fresh `[Unreleased]` section to `CHANGELOG.md`
 - [ ] Monitor GitHub Issues for bug reports
 
 ---
