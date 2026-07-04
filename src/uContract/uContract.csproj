@@ -52,7 +52,7 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
        Source Link needs no PackageReference: the .NET 8+ SDK generates it in-box
        (ADR-0017 amendment 2026-07-03). -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="3.3.4">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
