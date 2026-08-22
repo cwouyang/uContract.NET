@@ -551,7 +551,9 @@ public class EnsureImmutableCollectionTests
     [Fact]
     public void EnsureImmutableCollection_WhenImmutableDictionary_ReturnsCollection()
     {
-        ImmutableDictionary<string, int> immutableDict = ImmutableDictionary.Create<string, int>().Add("key", 42);
+        ImmutableDictionary<string, int> immutableDict = ImmutableDictionary
+            .Create<string, int>(StringComparer.Ordinal)
+            .Add("key", 42);
 
         ImmutableDictionary<string, int> result = Contract.EnsureImmutableCollection(immutableDict);
 
@@ -561,7 +563,7 @@ public class EnsureImmutableCollectionTests
     [Fact]
     public void EnsureImmutableCollection_WhenImmutableHashSet_ReturnsCollection()
     {
-        ImmutableHashSet<string> immutableSet = ImmutableHashSet.Create("A", "B");
+        ImmutableHashSet<string> immutableSet = ImmutableHashSet.Create(StringComparer.Ordinal, "A", "B");
 
         ImmutableHashSet<string> result = Contract.EnsureImmutableCollection(immutableSet);
 
@@ -643,7 +645,7 @@ public class EnsureImmutableCollectionTests
         ImmutableList<string> result = GetNames();
 
         Assert.Equal(3, result.Count);
-        Assert.Contains("Alice", result);
+        Assert.Contains("Alice", result, StringComparer.Ordinal);
         return;
 
         ImmutableList<string> GetNames()
