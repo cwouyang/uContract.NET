@@ -26,7 +26,11 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          # Resolve the SDK from global.json so CI cannot drift from it.
+          # 'dotnet-version: 8.0.x' resolved to the 8.0.4xx band, which global.json
+          # (8.0.200 / latestPatch) rejects, so builds silently relied on the runner
+          # image happening to preinstall an 8.0.2xx SDK.
+          global-json-file: global.json
 
       - name: Restore dotnet tools
         run: dotnet tool restore
