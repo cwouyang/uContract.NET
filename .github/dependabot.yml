@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # NuGet dependencies in src/, tests/, and Directory.Build.props
+  # NuGet dependencies in src/, tests/, Directory.Build.props, and .config/dotnet-tools.json
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:
@@ -11,6 +11,33 @@ updates:
       include: "scope"
     labels:
       - "dependencies"
+    # Group minor/patch bumps so routine updates cost one PR instead of one each.
+    # Major bumps stay ungrouped: they are the ones that actually break the build.
+    groups:
+      code-quality:
+        patterns:
+          - "Meziantou.Analyzer"
+          - "Microsoft.CodeAnalysis.PublicApiAnalyzers"
+          - "Roslynator.*"
+          - "csharpier"
+        update-types:
+          - "minor"
+          - "patch"
+      test:
+        patterns:
+          - "Microsoft.NET.Test.Sdk"
+          - "xunit*"
+          - "coverlet.*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # PublicApiAnalyzers 4.x+ ships analyzers compiled against Roslyn 4.12, which the
+      # SDK pinned in global.json (8.0.200 -> Roslyn 4.9) refuses to load (CS9057).
+      # Lift this once the repo moves to a newer SDK. See PR #11.
+      - dependency-name: "Microsoft.CodeAnalysis.PublicApiAnalyzers"
+        update-types:
+          - "version-update:semver-major"
 
   # GitHub Actions used in .github/workflows/
   - package-ecosystem: "github-actions"
@@ -18,8 +45,13 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # No 'include: scope' here: the prefix already carries one, and Dependabot would
+    # append a second, yielding 'chore(ci)(deps): ...' (see PR #13).
     commit-message:
       prefix: "chore(ci)"
-      include: "scope"
     labels:
       - "dependencies"
+    groups:
+      actions:
+        patterns:
+          - "*"
