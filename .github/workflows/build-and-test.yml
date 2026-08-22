@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ master ]
 
+# Least privilege for GITHUB_TOKEN: this workflow only checks out and builds.
+# Declared here rather than relying on the repository-level default, which can
+# be widened in Settings without any change landing in version control.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
