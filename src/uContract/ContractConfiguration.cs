@@ -8,25 +8,27 @@ namespace uContract;
 /// </summary>
 /// <remarks>
 ///     <para>
-///         Environment variables control which contract types are enforced:
+///         Environment variables control which contract types are enforced. The per-type flags
+///         <strong>override</strong> <c>DBC</c> rather than selecting a subset of it, so
+///         <c>DBC=on DBC_INV=off</c> leaves invariants disabled:
 ///         <list type="bullet">
 ///             <item>
-///                 <term>DBC</term><description>Global on/off switch (controls all contracts)</description>
+///                 <term>DBC</term><description>Default for every contract type; applies only where no per-type flag is set</description>
 ///             </item>
 ///             <item>
-///                 <term>DBC_PRE</term><description>Preconditions only</description>
+///                 <term>DBC_PRE</term><description>Preconditions — overrides <c>DBC</c></description>
 ///             </item>
 ///             <item>
-///                 <term>DBC_POST</term><description>Postconditions only</description>
+///                 <term>DBC_POST</term><description>Postconditions — overrides <c>DBC</c></description>
 ///             </item>
 ///             <item>
-///                 <term>DBC_INV</term><description>Invariants only</description>
+///                 <term>DBC_INV</term><description>Invariants — overrides <c>DBC</c></description>
 ///             </item>
 ///             <item>
-///                 <term>DBC_CHECK</term><description>Check statements only</description>
+///                 <term>DBC_CHECK</term><description>Check statements — overrides <c>DBC</c></description>
 ///             </item>
 ///             <item>
-///                 <term>DBC_DOC</term><description>Diagnostic output flag</description>
+///                 <term>DBC_DOC</term><description>Diagnostic output flag (independent of the above)</description>
 ///             </item>
 ///         </list>
 ///     </para>
@@ -38,11 +40,24 @@ namespace uContract;
 ///         </list>
 ///     </para>
 ///     <para>
-///         Precedence order:
+///         Precedence order, highest first:
 ///         <list type="number">
-///             <item>Environment variables (if set)</item>
+///             <item>The per-type flag, if set (<c>DBC_PRE</c>, <c>DBC_POST</c>, <c>DBC_INV</c>, <c>DBC_CHECK</c>)</item>
+///             <item>
+///                 <c>DBC</c>, if set — it is the default for the types that named no flag of their own,
+///                 not a master switch that outranks them
+///             </item>
 ///             <item>Configuration defaults (Debug=true, Release=false)</item>
 ///         </list>
+///         ADR-0004 records this and rejects the alternative in which <c>DBC_PRE</c> could not
+///         re-enable a type that <c>DBC</c> had disabled.
+///     </para>
+///     <para>
+///         To find out what actually resolved at runtime rather than what was requested, read
+///         <see cref="PreconditionsSource" /> and its siblings — each names whichever of the
+///         per-type flag, <c>DBC</c>, or the build default decided that type. Note that
+///         configuration is read once and frozen, so changing an environment variable after
+///         startup has no effect.
 ///     </para>
 /// </remarks>
 public class ContractConfiguration

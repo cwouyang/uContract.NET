@@ -39,7 +39,11 @@ All contract methods (except pure logic functions) are controlled by environment
 | `Ensure`, `EnsureNotNull`, `EnsureResult`, `EnsureImmutableCollection`, `EnsureAssignable`, `Old` | `DBC_POST` | `on` | `off` |
 | `Invariant`, `InvariantNotNull` | `DBC_INV` | `on` | `off` |
 | `Check` | `DBC_CHECK` | `on` | `off` |
-| **Master switch** | `DBC` | `on` | `off` |
+| **Fallback for any of the above that sets no flag of its own** | `DBC` | `on` | `off` |
+
+Each per-type flag **overrides** `DBC`; `DBC` is not a master switch that outranks them. So
+`DBC=on DBC_INV=off` leaves `Invariant` and `InvariantNotNull` disabled. See
+[ADR-0004](../adr/0004-runtime-configuration-environment-variables.md).
 
 **Pure functions (not controlled by environment variables):**
 - `Imply`, `IfAndOnlyIf`, `CheckUnsupportedOperation`
