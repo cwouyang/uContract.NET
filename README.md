@@ -147,14 +147,26 @@ Control contract evaluation at runtime via environment variables.
 
 ### Environment Variables
 
-| Variable      | Values      | Default (Debug) | Default (Release) | Purpose                          |
-|---------------|-------------|-----------------|-------------------|----------------------------------|
-| `DBC`         | `on`/`off`  | `on`            | `off`             | Master switch for all contracts  |
-| `DBC_PRE`     | `on`/`off`  | `on`            | `off`             | Preconditions only               |
-| `DBC_POST`    | `on`/`off`  | `on`            | `off`             | Postconditions only              |
-| `DBC_INV`     | `on`/`off`  | `on`            | `off`             | Invariants only                  |
-| `DBC_CHECK`   | `on`/`off`  | `on`            | `off`             | Check statements only            |
-| `DBC_DOC`     | `on`/`off`  | `off`           | `off`             | Diagnostic output                |
+| Variable      | Values      | Default (Debug) | Default (Release) | Purpose                                            |
+|---------------|-------------|-----------------|-------------------|----------------------------------------------------|
+| `DBC`         | `on`/`off`  | `on`            | `off`             | Default for every type that sets no flag of its own |
+| `DBC_PRE`     | `on`/`off`  | `on`            | `off`             | Preconditions — overrides `DBC`                     |
+| `DBC_POST`    | `on`/`off`  | `on`            | `off`             | Postconditions — overrides `DBC`                    |
+| `DBC_INV`     | `on`/`off`  | `on`            | `off`             | Invariants — overrides `DBC`                        |
+| `DBC_CHECK`   | `on`/`off`  | `on`            | `off`             | Check statements — overrides `DBC`                  |
+| `DBC_DOC`     | `on`/`off`  | `off`           | `off`             | Diagnostic output (independent of the above)        |
+
+**Resolution order, highest first:** the per-type flag, then `DBC`, then the build default.
+The per-type flags **override** `DBC` rather than selecting a subset of it — so `DBC=on DBC_INV=off`
+leaves invariants disabled, and `DBC=off DBC_PRE=on` enables preconditions only. See
+[ADR-0004](docs/adr/0004-runtime-configuration-environment-variables.md), which rejects the
+alternative where a per-type flag could not re-enable what `DBC` had disabled.
+
+Configuration is read once and frozen at process start, so setting a variable afterwards has no
+effect. To see what actually resolved rather than what you asked for, read
+`ContractConfiguration.PreconditionsSource` and its siblings — each names whichever of the per-type
+flag, `DBC`, or the build default decided that type — or set `DBC_DOC=on` to have the summary
+written to stderr.
 
 ### Quick Setup
 
