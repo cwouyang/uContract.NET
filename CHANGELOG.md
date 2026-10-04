@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2.0.0] - 2026-10-05
+
 This is a major release (2.0.0): the default for contract evaluation changes.
 
 **Migrating from 1.0.0**: contract violations that the 1.0.0 package silently ignored now throw
@@ -115,5 +119,6 @@ Initial release. Direct port of [Java uContract 2.0.1](https://gitlab.com/TeddyC
 
 ---
 
-[Unreleased]: https://github.com/cwouyang/uContract.NET/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/cwouyang/uContract.NET/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/cwouyang/uContract.NET/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/cwouyang/uContract.NET/releases/tag/v1.0.0
