@@ -210,10 +210,45 @@ export DBC=off
 
 ### Supported Types
 
-- ✅ **All reference types** (`class`, `record`)
+- ✅ **All reference types** (`class`, `record`) (see Trimming and Native AOT below)
 - ✅ **All value types** (`struct`, `record struct`)
 - ✅ **Generic types** with appropriate constraints
-- ✅ **Collections** (IEnumerable, List, Array, ImmutableList, etc.)
+- ✅ **Collections** (IEnumerable, List, Array, ImmutableList, etc.) (see Trimming and Native AOT below)
+
+### Trimming and Native AOT
+
+`Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications in 2.0.0. Setting `DBC_POST=off` turns off every postcondition check, these two helpers included.
+
+- **`Old<T>()`** copies the value with reflection-based JSON serialization, which is off by default in trimmed and Native AOT apps. Set the MSBuild property `JsonSerializerIsReflectionEnabledByDefault` to `true` in the application project. Under Native AOT, also preserve the copied types with `DynamicDependency`. In a trimmed app without Native AOT the MSBuild property was enough in the measured case; preserving the copied types with `DynamicDependency` is the safe choice there too (a copied type that lost members to the trimmer was not measured).
+- **`EnsureAssignable<T>()`** compares the members of `T` in every kind of build. A caller that forwards its own generic type parameter to `EnsureAssignable<T>` gets trim warning `IL2091` until it adds `[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields)]` to that parameter.
+- Under Native AOT it throws `InvalidOperationException` when it reaches a nested object or collection element whose type's members are not preserved. To resolve it, either list the top-level member as assignable (use the plain member name: patterns are regular expressions matched against top-level member names only) or preserve the type with `DynamicDependency`. This includes framework types such as `Uri`, `Exception`, `Version`, `Lazy<T>`, `SemaphoreSlim` and `CancellationTokenSource`. For these, listing the member is the practical choice. Members declared as a value type or as `string` — for example `DateTime`, `Guid`, `decimal`, enums, `Nullable<T>`, value tuples and user structs — compare normally. A member declared as `object` that holds a boxed value, and an array or collection whose elements are classes, follow the nested rule above and can throw. A nested type that genuinely has no properties or fields (for example an empty marker class) also throws under Native AOT; for such a type only listing the member (or `DBC_POST=off`) helps.
+- Assignable patterns are unanchored regular expressions: listing `Customer` also exempts other top-level members whose names contain it (for example `CustomerId`). Anchor the pattern (`^Customer$`) to exempt exactly one member. An auto-property is compared twice, as the property and as its backing field `<Customer>k__BackingField`, so an anchored pattern must cover both (for example `^(Customer|<Customer>k__BackingField)$`).
+- In a trimmed app without Native AOT, a nested type whose property getter was removed by the trimmer makes `EnsureAssignable<T>()` throw `InvalidOperationException` naming the property ("… it has no get method"). The same two ways out apply: list the top-level member as assignable, or preserve the type with `DynamicDependency`.
+- Not detected: a type of which only some members are preserved (the missing members are skipped silently) and, in a trimmed app without Native AOT, a nested type whose members were removed entirely (it compares as equal). Detection also depends on the data: a `null` member, the same instance on both sides, or an empty collection is not inspected.
+
+Preserve types with `DynamicDependency`. In this example `Old<T>()` copies a `Customer` and `EnsureAssignable<T>()` compares the nested `Address`, so under Native AOT both types need their members preserved (the application project also sets `JsonSerializerIsReflectionEnabledByDefault` to `true`):
+
+```csharp
+using System.Diagnostics.CodeAnalysis;
+using uContract;
+
+public sealed record Address(string Street, string City);
+
+public sealed class Customer
+{
+    public string Name { get; set; } = "";
+    public Address Address { get; set; } = new("1 Main St", "Springfield");
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Customer))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Address))]
+    public void Rename(string newName)
+    {
+        Customer oldState = Contract.Old(() => this)!;
+        Name = newName;
+        Contract.EnsureAssignable(this, oldState, nameof(Name));
+    }
+}
+```
 
 ---
 

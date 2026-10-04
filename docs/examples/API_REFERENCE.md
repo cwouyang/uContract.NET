@@ -14,6 +14,7 @@ Complete reference for all 16 public methods in uContract.NET.
 - [Exception Hierarchy](#exception-hierarchy)
 - [Best Practices](#best-practices)
 - [Performance Considerations](#performance-considerations)
+- [Trimming and Native AOT](#trimming-and-native-aot)
 - [See Also](#see-also)
 
 ---
@@ -160,6 +161,22 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 2. **Minimize Old<T>() usage**: Capture only what you need
 3. **Use specific assertions**: `RequireNotNull` is faster than `Require(() => x != null)`
 4. **Cache invariant results**: If invariant checks are expensive, cache the result
+
+---
+
+## Trimming and Native AOT
+
+`Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications in 2.0.0. `DBC_POST=off` turns off every postcondition check, these two helpers included.
+
+- `Old<T>()` needs reflection-based JSON serialization: set `JsonSerializerIsReflectionEnabledByDefault` to `true`, and under Native AOT also preserve the copied types with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`.
+- `EnsureAssignable<T>()` compares the members of `T` in every kind of build. A caller that forwards its own generic parameter to it gets trim warning `IL2091` until that parameter has the same `[DynamicallyAccessedMembers]` annotation.
+- Under Native AOT it throws `InvalidOperationException` when it reaches a nested object or collection element whose type's members are not preserved. List the top-level member as assignable (plain member name; patterns are regular expressions matched against top-level member names) or preserve the type with `DynamicDependency`.
+- Framework types such as `Uri`, `Exception`, `Version` and `Lazy<T>` are affected too; listing the member is the practical choice.
+- Assignable patterns are unanchored regular expressions: `Customer` also exempts `CustomerId`. To exempt exactly one member, anchor the pattern and cover the auto-property's backing field too: `^(Customer|<Customer>k__BackingField)$`.
+- In a trimmed app without Native AOT, a nested type whose property getter was removed by the trimmer makes it throw `InvalidOperationException` naming the property ("… it has no get method"); the same two ways out apply.
+- Not detected: a type with only some members preserved, and, in a trimmed app without Native AOT, a nested type whose members were removed entirely. A `null` member, the same instance on both sides, or an empty collection is not inspected.
+
+See [Trimming and Native AOT](../../README.md#trimming-and-native-aot) in the README for details and an example.
 
 ---
 
