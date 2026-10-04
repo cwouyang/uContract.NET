@@ -54,7 +54,7 @@ public sealed class DiagnosticLoggingTests : IDisposable
     }
 
     [Fact]
-    public void Constructor_WhenNoEnvVarSet_TracksSourceAsBuildDefault()
+    public void Constructor_WhenNoEnvVarSet_TracksSourceAsDefault()
     {
         ContractConfiguration config = new();
 

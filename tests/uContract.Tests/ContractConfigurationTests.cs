@@ -2,7 +2,7 @@ namespace uContract.Tests;
 
 /// <summary>
 ///     Tests for <see cref="ContractConfiguration" /> class.
-///     Verifies environment variable parsing, precedence, and Debug/Release defaults.
+///     Verifies environment variable parsing, precedence, and defaults.
 /// </summary>
 [Collection("EnvironmentVariables")]
 public class ContractConfigurationTests
@@ -63,7 +63,7 @@ public class ContractConfigurationTests
     #region Default Configuration Tests
 
     [Fact]
-    public void Constructor_WhenNoEnvironmentVariablesSet_UsesCorrectBuildDefaults()
+    public void Constructor_WhenNoEnvironmentVariablesSet_EnablesAllContracts()
     {
         _SetupEnvironment();
 
@@ -97,7 +97,7 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-        // Should ignore invalid value and use build default
+        // Should ignore invalid value and use the default
         Assert.True(config.PreconditionsEnabled);
         Assert.True(config.PostconditionsEnabled);
         Assert.True(config.InvariantsEnabled);
@@ -320,7 +320,7 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-        // PreconditionsEnabled should use global DBC=true (not build default)
+        // PreconditionsEnabled should use global DBC=true (not the default)
         // This verifies the null-coalescing chain: DBC_PRE (null) ?? DBC (true) ?? default
         Assert.True(config.PreconditionsEnabled); // Fallback to global true
         Assert.True(config.PostconditionsEnabled); // Uses global true
