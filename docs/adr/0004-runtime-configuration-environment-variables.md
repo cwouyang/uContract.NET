@@ -7,6 +7,7 @@
 - **Date**: 2025-10-18
 - **Deciders**: Project maintainers
 - **Status Date**: 2025-10-18
+- **Amended**: 2026-10-04 — the build-specific default described below is superseded by [ADR-0020](0020-contracts-enabled-by-default.md); see the Amendment under Implementation Notes
 
 ---
 
@@ -510,6 +511,19 @@ This would be a **non-breaking change** and can be added if user feedback indica
   - Note that configuration is read at startup only
   - Clarify that Release builds can still enable contracts via `DBC=on`
 
+### Amendment (2026-10-04): Default superseded by ADR-0020
+
+The build-specific default (Debug: enabled, Release: disabled) is replaced by
+[ADR-0020](0020-contracts-enabled-by-default.md): contracts are enabled by default in every
+build configuration.
+
+- The mechanism (environment variables), the precedence (specific flag, then `DBC`, then the
+  default) and the variable names decided here are unchanged.
+- The text above that describes Debug and Release defaults, including the `IsDebugBuild()`
+  listing and the usage examples, is kept as the historical record. It no longer describes
+  the library's behaviour.
+- ADR-0020 answers the "production safety" rationale given under Negative Consequences.
+
 ---
 
 ## References
@@ -525,3 +539,4 @@ This would be a **non-breaking change** and can be added if user feedback indica
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2025-10-18 | Accepted    | Decision finalized             |
+| 2026-10-04 | Amended     | Build-specific default superseded by ADR-0020. Mechanism, precedence and naming unchanged. See Implementation Notes > Amendment. |

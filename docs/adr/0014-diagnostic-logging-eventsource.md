@@ -7,6 +7,7 @@
 - **Date**: 2026-04-07
 - **Deciders**: uContract.NET Contributors
 - **Status Date**: 2026-04-07
+- **Amended**: 2026-10-04 — the build-specific default source labels described below are superseded by [ADR-0020](0020-contracts-enabled-by-default.md); see the Amendment under Implementation Notes
 
 ---
 
@@ -226,6 +227,18 @@ dotnet-trace collect --providers uContract -- dotnet run
 - Source tracking uses simple string labels, avoiding a new enum to keep the change minimal
 - Tests use `EventListener` subclass to capture events in-process
 
+### Amendment (2026-10-04): Default source label superseded by ADR-0020
+
+The build-specific default source labels (`"default: Debug"` and `"default: Release"`) are
+replaced by [ADR-0020](0020-contracts-enabled-by-default.md): the label for a value that came
+from the default is `"default"`.
+
+- The `ConfigurationLoaded` event, the two-layer approach and the stderr output format decided
+  here are unchanged.
+- The Source tracking table and the example stderr output above are kept as the historical
+  record. For a defaulted setting the library now writes, for example,
+  `[uContract]   Invariants: on (from default)`.
+
 ---
 
 ## References
@@ -244,5 +257,6 @@ dotnet-trace collect --providers uContract -- dotnet run
 |------------|-------------|--------------------------------|
 | 2026-04-07 | Proposed    | Initial draft                  |
 | 2026-04-07 | Accepted    | Decision finalized             |
+| 2026-10-04 | Amended     | Build-specific default source labels superseded by ADR-0020. Event and output format unchanged. See Amendment. |
 
 ---
