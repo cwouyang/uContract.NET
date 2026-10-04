@@ -58,6 +58,10 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="uContract.Tests" />
+  </ItemGroup>
+
   <!-- Public API tracking baseline (per ADR-0019) -->
   <ItemGroup>
     <AdditionalFiles Include="PublicAPI.Shipped.txt" />
