@@ -50,8 +50,24 @@ internal sealed class MemberAccessor
     /// </summary>
     /// <param name="obj">The object to get the value from</param>
     /// <returns>The value of the member</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when the member is a property with no get method visible through the compared type
+    ///     (write-only, its getter was trimmed, or its getter is not visible through that type)
+    /// </exception>
     public object? GetValue(object obj)
     {
+        if (_property is { GetMethod: null })
+        {
+            throw new InvalidOperationException(
+                $"EnsureAssignable cannot read property {_property.DeclaringType}.{_property.Name}: "
+                    + "no get method is visible through the compared type. "
+                    + "If trimming removed it, preserve the type's members, for example with "
+                    + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type. "
+                    + "Otherwise list the top-level member that leads to it as assignable, "
+                    + "or set DBC_POST=off (disables all postcondition checks)."
+            );
+        }
+
         return _property?.GetValue(obj) ?? _field?.GetValue(obj);
     }
 }

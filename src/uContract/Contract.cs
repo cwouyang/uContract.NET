@@ -43,6 +43,25 @@ public static class Contract
 
     private static readonly ConcurrentDictionary<Type, TypeMetadata> MetadataCache = new();
 
+    private const string OldJsonReflectionDisabledMessage =
+        "Old<T>() cannot copy the value: reflection-based JSON serialization is disabled, "
+        + "which is the default in trimmed and Native AOT applications. "
+        + "Set the MSBuild property JsonSerializerIsReflectionEnabledByDefault to true "
+        + "in the application project; under Native AOT also preserve the copied types, "
+        + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
+        + "or set DBC_POST=off (disables all postcondition checks).";
+
+    private const string OldNativeAotSerializationHint =
+        " Under Native AOT a JSON-serializable type also needs its members preserved for reflection, "
+        + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
+        + "or set DBC_POST=off (disables all postcondition checks).";
+
+    // The members EnsureAssignable compares, and so the members the trimmer must preserve for its type argument.
+    private const DynamicallyAccessedMemberTypes ComparedMembers =
+        DynamicallyAccessedMemberTypes.PublicProperties
+        | DynamicallyAccessedMemberTypes.PublicFields
+        | DynamicallyAccessedMemberTypes.NonPublicFields;
+
     /// <summary>
     ///     Validates a precondition and throws an exception if the condition is false.
     /// </summary>
@@ -343,7 +362,9 @@ public static class Contract
     /// </returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="supplier" /> is null.</exception>
     /// <exception cref="InvalidOperationException">
-    ///     Thrown when the type is not JSON-serializable (e.g., delegates, DbContext).
+    ///     Thrown when the type is not JSON-serializable (e.g., delegates, DbContext), or when the supplier
+    ///     returns a non-null value and the application has disabled reflection-based JSON serialization,
+    ///     which is the default in trimmed and Native AOT applications.
     /// </exception>
     /// <remarks>
     ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
@@ -351,6 +372,12 @@ public static class Contract
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Deep copy is performed via System.Text.Json serialization, which requires the type to be serializable.
     ///     This method supports both reference types and value types (no generic constraint).
+    ///     In a trimmed or Native AOT application the copy needs reflection-based JSON serialization: set the
+    ///     MSBuild property <c>JsonSerializerIsReflectionEnabledByDefault</c> to <c>true</c> in the application
+    ///     project, and under Native AOT also preserve the copied types, for example with
+    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c>. Otherwise this method
+    ///     throws <see cref="InvalidOperationException" /> with those instructions; setting <c>DBC_POST=off</c>
+    ///     disables all postcondition checks, this method included.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -396,14 +423,21 @@ public static class Contract
                 return default!;
             }
 
+            if (!RuntimeFacts.IsJsonReflectionEnabled)
+            {
+                throw new InvalidOperationException(OldJsonReflectionDisabledMessage);
+            }
+
             // Deep copy via JSON serialization
             string json = JsonSerializer.Serialize(obj, JsonOptions);
             return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
         }
         catch (NotSupportedException ex)
         {
+            string message =
+                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.";
             throw new InvalidOperationException(
-                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.",
+                RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
                 ex
             );
         }
@@ -910,11 +944,15 @@ public static class Contract
     ///     Ensures that only specified fields have changed between two object states.
     ///     Compares all public properties and fields, throwing an exception if any non-assignable field has been modified.
     /// </summary>
-    /// <typeparam name="T">The type of objects to compare (supports both reference and value types)</typeparam>
+    /// <typeparam name="T">
+    ///     The type of objects to compare (supports both reference and value types).
+    ///     Its public properties and its public and non-public fields are preserved for reflection in trimmed and
+    ///     Native AOT applications.
+    /// </typeparam>
     /// <param name="actual">The current state of the object</param>
     /// <param name="expected">The expected (old) state of the object</param>
     /// <param name="assignableFieldPatterns">
-    ///     Regular expression patterns matching field names that are allowed to change.
+    ///     Regular expression patterns matching top-level member names that are allowed to change.
     ///     Examples: "Email", ".*Timestamp", "^_.*"
     /// </param>
     /// <exception cref="ArgumentNullException">
@@ -924,8 +962,22 @@ public static class Contract
     /// <exception cref="PostconditionViolationException">
     ///     Thrown when fields not marked as assignable have been modified
     /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown under Native AOT when <typeparamref name="T" />, or the runtime type of a nested member or
+    ///     collection element that has to be compared, has no properties or fields visible to reflection.
+    ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
+    ///     Also thrown, in any build, when a public property that has to be compared has no get method visible
+    ///     through the compared type: a write-only property, or one whose getter was removed by trimming. This
+    ///     applies to properties of <typeparamref name="T" />, of nested members, of collection elements and of
+    ///     base classes. A property whose getter is non-public is compared as usual when the getter is declared on
+    ///     the compared type; a getter that is not visible through the compared type — a private getter declared
+    ///     on a base class, or a virtual property whose derived class overrides only the setter — is reported by
+    ///     this rule.
+    /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare all public properties and private fields recursively.
+    ///     Under Native AOT, a type whose members were not preserved cannot be compared; the method then throws
+    ///     <see cref="InvalidOperationException" /> rather than report that nothing changed.
     ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
     ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
@@ -942,8 +994,14 @@ public static class Contract
     /// }
     /// </code>
     /// </example>
-    [RequiresUnreferencedCode("EnsureAssignable uses reflection to enumerate and compare fields and properties.")]
-    public static void EnsureAssignable<T>(T actual, T expected, params string[] assignableFieldPatterns)
+    [RequiresUnreferencedCode(
+        "EnsureAssignable uses reflection to enumerate and compare fields and properties. Members of the top-level type are preserved; the types of nested objects and collection elements are not."
+    )]
+    public static void EnsureAssignable<[DynamicallyAccessedMembers(ComparedMembers)] T>(
+        T actual,
+        T expected,
+        params string[] assignableFieldPatterns
+    )
     {
         // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
         ArgumentNullException.ThrowIfNull(actual);
@@ -983,10 +1041,25 @@ public static class Contract
         }
     }
 
-    private static List<string> _FindDifferences<T>(T actual, T expected, string[] assignableFieldPatterns)
+    private static List<string> _FindDifferences<[DynamicallyAccessedMembers(ComparedMembers)] T>(
+        T actual,
+        T expected,
+        string[] assignableFieldPatterns
+    )
     {
         Type type = typeof(T);
         TypeMetadata metadata = _GetOrCacheMetadata(type);
+
+        if (_MembersAreHidden(type, metadata))
+        {
+            throw new InvalidOperationException(
+                $"EnsureAssignable cannot compare {type}: no properties or fields are visible to reflection "
+                    + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
+                    + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off "
+                    + "(disables all postcondition checks)."
+            );
+        }
+
         List<string> differences = [];
 
         foreach (MemberAccessor member in metadata.Members)
@@ -998,9 +1071,15 @@ public static class Contract
 
             object? actualValue = member.GetValue(actual!);
             object? expectedValue = member.GetValue(expected!);
+            HiddenMembers? hidden = null;
 
-            if (!_AreEqual(actualValue, expectedValue, member.MemberType))
+            if (!_AreEqual(actualValue, expectedValue, member.MemberType, ref hidden))
             {
+                if (hidden is not null)
+                {
+                    throw _CannotCompareNested(type, _SourceName(member.Name), hidden);
+                }
+
                 differences.Add(member.Name);
             }
         }
@@ -1011,7 +1090,7 @@ public static class Contract
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]."
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
     )]
     private static TypeMetadata _GetOrCacheMetadata(Type type)
     {
@@ -1019,6 +1098,8 @@ public static class Contract
             type,
             t =>
             {
+                // These binding flags must stay within what ComparedMembers preserves: widening one
+                // without the other loses members silently under Native AOT.
                 PropertyInfo[] properties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
                 FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -1034,6 +1115,42 @@ public static class Contract
         );
     }
 
+    private static InvalidOperationException _CannotCompareNested(
+        Type comparedType,
+        string topLevelMember,
+        HiddenMembers hidden
+    )
+    {
+        string path = $"{comparedType.Name}.{topLevelMember}{hidden.PathBelowTopLevelMember}";
+
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
+                + "no properties or fields are visible to reflection under Native AOT. "
+                + $"Ways out: list '{topLevelMember}' as assignable (patterns are regular expressions "
+                + "matched against top-level member names, so use the plain member name); "
+                + "if the type has members, preserve them, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "or set DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // Under Native AOT a type whose members were not preserved reflects as having none, which
+    // would make every comparison of it pass. System.Object genuinely has none (lock objects).
+    private static bool _MembersAreHidden(Type type, TypeMetadata metadata)
+    {
+        return metadata.Members.Count == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
+    }
+
+    // A compiler-generated backing field "<Name>k__BackingField" is shown as the property it backs.
+    private static string _SourceName(string memberName)
+    {
+        const string backingFieldSuffix = ">k__BackingField";
+
+        return memberName.StartsWith('<') && memberName.EndsWith(backingFieldSuffix, StringComparison.Ordinal)
+            ? memberName[1..^backingFieldSuffix.Length]
+            : memberName;
+    }
+
     private static bool _IsAssignable(string fieldName, string[] patterns)
     {
         if (patterns == null || patterns.Length == 0)
@@ -1044,7 +1161,9 @@ public static class Contract
         return patterns.Any(pattern => Regex.IsMatch(fieldName, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
     }
 
-    private static bool _AreEqual(object? actual, object? expected, Type memberType)
+    // A false return with hidden set means "could not compare" (a type with no visible members
+    // blocked the comparison), not "different". Callers must check hidden before reporting a difference.
+    private static bool _AreEqual(object? actual, object? expected, Type memberType, ref HiddenMembers? hidden)
     {
         if (ReferenceEquals(actual, expected))
         {
@@ -1063,13 +1182,13 @@ public static class Contract
 
         if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)
         {
-            return _CompareCollections(actualEnum, expectedEnum);
+            return _CompareCollections(actualEnum, expectedEnum, ref hidden);
         }
 
-        return memberType.IsClass ? _CompareRecursively(actual, expected) : Equals(actual, expected);
+        return memberType.IsClass ? _CompareRecursively(actual, expected, ref hidden) : Equals(actual, expected);
     }
 
-    private static bool _CompareCollections(IEnumerable actual, IEnumerable expected)
+    private static bool _CompareCollections(IEnumerable actual, IEnumerable expected, ref HiddenMembers? hidden)
     {
         object?[] actualArray = actual.Cast<object?>().ToArray();
         object?[] expectedArray = expected.Cast<object?>().ToArray();
@@ -1095,8 +1214,9 @@ public static class Contract
             }
 
             Type itemType = actualItem.GetType();
-            if (!_AreEqual(actualItem, expectedItem, itemType))
+            if (!_AreEqual(actualItem, expectedItem, itemType, ref hidden))
             {
+                hidden?.Prepend("[]");
                 return false;
             }
         }
@@ -1104,23 +1224,44 @@ public static class Contract
         return true;
     }
 
-    private static bool _CompareRecursively(object actual, object expected)
+    private static bool _CompareRecursively(object actual, object expected, ref HiddenMembers? hidden)
     {
         Type type = actual.GetType();
         TypeMetadata metadata = _GetOrCacheMetadata(type);
+
+        if (_MembersAreHidden(type, metadata))
+        {
+            hidden = new HiddenMembers(type);
+            return false;
+        }
 
         foreach (MemberAccessor member in metadata.Members)
         {
             object? actualValue = member.GetValue(actual);
             object? expectedValue = member.GetValue(expected);
 
-            if (!_AreEqual(actualValue, expectedValue, member.MemberType))
+            if (!_AreEqual(actualValue, expectedValue, member.MemberType, ref hidden))
             {
+                hidden?.Prepend("." + _SourceName(member.Name));
                 return false;
             }
         }
 
         return true;
+    }
+
+    // Created only when a comparison is blocked. The path is prepended one segment per level on
+    // the way back up, so a comparison that is not blocked allocates nothing for it.
+    private sealed class HiddenMembers(Type type)
+    {
+        public Type Type { get; } = type;
+
+        public string PathBelowTopLevelMember { get; private set; } = "";
+
+        public void Prepend(string segment)
+        {
+            PathBelowTopLevelMember = segment + PathBelowTopLevelMember;
+        }
     }
 
     // ============================================================

@@ -619,6 +619,8 @@ public class User  // Entity (has identity)
 public enum UserStatus { Active, Locked, Deactivated }
 ```
 
+In trimmed and Native AOT applications, `Old<T>()` and `EnsureAssignable<T>()` need extra setup; see [Trimming and Native AOT](../README.md#trimming-and-native-aot).
+
 ---
 
 ## Domain Services
@@ -997,6 +999,8 @@ public void ChangeEmail(string newEmail)
         nameof(_email), nameof(_lastModified));  // ✅
 }
 ```
+
+In trimmed and Native AOT applications, `Old<T>()` and `EnsureAssignable<T>()` need extra setup; see [Trimming and Native AOT](../README.md#trimming-and-native-aot).
 
 ---
 

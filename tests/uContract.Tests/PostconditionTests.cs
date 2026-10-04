@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Reflection;
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -284,6 +285,20 @@ public class OldTests
 
         Assert.Contains("cannot be serialized", exception.Message);
         Assert.IsType<NotSupportedException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void Old_WhenTypeNotSerializable_MessageIsExact()
+    {
+        NonSerializableType obj = new();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => Contract.Old(() => obj));
+
+        Assert.Equal(
+            $"Type {nameof(NonSerializableType)} cannot be serialized for Old<T>(). "
+                + "Ensure the type is JSON-serializable.",
+            exception.Message
+        );
     }
 
     [Fact]
@@ -1120,6 +1135,178 @@ public class EnsureAssignableTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenTypeHasNoMembers_DoesNotThrow()
+    {
+        EmptyType first = new();
+        EmptyType second = new();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenNestedTypeHasNoMembers_DoesNotThrow()
+    {
+        HoldsEmptyType first = new() { Child = new EmptyType() };
+        HoldsEmptyType second = new() { Child = new EmptyType() };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTypeHasNoMembersAndComparedTwice_DoesNotThrowEitherTime()
+    {
+        EmptyType first = new();
+        EmptyType second = new();
+
+        Exception? firstRun = Record.Exception(() => Contract.EnsureAssignable(first, second));
+        Exception? secondRun = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(firstRun);
+        Assert.Null(secondRun);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTypeHasLockObjectField_DoesNotThrow()
+    {
+        HoldsLock first = new();
+        HoldsLock second = new();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenGetterThrows_PropagatesTargetInvocationException()
+    {
+        ThrowingGetter first = new();
+        ThrowingGetter second = new();
+
+        TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.IsType<ArgumentException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyIsWriteOnly_ThrowsInvalidOperationException()
+    {
+        WriteOnly first = new() { X = "a" };
+        WriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(WriteOnly)}.X", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+        Assert.Contains("DynamicDependency", exception.Message);
+        Assert.Contains("DBC_POST=off", exception.Message);
+        Assert.Contains("no get method is visible through the compared type", exception.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenNestedTypeHasWriteOnlyProperty_ThrowsInvalidOperationException()
+    {
+        HoldsWriteOnly first = new() { Child = new WriteOnly { X = "a" } };
+        HoldsWriteOnly second = new() { Child = new WriteOnly { X = "a" } };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(WriteOnly)}.X", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenWriteOnlyPropertyIsInherited_NamesTheBaseClassAsDeclaringType()
+    {
+        InheritsWriteOnly first = new() { X = "a" };
+        InheritsWriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(WriteOnlyBase)}.X", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenWriteOnlyPropertyIsAssignable_DoesNotReadIt()
+    {
+        WriteOnly first = new() { X = "a" };
+        WriteOnly second = new() { X = "a" };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second, "^X$"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyGetterIsNonPublicAndValuesMatch_DoesNotThrow()
+    {
+        PrivateGetter first = new() { Secret = "a" };
+        PrivateGetter second = new() { Secret = "a" };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyGetterIsNonPublicAndValuesDiffer_ReportsTheProperty()
+    {
+        PrivateGetter first = new() { Secret = "a" };
+        PrivateGetter second = new() { Secret = "b" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains("  - Secret", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenInheritedGetterIsPrivate_ThrowsInvalidOperationException()
+    {
+        InheritsPrivateGetter first = new() { Secret = "a" };
+        InheritsPrivateGetter second = new() { Secret = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(PrivateGetterBase)}.Secret", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+        Assert.Contains("no get method is visible through the compared type", exception.Message);
+        Assert.Contains("DynamicDependency", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDerivedTypeOverridesOnlyTheSetter_ThrowsInvalidOperationException()
+    {
+        OverridesOnlyTheSetter first = new() { Label = "a" };
+        OverridesOnlyTheSetter second = new() { Label = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(OverridesOnlyTheSetter)}.Label", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+        Assert.Contains("no get method is visible through the compared type", exception.Message);
+        Assert.Contains("DynamicDependency", exception.Message);
+    }
+
     private sealed class TestPerson
     {
         public string Name { get; set; } = "";
@@ -1148,6 +1335,468 @@ public class EnsureAssignableTests
     {
         public int OrderId { get; set; }
         public TestPerson Customer { get; set; } = new();
+    }
+
+    private sealed class EmptyType;
+
+    private sealed class HoldsEmptyType
+    {
+        public EmptyType Child { get; set; } = new();
+    }
+
+    private sealed class HoldsLock
+    {
+        private readonly object _lock = new();
+
+        public object LockHandle => _lock;
+    }
+
+    private sealed class ThrowingGetter
+    {
+        private readonly string _message = "getter failed";
+
+        public string Value => throw new ArgumentException(_message);
+    }
+
+    private sealed class WriteOnly
+    {
+        private string _x = "";
+
+        public string X
+        {
+            set => _x = value;
+        }
+
+        public int XLength => _x.Length;
+    }
+
+    private sealed class HoldsWriteOnly
+    {
+        public WriteOnly Child { get; set; } = new();
+    }
+
+    private class WriteOnlyBase
+    {
+        private string _x = "";
+
+        public string X
+        {
+            set => _x = value;
+        }
+
+        public int XLength => _x.Length;
+    }
+
+    private sealed class InheritsWriteOnly : WriteOnlyBase;
+
+    private sealed class PrivateGetter
+    {
+        public string Secret { private get; set; } = "";
+    }
+
+    private class PrivateGetterBase
+    {
+        public string Secret { private get; set; } = "";
+    }
+
+    private sealed class InheritsPrivateGetter : PrivateGetterBase;
+
+    private class VirtualPropertyBase
+    {
+        public virtual string Label { get; set; } = "";
+    }
+
+    private sealed class OverridesOnlyTheSetter : VirtualPropertyBase
+    {
+        public override string Label
+        {
+            set => base.Label = value;
+        }
+    }
+}
+
+/// <summary>
+///     EnsureAssignable under Native AOT, simulated through the <see cref="RuntimeFacts" /> seam.
+///     The override is process-wide state, so this class shares the collection of the other
+///     tests that mutate process-wide state.
+/// </summary>
+[Collection("EnvironmentVariables")]
+public sealed class EnsureAssignableWithoutDynamicCodeTests
+{
+    [Fact]
+    public void EnsureAssignable_WhenNestedTypeHasNoVisibleMembers_ThrowsInvalidOperationException()
+    {
+        OrderWithCustomer first = new() { Customer = new NoVisibleMembers() };
+        OrderWithCustomer second = new() { Customer = new NoVisibleMembers() };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains(typeof(NoVisibleMembers).ToString(), cannotCompare.Message);
+        Assert.Contains("'OrderWithCustomer.Customer'", cannotCompare.Message);
+        Assert.Contains("'Customer' as assignable", cannotCompare.Message);
+        Assert.Contains("DynamicDependency", cannotCompare.Message);
+        Assert.Contains("DBC_POST=off", cannotCompare.Message);
+        Assert.Contains("if the type has members, preserve them", cannotCompare.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", cannotCompare.Message);
+        Assert.DoesNotContain("k__BackingField", cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberValueIsPlainObject_DoesNotThrow()
+    {
+        HoldsLock first = new();
+        HoldsLock second = new();
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenComparedTypeItselfHasNoVisibleMembers_ThrowsInvalidOperationException()
+    {
+        NoVisibleMembers first = new();
+        NoVisibleMembers second = new();
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains(typeof(NoVisibleMembers).ToString(), cannotCompare.Message);
+        Assert.Contains("DBC_POST=off", cannotCompare.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", cannotCompare.Message);
+        Assert.DoesNotContain("assignable", cannotCompare.Message);
+        Assert.DoesNotContain("DynamicDependency", cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenHiddenTypeIsTwoLevelsDeep_NamesFullPathAndTopLevelMember()
+    {
+        OrderWithAddressedCustomer first = new();
+        OrderWithAddressedCustomer second = new();
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains("'OrderWithAddressedCustomer.Customer.Address'", cannotCompare.Message);
+        Assert.Contains("'Customer' as assignable", cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenCollectionElementTypeHasNoVisibleMembers_PathEndsWithElementMarker()
+    {
+        OrderWithLines first = new() { Lines = [new NoVisibleMembers()] };
+        OrderWithLines second = new() { Lines = [new NoVisibleMembers()] };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains("'OrderWithLines.Lines[]'", cannotCompare.Message);
+        Assert.Contains("'Lines' as assignable", cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenHiddenElementTypeIsInsideNestedObject_PathKeepsSegmentsInOrder()
+    {
+        OrderWithLinedCustomer first = new();
+        OrderWithLinedCustomer second = new();
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains("'OrderWithLinedCustomer.Customer.Lines[]'", cannotCompare.Message);
+        Assert.Contains("'Customer' as assignable", cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenHiddenTypeIsReachedThroughBackingFields_PathShowsPropertyNames()
+    {
+        OrderWithNonPublicCustomer first = new();
+        OrderWithNonPublicCustomer second = new();
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains("'OrderWithNonPublicCustomer.Customer.Address'", cannotCompare.Message);
+        Assert.Contains("'Customer' as assignable", cannotCompare.Message);
+        Assert.DoesNotContain("k__BackingField", cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberWithHiddenTypeIsAssignable_DoesNotThrow()
+    {
+        OrderWithCustomer first = new() { Customer = new NoVisibleMembers() };
+        OrderWithCustomer second = new() { Customer = new NoVisibleMembers() };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second, "Customer"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenHiddenTypeComparedTwice_ThrowsBothTimes()
+    {
+        OrderWithCustomer first = new() { Customer = new NoVisibleMembers() };
+        OrderWithCustomer second = new() { Customer = new NoVisibleMembers() };
+
+        Exception? firstRun = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? secondRun = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.IsType<InvalidOperationException>(firstRun);
+        Assert.IsType<InvalidOperationException>(secondRun);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEarlierMemberDiffersAndLaterTypeIsHidden_ThrowsInvalidOperationException()
+    {
+        OrderWithCustomer first = new() { OrderId = 1, Customer = new NoVisibleMembers() };
+        OrderWithCustomer second = new() { OrderId = 2, Customer = new NoVisibleMembers() };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.IsType<InvalidOperationException>(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenActualNestedValueIsNull_ThrowsPostconditionViolation()
+    {
+        OrderWithCustomer actual = new() { Customer = null };
+        OrderWithCustomer expected = new() { Customer = new NoVisibleMembers() };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.IsType<PostconditionViolationException>(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenExpectedNestedValueIsNull_ThrowsPostconditionViolation()
+    {
+        OrderWithCustomer actual = new() { Customer = new NoVisibleMembers() };
+        OrderWithCustomer expected = new() { Customer = null };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.IsType<PostconditionViolationException>(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenBothNestedValuesAreNull_DoesNotThrow()
+    {
+        OrderWithCustomer first = new() { Customer = null };
+        OrderWithCustomer second = new() { Customer = null };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenNestedInstanceIsShared_DoesNotThrow()
+    {
+        NoVisibleMembers shared = new();
+        OrderWithCustomer first = new() { Customer = shared };
+        OrderWithCustomer second = new() { Customer = shared };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenCollectionOfHiddenTypeIsEmpty_DoesNotThrow()
+    {
+        OrderWithLines first = new() { Lines = [] };
+        OrderWithLines second = new() { Lines = [] };
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenComparedTypeIsPlainObject_DoesNotThrow()
+    {
+        object first = new();
+        object second = new();
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    private static Exception? RecordWithoutDynamicCode(Action act)
+    {
+        try
+        {
+            RuntimeFacts.DynamicCodeSupportedOverride = false;
+            return Record.Exception(act);
+        }
+        finally
+        {
+            RuntimeFacts.DynamicCodeSupportedOverride = null;
+        }
+    }
+
+    private sealed class NoVisibleMembers;
+
+    // Non-public auto-properties are reached only through their compiler-generated backing fields.
+    private sealed class OrderWithNonPublicCustomer
+    {
+        internal CustomerWithNonPublicAddress Customer { get; set; } = new();
+    }
+
+    private sealed class CustomerWithNonPublicAddress
+    {
+        internal NoVisibleMembers Address { get; set; } = new();
+    }
+
+    private sealed class OrderWithLines
+    {
+        public List<NoVisibleMembers> Lines { get; set; } = [];
+    }
+
+    private sealed class OrderWithLinedCustomer
+    {
+        public CustomerWithLines Customer { get; set; } = new();
+    }
+
+    private sealed class CustomerWithLines
+    {
+        public List<NoVisibleMembers> Lines { get; set; } = [new NoVisibleMembers()];
+    }
+
+    private sealed class OrderWithAddressedCustomer
+    {
+        public CustomerWithAddress Customer { get; set; } = new();
+    }
+
+    private sealed class CustomerWithAddress
+    {
+        public string Name { get; set; } = "Alice";
+        public NoVisibleMembers Address { get; set; } = new();
+    }
+
+    private sealed class OrderWithCustomer
+    {
+        public int OrderId { get; set; }
+        public NoVisibleMembers? Customer { get; set; }
+    }
+
+    private sealed class HoldsLock
+    {
+        private readonly object _lock = new();
+
+        public object LockHandle => _lock;
+    }
+}
+
+/// <summary>
+///     Old under trimming and Native AOT, simulated through the <see cref="RuntimeFacts" /> seam.
+///     The overrides are process-wide state, so this class shares the collection of the other
+///     tests that mutate process-wide state.
+/// </summary>
+[Collection("EnvironmentVariables")]
+public sealed class OldWhenRuntimePreventsSerializationTests
+{
+    [Fact]
+    public void Old_WhenJsonReflectionDisabled_ThrowsInvalidOperationExceptionExplainingHowToProceed()
+    {
+        TestAccount account = new() { Balance = 100m, Owner = "Alice" };
+
+        Exception? exception = RecordWithoutJsonReflection(() => Contract.Old(() => account));
+
+        InvalidOperationException cannotCopy = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Null(cannotCopy.InnerException);
+        Assert.Contains("Old<T>()", cannotCopy.Message);
+        Assert.Contains("JsonSerializerIsReflectionEnabledByDefault", cannotCopy.Message);
+        Assert.Contains("Native AOT", cannotCopy.Message);
+        Assert.Contains("DynamicDependency", cannotCopy.Message);
+        Assert.Contains("DBC_POST=off", cannotCopy.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", cannotCopy.Message);
+    }
+
+    [Fact]
+    public void Old_WhenJsonReflectionDisabled_ResetsRecursionGuardAfterThrowing()
+    {
+        const int balance = 42;
+        TestAccount account = new() { Balance = 100m, Owner = "Alice" };
+
+        Exception? exception = RecordWithoutJsonReflection(() => Contract.Old(() => account));
+        int oldBalance = Contract.Old(() => balance);
+
+        Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(balance, oldBalance);
+    }
+
+    [Fact]
+    public void Old_WhenTypeNotSerializableWithoutDynamicCode_AppendsNativeAotGuidanceToMessage()
+    {
+        NonSerializableType obj = new();
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.Old(() => obj));
+
+        InvalidOperationException cannotSerialize = Assert.IsType<InvalidOperationException>(exception);
+        Assert.IsType<NotSupportedException>(cannotSerialize.InnerException);
+        Assert.StartsWith(
+            $"Type {nameof(NonSerializableType)} cannot be serialized for Old<T>(). "
+                + "Ensure the type is JSON-serializable. ",
+            cannotSerialize.Message
+        );
+        Assert.Contains("Native AOT", cannotSerialize.Message);
+        Assert.Contains("DynamicDependency", cannotSerialize.Message);
+        Assert.Contains("DBC_POST=off", cannotSerialize.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", cannotSerialize.Message);
+    }
+
+    [Fact]
+    public void Old_WhenJsonReflectionDisabledAndSupplierReturnsNull_ReturnsDefault()
+    {
+        TestAccount? account = null;
+        TestAccount? oldAccount = new();
+
+        Exception? exception = RecordWithoutJsonReflection(() => oldAccount = Contract.Old(() => account));
+
+        Assert.Null(exception);
+        Assert.Null(oldAccount);
+    }
+
+    [Fact]
+    public void Old_WhenJsonReflectionDisabledAndSupplierThrows_PropagatesExceptionAndResetsRecursionGuard()
+    {
+        const int balance = 42;
+        ArgumentException supplierFailure = new("supplier failed");
+
+        Exception? exception = RecordWithoutJsonReflection(() => Contract.Old<int>(() => throw supplierFailure));
+        int oldBalance = Contract.Old(() => balance);
+
+        Assert.Same(supplierFailure, exception);
+        Assert.Equal(balance, oldBalance);
+    }
+
+    private static Exception? RecordWithoutDynamicCode(Action act)
+    {
+        try
+        {
+            RuntimeFacts.DynamicCodeSupportedOverride = false;
+            return Record.Exception(act);
+        }
+        finally
+        {
+            RuntimeFacts.DynamicCodeSupportedOverride = null;
+        }
+    }
+
+    private static Exception? RecordWithoutJsonReflection(Action act)
+    {
+        try
+        {
+            RuntimeFacts.JsonReflectionEnabledOverride = false;
+            return Record.Exception(act);
+        }
+        finally
+        {
+            RuntimeFacts.JsonReflectionEnabledOverride = null;
+        }
     }
 }
 

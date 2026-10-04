@@ -91,6 +91,7 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 - [ADR-0007: Reflection and Field Comparison for EnsureAssignable<T>()](0007-reflection-field-comparison.md) — 2025-10-18
 - [ADR-0008: Exception Hierarchy Design](0008-exception-hierarchy.md) — 2025-10-18
 - [ADR-0009: Thread Safety and Async/Await Support](0009-thread-safety-async-support.md) — 2025-10-18
+- [ADR-0021: Postcondition Helpers under Trimming and Native AOT](0021-postconditions-under-trimming-and-aot.md) — 2026-10-04
 
 **Third Priority (Publishing and Maintenance)**:
 - [ADR-0010: Testing Framework - xUnit](0010-testing-framework-xunit.md) — 2025-10-18

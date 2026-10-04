@@ -51,7 +51,7 @@ dotnet build -c Release -p:ContinuousIntegrationBuild=true --no-restore
 dotnet test -c Release --no-build --verbosity normal
 ```
 
-If all six succeed locally, CI will succeed.
+These six cover everything CI runs except the Native AOT smoke test, which CI publishes and runs on Linux (`tests/uContract.AotSmoke`); reproducing it needs the platform's native toolchain. An ordinary `dotnet run` of that project must be given `--report` (or `-p:PublishAot=false`): a project with `PublishAot` reports no dynamic-code support even under the JIT, so it would otherwise assert.
 
 ### Upgrading CSharpier
 

@@ -260,6 +260,8 @@ public class ShoppingCart
 public record CartItem(string ProductName, decimal Price, int Quantity);
 ```
 
+In trimmed and Native AOT applications, `Old<T>()` needs extra setup; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot).
+
 ### Field Assignment Validation
 
 Using `EnsureAssignable<T>()` to validate which fields changed.
@@ -332,6 +334,8 @@ public class User
     }
 }
 ```
+
+In trimmed and Native AOT applications, `EnsureAssignable<T>()` can throw `InvalidOperationException` for nested types; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot).
 
 **Using Regex Patterns:**
 

@@ -7,6 +7,7 @@
 - **Date**: 2026-10-04
 - **Deciders**: Project maintainer
 - **Status Date**: 2026-10-04
+- **Amended**: 2026-10-04 — the "Trimming and Native AOT: not verified" consequence below is superseded by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
 
 ---
 
@@ -168,6 +169,26 @@ This ADR was written after the implementation so that it could record what the w
 - **Test-suite ordering.** `Contract.Config` freezes at first use, and `ContractConfigurationTests` changed process-wide environment variables without clearing them. The suite passed only because the last test to run in that class happened to leave contracts enabled; renaming a test changed which test ran last, and 3 of 40 full-suite runs then failed with the same 78 failures. `ContractConfigurationTests` now clears the variables after every test, as `DiagnosticLoggingTests` already did. The suite still relies on `DisableTestParallelization`.
 - **SDK pinning.** `dotnet pack` run from outside the repository directory does not see `global.json`, picks a newer SDK, and fails under `TreatWarningsAsErrors` on analyzer rule IDE0305. Packing from the repository root, as the release checklist does, works.
 
+### Amendment (2026-10-04): Trimming and Native AOT consequence superseded by ADR-0021
+
+Two sentences of the Negative Consequence that begins "**Trimming and Native AOT: not
+verified.**" are superseded by [ADR-0021](0021-postconditions-under-trimming-and-aot.md), which
+records what was measured for [issue #36](https://github.com/cwouyang/uContract.NET/issues/36)
+and what was changed.
+
+- Superseded: the sentence "Nobody has run them in a trimmed or Native AOT published application
+  with contracts enabled". Both helpers were run in trimmed and in Native AOT published
+  applications; ADR-0021 holds the results.
+- Superseded: the advice "Such consumers should set `DBC_POST=off` until issue #36 is resolved".
+  `Old<T>()` and `EnsureAssignable<T>()` have limited support there, described in ADR-0021 and in
+  the README section "Trimming and Native AOT". `DBC_POST=off` remains one way out.
+- The other sentences of that consequence stand, with one addition. The
+  `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]` attributes and the `IsAotCompatible`
+  declaration remain, and both helpers run by default. `EnsureAssignable<T>` gained
+  `[DynamicallyAccessedMembers]` on its type parameter, and the text of its
+  `[RequiresUnreferencedCode]` message changed.
+- The decision of this ADR (contracts enabled by default) is unchanged.
+
 ---
 
 ## References
@@ -188,3 +209,4 @@ This ADR was written after the implementation so that it could record what the w
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2026-10-04 | Accepted    | Decision recorded after implementation. Supersedes the build-specific default of ADR-0004 and the default source labels of ADR-0014. |
+| 2026-10-04 | Amended     | "Trimming and Native AOT: not verified" consequence superseded by ADR-0021. Decision unchanged. See Implementation Notes > Amendment. |

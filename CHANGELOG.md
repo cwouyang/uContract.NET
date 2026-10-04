@@ -17,7 +17,8 @@ This is a major release (2.0.0): the default for contract evaluation changes.
 `DBC`). If you already set `DBC=on`, nothing changes for you. If you enabled a single contract type
 with only a per-type flag (for example `DBC_PRE=on`), add `DBC=off` to keep the other types
 disabled. Use per-type flags to keep cheap contracts on and expensive ones off, for example
-`DBC_POST=off`.
+`DBC_POST=off`. For trimmed and Native AOT applications, see
+[Trimming and Native AOT](README.md#trimming-and-native-aot) in the README.
 
 ### Changed
 
@@ -25,16 +26,31 @@ disabled. Use per-type flags to keep cheap contracts on and expensive ones off, 
   variable set, 1.0.0 packages evaluated nothing; 2.0.0 evaluates preconditions, postconditions,
   invariants and checks. `Old<T>()` therefore runs by default: it deep-copies through JSON
   serialization and throws `InvalidOperationException` for types that cannot be serialized.
-  Behaviour of `Old<T>()` and `EnsureAssignable<T>()` under trimming and Native AOT with contracts
-  enabled has not been verified; set `DBC_POST=off` there. (ADR-0020)
+  `Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT
+  applications; see [Trimming and Native AOT](README.md#trimming-and-native-aot) and
+  [ADR-0021](docs/adr/0021-postconditions-under-trimming-and-aot.md). (ADR-0020)
 - **BREAKING**: The source label for a defaulted setting is `default` instead of `default: Debug`
   or `default: Release`. It appears in `ContractConfiguration.*Source`, the `DBC_DOC` output and
   the `ConfigurationLoaded` event.
+- **BREAKING**: `EnsureAssignable<T>()` fails with `InvalidOperationException` instead of
+  `ArgumentException` when a compared type has a property with no get method (a write-only
+  property, including one inherited from a base class; also a property whose getter is not visible
+  through the compared type — a private getter declared on a base class, or a virtual property
+  whose derived class overrides only the setter).
+- Callers that forward their own generic parameter to `EnsureAssignable<T>` and have trim analysis
+  enabled get warning `IL2091` until they add
+  `[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields)]`
+  to their own type parameter.
 
 ### Fixed
 
 - Package consumers no longer get contracts silently disabled in their Debug builds. The default
   was decided by `#if DEBUG` inside the library, and the package is built in Release (#32).
+- `EnsureAssignable<T>()` no longer passes silently under Native AOT when a compared type exposes
+  no members to reflection. The top-level type is now preserved, and a nested type that is not
+  throws `InvalidOperationException` with instructions (#36).
+- `Old<T>()` explains how to proceed when reflection-based JSON serialization is disabled, instead
+  of surfacing System.Text.Json's message (#36).
 
 ---
 
