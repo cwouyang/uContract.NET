@@ -88,16 +88,19 @@ Land each step as its own commit so the formatting-only commit can be added to `
    - Move every entry from `src/uContract/PublicAPI.Unshipped.txt` to `src/uContract/PublicAPI.Shipped.txt`
    - Keep the `#nullable enable` header in both files; Unshipped retains only the header after promotion
    - This makes `PublicAPI.Shipped.txt` the canonical record of the APIs committed at `v{version}`
-3. Update `CHANGELOG.md` -- move Unreleased items under the new version heading
-4. Commit: `chore: prepare release {version}` (version bump, baseline promotion, and CHANGELOG in a single commit)
-5. Push to master
-6. On GitHub, create a Release with tag `v{version}` targeting master
-7. The publish workflow runs automatically:
+3. Update `CHANGELOG.md` -- move Unreleased items under the new version heading, add a new empty `## [Unreleased]` section, and update the link references at the bottom
+4. Commit on a branch `chore/release-{version}` created from the current `master`: `chore: Prepare release {version}` (version bump, baseline promotion, and CHANGELOG in a single commit)
+5. Open a pull request to `master` (it is protected; nothing is pushed to it directly) and merge it when all checks are green
+6. When the `Build and Test` run on `master` for the merge has passed, tag that commit `v{version}` (annotated) and push the tag
+7. On GitHub, create a Release from the tag `v{version}`
+8. The publish workflow runs automatically:
    - Validates tag matches csproj version
    - Runs tests and packs the NuGet package
    - Waits for manual approval (check the Actions tab)
-8. Approve the deployment in the Actions tab
-9. Package is published to NuGet.org and attached to the GitHub Release
+9. Approve the deployment in the Actions tab
+10. Package is published to NuGet.org and attached to the GitHub Release
+
+The full procedure, with the package checks to run before the pull request, is in [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 
 ### One-Time Setup
 

@@ -5,6 +5,9 @@ creating a GitHub Release triggers validation, tests, `dotnet pack`, the NuGet p
 and attaching the `.nupkg` to the Release. This checklist covers what must happen
 before and around that trigger.
 
+`master` is protected: the release changes reach it through a pull request, like any other
+change. The tag is created only after that pull request is merged.
+
 ---
 
 ## First-Time Setup
@@ -25,9 +28,14 @@ Already done for this repository; kept for reference:
 
 ### 2. Version, Changelog, and API Baseline
 
+- [ ] Create the branch `chore/release-{VERSION}` from the current `master`
 - [ ] Update `<Version>`, `<AssemblyVersion>` and `<FileVersion>` in `src/uContract/uContract.csproj` (the last two take the four-part form, e.g. `2.0.0.0`)
 - [ ] Retitle the `[Unreleased]` section in `CHANGELOG.md` to the new version with the
-      release date, and update the link reference at the bottom
+      release date, and add a new, empty `## [Unreleased]` section above it
+- [ ] Update the link references at the bottom of `CHANGELOG.md`, so that `master` needs no
+      further change after the tag ({PREVIOUS} is the version released before this one):
+      - `[Unreleased]: https://github.com/cwouyang/uContract.NET/compare/v{VERSION}...HEAD`
+      - `[{VERSION}]: https://github.com/cwouyang/uContract.NET/compare/v{PREVIOUS}...v{VERSION}`
 - [ ] Promote the public API baseline: move all entries from
       `src/uContract/PublicAPI.Unshipped.txt` into `PublicAPI.Shipped.txt`
       (leave `#nullable enable` in both) — see `CONTRIBUTING.md`
@@ -52,12 +60,26 @@ dotnet pack src/uContract/uContract.csproj -c Release -o ./artifacts
 - [ ] In the same project, `typeof(uContract.Contract).Assembly.GetName().Version` prints
       `{VERSION}.0` (confirms `<AssemblyVersion>` was updated with `<Version>`)
 
-### 4. Tag and Push
+### 4. Pull Request, Merge, and Tag
+
+All changes from step 2 go into a single commit on the release branch:
 
 ```bash
-git commit -m "chore: prepare release {VERSION}"
+git commit -m "chore: Prepare release {VERSION}"
+git push -u origin chore/release-{VERSION}
+```
+
+- [ ] Open a pull request from `chore/release-{VERSION}` to `master`
+- [ ] Merge it when all checks are green: `build (ubuntu-latest)` and `build (windows-latest)`,
+      including the Native AOT smoke test steps of the Ubuntu job
+- [ ] Wait for the `Build and Test` run that the merge starts on `master` to pass
+- [ ] Tag the commit that this run tested (the tip of `master` right after the merge) and push
+      the tag:
+
+```bash
+git switch master && git pull
 git tag -a v{VERSION} -m "Release {VERSION}"
-git push origin master && git push origin v{VERSION}
+git push origin v{VERSION}
 ```
 
 The tag version must exactly match `<Version>` in the csproj — the publish workflow
@@ -65,9 +87,15 @@ validates this and fails the release otherwise.
 
 ### 5. Create the GitHub Release (this triggers publishing)
 
-- [ ] Create a GitHub Release for tag `v{VERSION}`, pasting the changelog entry as notes
-- [ ] Publishing the Release starts `publish.yml`: it re-runs tests, packs, pushes to
-      NuGet, and attaches the `.nupkg` to the Release
+- [ ] Create a GitHub Release from the existing tag `v{VERSION}`, pasting the changelog entry
+      as notes. Rewrite the relative links in the entry as absolute links (for example
+      `README.md#…` becomes `https://github.com/cwouyang/uContract.NET/blob/v{VERSION}/README.md#…`):
+      a Release body does not resolve repository-relative paths
+- [ ] Publishing the Release starts `publish.yml` (shown as `Publish to NuGet` in the Actions
+      tab): it validates the tag against the csproj version, re-runs tests and packs
+- [ ] Approve the `nuget` deployment in that workflow run. The `nuget` environment requires
+      the maintainer's approval and accepts deployments from tags matching `v*`. After
+      approval the run pushes to NuGet and attaches the `.nupkg` to the Release
 
 > **Warning**: Once pushed to NuGet, a version cannot be deleted — only unlisted.
 
@@ -77,7 +105,6 @@ validates this and fails the release otherwise.
 - [ ] Package visible at <https://www.nuget.org/packages/uContract/>
       (allow 5–10 minutes for indexing)
 - [ ] Test install from NuGet.org in a fresh project and repeat the no-`DBC` smoke test
-- [ ] Add a fresh `[Unreleased]` section to `CHANGELOG.md`
 - [ ] Monitor GitHub Issues for bug reports
 
 ---
