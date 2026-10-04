@@ -68,7 +68,7 @@ public class ContractConfiguration
     {
         // Contracts are enabled by default, in every build configuration
         const bool defaultEnabled = true;
-        string defaultSource = IsDebugBuild() ? "default: Debug" : "default: Release";
+        const string defaultSource = "default";
 
         // Read global DBC setting (acts as default when specific flags are not set)
         bool? globalDbc = ParseEnvironmentVariable("DBC");
@@ -300,23 +300,5 @@ public class ContractConfiguration
             "false" or "0" or "no" or "off" => false,
             _ => null,
         };
-    }
-
-    /// <summary>
-    ///     Determines if the current build is a Debug build.
-    /// </summary>
-    /// <returns>
-    ///     <c>true</c> if running a Debug build; <c>false</c> if Release build.
-    /// </returns>
-    /// <remarks>
-    ///     Uses conditional compilation to detect build configuration.
-    /// </remarks>
-    private static bool IsDebugBuild()
-    {
-#if DEBUG
-        return true;
-#else
-        return false;
-#endif
     }
 }
