@@ -47,9 +47,11 @@ dotnet tool restore
 dotnet csharpier check .
 dotnet build -p:ContinuousIntegrationBuild=true --no-restore
 dotnet test --no-build --verbosity normal
+dotnet build -c Release -p:ContinuousIntegrationBuild=true --no-restore
+dotnet test -c Release --no-build --verbosity normal
 ```
 
-If all four succeed locally, CI will succeed.
+If all six succeed locally, CI will succeed.
 
 ### Upgrading CSharpier
 

@@ -38,7 +38,7 @@ jobs:
         run: dotnet restore
 
       - name: Test
-        run: dotnet test --verbosity normal
+        run: dotnet test -c Release --verbosity normal
 
       - name: Pack
         run: dotnet pack src/uContract/uContract.csproj -c Release --no-restore -o ./nupkg
