@@ -1195,12 +1195,110 @@ public class EnsureAssignableTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenPropertyIsWriteOnly_ThrowsArgumentException()
+    public void EnsureAssignable_WhenPropertyIsWriteOnly_ThrowsInvalidOperationException()
     {
         WriteOnly first = new() { X = "a" };
         WriteOnly second = new() { X = "a" };
 
-        Assert.Throws<ArgumentException>(() => Contract.EnsureAssignable(first, second));
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(WriteOnly)}.X", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+        Assert.Contains("DynamicDependency", exception.Message);
+        Assert.Contains("DBC_POST=off", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenNestedTypeHasWriteOnlyProperty_ThrowsInvalidOperationException()
+    {
+        HoldsWriteOnly first = new() { Child = new WriteOnly { X = "a" } };
+        HoldsWriteOnly second = new() { Child = new WriteOnly { X = "a" } };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(WriteOnly)}.X", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenWriteOnlyPropertyIsInherited_NamesTheBaseClassAsDeclaringType()
+    {
+        InheritsWriteOnly first = new() { X = "a" };
+        InheritsWriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(WriteOnlyBase)}.X", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenWriteOnlyPropertyIsAssignable_DoesNotReadIt()
+    {
+        WriteOnly first = new() { X = "a" };
+        WriteOnly second = new() { X = "a" };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second, "^X$"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyGetterIsNonPublicAndValuesMatch_DoesNotThrow()
+    {
+        PrivateGetter first = new() { Secret = "a" };
+        PrivateGetter second = new() { Secret = "a" };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyGetterIsNonPublicAndValuesDiffer_ReportsTheProperty()
+    {
+        PrivateGetter first = new() { Secret = "a" };
+        PrivateGetter second = new() { Secret = "b" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains("  - Secret", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenInheritedGetterIsPrivate_ThrowsInvalidOperationException()
+    {
+        InheritsPrivateGetter first = new() { Secret = "a" };
+        InheritsPrivateGetter second = new() { Secret = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(PrivateGetterBase)}.Secret", exception.Message);
+        Assert.Contains("no get method", exception.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDerivedTypeOverridesOnlyTheSetter_ThrowsInvalidOperationException()
+    {
+        OverridesOnlyTheSetter first = new() { Label = "a" };
+        OverridesOnlyTheSetter second = new() { Label = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains($"{typeof(OverridesOnlyTheSetter)}.Label", exception.Message);
+        Assert.Contains("no get method", exception.Message);
     }
 
     private sealed class TestPerson
@@ -1264,6 +1362,50 @@ public class EnsureAssignableTests
         }
 
         public int XLength => _x.Length;
+    }
+
+    private sealed class HoldsWriteOnly
+    {
+        public WriteOnly Child { get; set; } = new();
+    }
+
+    private class WriteOnlyBase
+    {
+        private string _x = "";
+
+        public string X
+        {
+            set => _x = value;
+        }
+
+        public int XLength => _x.Length;
+    }
+
+    private sealed class InheritsWriteOnly : WriteOnlyBase;
+
+    private sealed class PrivateGetter
+    {
+        public string Secret { private get; set; } = "";
+    }
+
+    private class PrivateGetterBase
+    {
+        public string Secret { private get; set; } = "";
+    }
+
+    private sealed class InheritsPrivateGetter : PrivateGetterBase;
+
+    private class VirtualPropertyBase
+    {
+        public virtual string Label { get; set; } = "";
+    }
+
+    private sealed class OverridesOnlyTheSetter : VirtualPropertyBase
+    {
+        public override string Label
+        {
+            set => base.Label = value;
+        }
     }
 }
 

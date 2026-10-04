@@ -928,6 +928,12 @@ public static class Contract
     ///     Thrown under Native AOT when <typeparamref name="T" />, or the runtime type of a nested member or
     ///     collection element that has to be compared, has no properties or fields visible to reflection.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
+    ///     Also thrown, in any build, when a public property that has to be compared has no get method: a
+    ///     write-only property, or one whose getter was removed by trimming. This applies to properties of
+    ///     <typeparamref name="T" />, of nested members, of collection elements and of base classes. A property
+    ///     whose getter is non-public is compared as usual when the getter is declared on the compared type; a
+    ///     getter that is not visible through the compared type — a private getter declared on a base class, or a
+    ///     virtual property whose derived class overrides only the setter — is reported by this rule.
     /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare all public properties and private fields recursively.
