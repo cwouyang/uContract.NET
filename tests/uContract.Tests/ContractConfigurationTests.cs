@@ -196,13 +196,13 @@ public sealed class ContractConfigurationTests : IDisposable
     #region Specific Contract Type Tests
 
     [Fact]
-    public void Constructor_WhenOnlyDbcPreIsTrue_EnablesPreconditionsAndUsesDefaultsForOthers()
+    public void Constructor_WhenOnlyDbcPreIsFalse_DisablesPreconditionsAndUsesDefaultsForOthers()
     {
-        _SetupEnvironment(dbcPre: "true");
+        _SetupEnvironment(dbcPre: "false");
 
         ContractConfiguration config = new();
 
-        Assert.True(config.PreconditionsEnabled); // Explicitly set
+        Assert.False(config.PreconditionsEnabled); // Explicitly set
         Assert.True(config.PostconditionsEnabled); // Uses default
         Assert.True(config.InvariantsEnabled); // Uses default
         Assert.True(config.CheckEnabled); // Uses default
@@ -235,16 +235,16 @@ public sealed class ContractConfigurationTests : IDisposable
     }
 
     [Fact]
-    public void Constructor_WhenOnlyDbcCheckIsTrue_EnablesChecksAndUsesDefaultsForOthers()
+    public void Constructor_WhenOnlyDbcCheckIsFalse_DisablesChecksAndUsesDefaultsForOthers()
     {
-        _SetupEnvironment(dbcCheck: "true");
+        _SetupEnvironment(dbcCheck: "false");
 
         ContractConfiguration config = new();
 
         Assert.True(config.PreconditionsEnabled); // Uses default
         Assert.True(config.PostconditionsEnabled); // Uses default
         Assert.True(config.InvariantsEnabled); // Uses default
-        Assert.True(config.CheckEnabled); // Explicitly set
+        Assert.False(config.CheckEnabled); // Explicitly set
     }
 
     #endregion
@@ -323,20 +323,20 @@ public sealed class ContractConfigurationTests : IDisposable
     public void Constructor_WhenSpecificFlagInvalidAndGlobalValid_FallsBackToGlobal()
     {
         // Verifies the null-coalescing chain when specific flag is invalid
-        // DBC=true (valid global), DBC_PRE=invalid (should fallback to global)
+        // DBC=false (valid global), DBC_PRE=invalid (should fallback to global)
         _SetupEnvironment(
-            "true", // DBC = true (valid global)
+            "false", // DBC = false (valid global)
             "invalid_value" // DBC_PRE = invalid (should be treated as null)
         );
 
         ContractConfiguration config = new();
 
-        // PreconditionsEnabled should use global DBC=true (not the default)
-        // This verifies the null-coalescing chain: DBC_PRE (null) ?? DBC (true) ?? default
-        Assert.True(config.PreconditionsEnabled); // Fallback to global true
-        Assert.True(config.PostconditionsEnabled); // Uses global true
-        Assert.True(config.InvariantsEnabled); // Uses global true
-        Assert.True(config.CheckEnabled); // Uses global true
+        // PreconditionsEnabled should use global DBC=false (not the default)
+        // This verifies the null-coalescing chain: DBC_PRE (null) ?? DBC (false) ?? default
+        Assert.False(config.PreconditionsEnabled); // Fallback to global false
+        Assert.False(config.PostconditionsEnabled); // Uses global false
+        Assert.False(config.InvariantsEnabled); // Uses global false
+        Assert.False(config.CheckEnabled); // Uses global false
     }
 
     #endregion
