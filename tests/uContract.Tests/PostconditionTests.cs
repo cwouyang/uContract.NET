@@ -1208,6 +1208,8 @@ public class EnsureAssignableTests
         Assert.Contains("no get method", exception.Message);
         Assert.Contains("DynamicDependency", exception.Message);
         Assert.Contains("DBC_POST=off", exception.Message);
+        Assert.Contains("no get method is visible through the compared type", exception.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", exception.Message);
     }
 
     [Fact]
@@ -1285,6 +1287,8 @@ public class EnsureAssignableTests
 
         Assert.Contains($"{typeof(PrivateGetterBase)}.Secret", exception.Message);
         Assert.Contains("no get method", exception.Message);
+        Assert.Contains("no get method is visible through the compared type", exception.Message);
+        Assert.Contains("DynamicDependency", exception.Message);
     }
 
     [Fact]
@@ -1299,6 +1303,8 @@ public class EnsureAssignableTests
 
         Assert.Contains($"{typeof(OverridesOnlyTheSetter)}.Label", exception.Message);
         Assert.Contains("no get method", exception.Message);
+        Assert.Contains("no get method is visible through the compared type", exception.Message);
+        Assert.Contains("DynamicDependency", exception.Message);
     }
 
     private sealed class TestPerson
@@ -1431,6 +1437,8 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         Assert.Contains("'Customer' as assignable", cannotCompare.Message);
         Assert.Contains("DynamicDependency", cannotCompare.Message);
         Assert.Contains("DBC_POST=off", cannotCompare.Message);
+        Assert.Contains("if the type has members, preserve them", cannotCompare.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", cannotCompare.Message);
         Assert.DoesNotContain("k__BackingField", cannotCompare.Message);
     }
 
@@ -1456,6 +1464,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Contains(typeof(NoVisibleMembers).ToString(), cannotCompare.Message);
         Assert.Contains("DBC_POST=off", cannotCompare.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", cannotCompare.Message);
         Assert.DoesNotContain("assignable", cannotCompare.Message);
         Assert.DoesNotContain("DynamicDependency", cannotCompare.Message);
     }
@@ -1703,6 +1712,7 @@ public sealed class OldWhenRuntimePreventsSerializationTests
         Assert.Contains("Native AOT", cannotCopy.Message);
         Assert.Contains("DynamicDependency", cannotCopy.Message);
         Assert.Contains("DBC_POST=off", cannotCopy.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", cannotCopy.Message);
     }
 
     [Fact]
@@ -1735,6 +1745,7 @@ public sealed class OldWhenRuntimePreventsSerializationTests
         Assert.Contains("Native AOT", cannotSerialize.Message);
         Assert.Contains("DynamicDependency", cannotSerialize.Message);
         Assert.Contains("DBC_POST=off", cannotSerialize.Message);
+        Assert.Contains("DBC_POST=off (disables all postcondition checks)", cannotSerialize.Message);
     }
 
     [Fact]

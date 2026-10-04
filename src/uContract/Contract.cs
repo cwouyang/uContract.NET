@@ -49,12 +49,12 @@ public static class Contract
         + "Set the MSBuild property JsonSerializerIsReflectionEnabledByDefault to true "
         + "in the application project; under Native AOT also preserve the copied types, "
         + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
-        + "or set DBC_POST=off.";
+        + "or set DBC_POST=off (disables all postcondition checks).";
 
     private const string OldNativeAotSerializationHint =
         " Under Native AOT a JSON-serializable type also needs its members preserved for reflection, "
         + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
-        + "or set DBC_POST=off.";
+        + "or set DBC_POST=off (disables all postcondition checks).";
 
     // The members EnsureAssignable compares, and so the members the trimmer must preserve for its type argument.
     private const DynamicallyAccessedMemberTypes ComparedMembers =
@@ -377,7 +377,7 @@ public static class Contract
     ///     project, and under Native AOT also preserve the copied types, for example with
     ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c>. Otherwise this method
     ///     throws <see cref="InvalidOperationException" /> with those instructions; setting <c>DBC_POST=off</c>
-    ///     disables the copy altogether.
+    ///     disables all postcondition checks, this method included.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -966,12 +966,13 @@ public static class Contract
     ///     Thrown under Native AOT when <typeparamref name="T" />, or the runtime type of a nested member or
     ///     collection element that has to be compared, has no properties or fields visible to reflection.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
-    ///     Also thrown, in any build, when a public property that has to be compared has no get method: a
-    ///     write-only property, or one whose getter was removed by trimming. This applies to properties of
-    ///     <typeparamref name="T" />, of nested members, of collection elements and of base classes. A property
-    ///     whose getter is non-public is compared as usual when the getter is declared on the compared type; a
-    ///     getter that is not visible through the compared type — a private getter declared on a base class, or a
-    ///     virtual property whose derived class overrides only the setter — is reported by this rule.
+    ///     Also thrown, in any build, when a public property that has to be compared has no get method visible
+    ///     through the compared type: a write-only property, or one whose getter was removed by trimming. This
+    ///     applies to properties of <typeparamref name="T" />, of nested members, of collection elements and of
+    ///     base classes. A property whose getter is non-public is compared as usual when the getter is declared on
+    ///     the compared type; a getter that is not visible through the compared type — a private getter declared
+    ///     on a base class, or a virtual property whose derived class overrides only the setter — is reported by
+    ///     this rule.
     /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare all public properties and private fields recursively.
@@ -1054,7 +1055,8 @@ public static class Contract
             throw new InvalidOperationException(
                 $"EnsureAssignable cannot compare {type}: no properties or fields are visible to reflection "
                     + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
-                    + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off."
+                    + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off "
+                    + "(disables all postcondition checks)."
             );
         }
 
@@ -1126,9 +1128,9 @@ public static class Contract
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + $"Ways out: list '{topLevelMember}' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
-                + "preserve the type's members, for example with "
+                + "if the type has members, preserve them, for example with "
                 + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
-                + "or set DBC_POST=off."
+                + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }
 
