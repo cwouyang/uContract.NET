@@ -1041,7 +1041,7 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "EnsureAssignable uses reflection to enumerate and compare fields and properties. Members of the top-level type are preserved; the types of nested objects and collection elements are not."
+        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of the top-level type are preserved; the types of nested objects and collection elements are not."
     )]
     public static void EnsureAssignable<[DynamicallyAccessedMembers(ComparedMembers)] T>(
         T actual,
