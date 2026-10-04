@@ -1031,6 +1031,9 @@ public class InventoryItem
 
 ### Setting Environment Variables
 
+Contracts are enabled by default. Set these variables only to override that — for example
+`DBC=off` to disable all contracts, or a per-type flag such as `DBC_POST=off`.
+
 **Windows (PowerShell):**
 ```powershell
 # Enable all contracts

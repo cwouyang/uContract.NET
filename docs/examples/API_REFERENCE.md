@@ -33,13 +33,13 @@ Complete reference for all 16 public methods in uContract.NET.
 
 All contract methods (except pure logic functions) are controlled by environment variables:
 
-| Method(s) | Environment Variable | Default (Debug) | Default (Release) |
-|-----------|---------------------|-----------------|-------------------|
-| `Require`, `RequireNotNull`, `RequireNotEmpty`, `Ignore` | `DBC_PRE` | `on` | `off` |
-| `Ensure`, `EnsureNotNull`, `EnsureResult`, `EnsureImmutableCollection`, `EnsureAssignable`, `Old` | `DBC_POST` | `on` | `off` |
-| `Invariant`, `InvariantNotNull` | `DBC_INV` | `on` | `off` |
-| `Check` | `DBC_CHECK` | `on` | `off` |
-| **Fallback for any of the above that sets no flag of its own** | `DBC` | `on` | `off` |
+| Method(s) | Environment Variable | Default |
+|-----------|---------------------|---------|
+| `Require`, `RequireNotNull`, `RequireNotEmpty`, `Ignore` | `DBC_PRE` | `on` |
+| `Ensure`, `EnsureNotNull`, `EnsureResult`, `EnsureImmutableCollection`, `EnsureAssignable`, `Old` | `DBC_POST` | `on` |
+| `Invariant`, `InvariantNotNull` | `DBC_INV` | `on` |
+| `Check` | `DBC_CHECK` | `on` |
+| **Fallback for any of the above that sets no flag of its own** | `DBC` | `on` |
 
 Each per-type flag **overrides** `DBC`; `DBC` is not a master switch that outranks them. So
 `DBC=on DBC_INV=off` leaves `Invariant` and `InvariantNotNull` disabled. See
@@ -156,7 +156,7 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 - ⚠️ **EnsureAssignable<T>() reflection cost**: Metadata cached, but comparison is expensive
 
 ### Optimization Tips
-1. **Disable in production**: Set `DBC=off` in Release builds (default)
+1. **Disable in production if needed**: Contracts are on by default; set `DBC=off` (or a per-type flag such as `DBC_POST=off`) to opt out
 2. **Minimize Old<T>() usage**: Capture only what you need
 3. **Use specific assertions**: `RequireNotNull` is faster than `Require(() => x != null)`
 4. **Cache invariant results**: If invariant checks are expensive, cache the result
