@@ -56,6 +56,12 @@ public static class Contract
         + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
         + "or set DBC_POST=off.";
 
+    // The members EnsureAssignable compares, and so the members the trimmer must preserve for its type argument.
+    private const DynamicallyAccessedMemberTypes ComparedMembers =
+        DynamicallyAccessedMemberTypes.PublicProperties
+        | DynamicallyAccessedMemberTypes.PublicFields
+        | DynamicallyAccessedMemberTypes.NonPublicFields;
+
     /// <summary>
     ///     Validates a precondition and throws an exception if the condition is false.
     /// </summary>
@@ -990,14 +996,11 @@ public static class Contract
     [RequiresUnreferencedCode(
         "EnsureAssignable uses reflection to enumerate and compare fields and properties. Members of the top-level type are preserved; the types of nested objects and collection elements are not."
     )]
-    public static void EnsureAssignable<
-        [DynamicallyAccessedMembers(
-            DynamicallyAccessedMemberTypes.PublicProperties
-                | DynamicallyAccessedMemberTypes.PublicFields
-                | DynamicallyAccessedMemberTypes.NonPublicFields
-        )]
-            T
-    >(T actual, T expected, params string[] assignableFieldPatterns)
+    public static void EnsureAssignable<[DynamicallyAccessedMembers(ComparedMembers)] T>(
+        T actual,
+        T expected,
+        params string[] assignableFieldPatterns
+    )
     {
         // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
         ArgumentNullException.ThrowIfNull(actual);
@@ -1037,14 +1040,11 @@ public static class Contract
         }
     }
 
-    private static List<string> _FindDifferences<
-        [DynamicallyAccessedMembers(
-            DynamicallyAccessedMemberTypes.PublicProperties
-                | DynamicallyAccessedMemberTypes.PublicFields
-                | DynamicallyAccessedMemberTypes.NonPublicFields
-        )]
-            T
-    >(T actual, T expected, string[] assignableFieldPatterns)
+    private static List<string> _FindDifferences<[DynamicallyAccessedMembers(ComparedMembers)] T>(
+        T actual,
+        T expected,
+        string[] assignableFieldPatterns
+    )
     {
         Type type = typeof(T);
         TypeMetadata metadata = _GetOrCacheMetadata(type);
@@ -1096,6 +1096,8 @@ public static class Contract
             type,
             t =>
             {
+                // These binding flags must stay within what ComparedMembers preserves: widening one
+                // without the other loses members silently under Native AOT.
                 PropertyInfo[] properties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
                 FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
