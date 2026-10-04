@@ -43,6 +43,19 @@ public static class Contract
 
     private static readonly ConcurrentDictionary<Type, TypeMetadata> MetadataCache = new();
 
+    private const string OldJsonReflectionDisabledMessage =
+        "Old<T>() cannot copy the value: reflection-based JSON serialization is disabled, "
+        + "which is the default in trimmed and Native AOT applications. "
+        + "Set the MSBuild property JsonSerializerIsReflectionEnabledByDefault to true "
+        + "in the application project; under Native AOT also preserve the copied types, "
+        + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
+        + "or set DBC_POST=off.";
+
+    private const string OldNativeAotSerializationHint =
+        " Under Native AOT a JSON-serializable type also needs its members preserved for reflection, "
+        + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
+        + "or set DBC_POST=off.";
+
     /// <summary>
     ///     Validates a precondition and throws an exception if the condition is false.
     /// </summary>
@@ -343,7 +356,9 @@ public static class Contract
     /// </returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="supplier" /> is null.</exception>
     /// <exception cref="InvalidOperationException">
-    ///     Thrown when the type is not JSON-serializable (e.g., delegates, DbContext).
+    ///     Thrown when the type is not JSON-serializable (e.g., delegates, DbContext), or when the supplier
+    ///     returns a non-null value and the application has disabled reflection-based JSON serialization,
+    ///     which is the default in trimmed and Native AOT applications.
     /// </exception>
     /// <remarks>
     ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
@@ -351,6 +366,12 @@ public static class Contract
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Deep copy is performed via System.Text.Json serialization, which requires the type to be serializable.
     ///     This method supports both reference types and value types (no generic constraint).
+    ///     In a trimmed or Native AOT application the copy needs reflection-based JSON serialization: set the
+    ///     MSBuild property <c>JsonSerializerIsReflectionEnabledByDefault</c> to <c>true</c> in the application
+    ///     project, and under Native AOT also preserve the copied types, for example with
+    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c>. Otherwise this method
+    ///     throws <see cref="InvalidOperationException" /> with those instructions; setting <c>DBC_POST=off</c>
+    ///     disables the copy altogether.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -396,14 +417,21 @@ public static class Contract
                 return default!;
             }
 
+            if (!RuntimeFacts.IsJsonReflectionEnabled)
+            {
+                throw new InvalidOperationException(OldJsonReflectionDisabledMessage);
+            }
+
             // Deep copy via JSON serialization
             string json = JsonSerializer.Serialize(obj, JsonOptions);
             return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
         }
         catch (NotSupportedException ex)
         {
+            string message =
+                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.";
             throw new InvalidOperationException(
-                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.",
+                RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
                 ex
             );
         }
