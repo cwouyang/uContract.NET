@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+This is a major release (2.0.0): the default for contract evaluation changes.
+
+**Migrating from 1.0.0**: contract violations that the 1.0.0 package silently ignored now throw
+(`PreconditionViolationException` and its siblings), in Release builds as well as Debug. Set
+`DBC=off` to keep contracts disabled as the 1.0.0 package had them (the reported source becomes
+`DBC`). If you already set `DBC=on`, nothing changes for you. If you enabled a single contract type
+with only a per-type flag (for example `DBC_PRE=on`), add `DBC=off` to keep the other types
+disabled. Use per-type flags to keep cheap contracts on and expensive ones off, for example
+`DBC_POST=off`.
+
+### Changed
+
+- **BREAKING**: Contracts are enabled by default in every build configuration. With no `DBC*`
+  variable set, 1.0.0 packages evaluated nothing; 2.0.0 evaluates preconditions, postconditions,
+  invariants and checks. `Old<T>()` therefore runs by default: it deep-copies through JSON
+  serialization and throws `InvalidOperationException` for types that cannot be serialized.
+  Behaviour of `Old<T>()` and `EnsureAssignable<T>()` under trimming and Native AOT with contracts
+  enabled has not been verified; set `DBC_POST=off` there. (ADR-0020)
+- **BREAKING**: The source label for a defaulted setting is `default` instead of `default: Debug`
+  or `default: Release`. It appears in `ContractConfiguration.*Source`, the `DBC_DOC` output and
+  the `ConfigurationLoaded` event.
+
+### Fixed
+
+- Package consumers no longer get contracts silently disabled in their Debug builds. The default
+  was decided by `#if DEBUG` inside the library, and the package is built in Release (#32).
+
 ---
 
 ## [1.0.0] - 2026-07-04
