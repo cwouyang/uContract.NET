@@ -3,7 +3,7 @@
 Complete guide for integrating uContract.NET with Domain-Driven Design (DDD).
 
 > **Note**: Examples use fictional domain classes for illustration.
-> For compilable, tested code, see the [test suite](../../tests/uContract.Tests/).
+> For compilable, tested code, see the [test suite](../tests/uContract.Tests/).
 
 ---
 

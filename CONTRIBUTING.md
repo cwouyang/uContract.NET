@@ -6,6 +6,7 @@
 git clone https://github.com/cwouyang/uContract.NET.git
 cd uContract.NET
 dotnet test
+dotnet test -c Release
 ```
 
 ## Development Setup
@@ -36,6 +37,8 @@ dotnet tool restore
 dotnet csharpier check .
 dotnet build -p:ContinuousIntegrationBuild=true
 dotnet test --no-build --verbosity normal
+dotnet build -c Release -p:ContinuousIntegrationBuild=true
+dotnet test -c Release --no-build --verbosity normal
 ```
 
 ### Reproducing CI Locally
@@ -45,13 +48,14 @@ The GitHub Actions workflow runs the same steps in this order:
 ```bash
 dotnet tool restore
 dotnet csharpier check .
+dotnet restore
 dotnet build -p:ContinuousIntegrationBuild=true --no-restore
 dotnet test --no-build --verbosity normal
 dotnet build -c Release -p:ContinuousIntegrationBuild=true --no-restore
 dotnet test -c Release --no-build --verbosity normal
 ```
 
-These six cover everything CI runs except the Native AOT smoke test, which CI publishes and runs on Linux (`tests/uContract.AotSmoke`); reproducing it needs the platform's native toolchain. An ordinary `dotnet run` of that project must be given `--report` (or `-p:PublishAot=false`): a project with `PublishAot` reports no dynamic-code support even under the JIT, so it would otherwise assert.
+These seven cover everything CI runs except the Native AOT smoke test, which CI publishes and runs on Linux (`tests/uContract.AotSmoke`); reproducing it needs the platform's native toolchain. An ordinary `dotnet run` of that project must be given `--report` (or `-p:PublishAot=false`): a project with `PublishAot` reports no dynamic-code support even under the JIT, so it would otherwise assert.
 
 ### Upgrading CSharpier
 
