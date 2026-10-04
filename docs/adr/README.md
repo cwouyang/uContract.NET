@@ -19,10 +19,10 @@ This directory contains Architecture Decision Records (ADRs) for the uContract.N
 An **Architecture Decision Record (ADR)** is a document that captures an important architectural decision made along with its context and consequences.
 
 **Key principles**:
-- **Immutable**: Once accepted, ADRs are not modified (except Status)
+- **Immutable**: The text of an accepted ADR is not edited. A correction, or a later decision that leaves the ADR's main decision standing, is added to it as an Amendment
 - **Contextual**: Records WHY a decision was made, not just WHAT was decided
 - **Traceable**: Indexed in this README for easy reference
-- **Versioned**: Changes to decisions require new ADRs that supersede old ones
+- **Versioned**: A decision that replaces an ADR's main decision gets a new ADR that supersedes the old one
 
 ---
 
@@ -71,6 +71,23 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 2. Once the change is implemented, write the ADR (use `ADR.template.md`, set Status to "Accepted"),
    including what the implementation turned up
 3. Update this README's ADR Index
+
+### Amending an accepted ADR
+
+Use an amendment for a correction, or for a later decision that leaves the ADR's main decision
+standing. Do not edit the accepted text. The ADR's status stays `Accepted`. Add three parts:
+
+1. In the Status block, add a line `- **Amended**: <date> — <one line>` saying what changed and
+   where the detail is
+2. At the end of *Implementation Notes*, before *References*, add a section
+   `### Amendment (<date>): <title>` that gives the detail
+3. In *Revision History*, add a row with status `Amended` and a short note
+
+An ADR can be amended more than once. Each amendment adds its own three parts, and amendments only
+add lines: earlier ones stay as written. See
+[ADR-0004](0004-runtime-configuration-environment-variables.md) and
+[ADR-0020](0020-contracts-enabled-by-default.md) for examples. If the new decision replaces the
+main decision, write a new ADR that supersedes the old one instead.
 
 ---
 

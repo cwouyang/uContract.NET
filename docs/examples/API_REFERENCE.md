@@ -1,6 +1,6 @@
 # uContract.NET API Reference
 
-Complete reference for all 16 public methods in uContract.NET.
+Complete reference for all 17 public methods in uContract.NET.
 
 > **Per-method signatures, parameters, and XML documentation** are available via IntelliSense in your IDE.
 > This document covers what IntelliSense cannot: configuration, exception hierarchy, best practices, and performance.
@@ -26,7 +26,7 @@ Complete reference for all 16 public methods in uContract.NET.
 | **Preconditions** (3) | `Require`, `RequireNotNull`, `RequireNotEmpty` | Validate inputs at method entry |
 | **Postconditions** (5) | `Ensure`, `EnsureNotNull`, `EnsureResult`, `EnsureImmutableCollection`, `EnsureAssignable` | Verify results and state changes |
 | **Invariants** (2) | `Invariant`, `InvariantNotNull` | Enforce class-level constraints |
-| **Helpers** (6) | `Check`, `Ignore`, `Old`, `Imply`, `IfAndOnlyIf`, `CheckUnsupportedOperation` | Runtime assertions and utilities |
+| **Helpers** (7) | `Check`, `Ignore`, `Old`, `Imply`, `IfAndOnlyIf`, `CheckUnsupportedOperation`, `FollowsFrom` | Runtime assertions and utilities |
 
 ---
 
@@ -46,8 +46,12 @@ Each per-type flag **overrides** `DBC`; `DBC` is not a master switch that outran
 `DBC=on DBC_INV=off` leaves `Invariant` and `InvariantNotNull` disabled. See
 [ADR-0004](../adr/0004-runtime-configuration-environment-variables.md).
 
+`Ignore` is never disabled: `DBC_PRE` does not turn it off. It evaluates its condition and returns the
+result whether preconditions are enabled or not; called from inside another contract's condition, it
+returns `false` without evaluating.
+
 **Pure functions (not controlled by environment variables):**
-- `Imply`, `IfAndOnlyIf`, `CheckUnsupportedOperation`
+- `Imply`, `IfAndOnlyIf`, `CheckUnsupportedOperation`, `FollowsFrom`
 
 ---
 
@@ -63,8 +67,9 @@ System.Exception
 ```
 
 **ContractViolationException Properties:**
-- `Message` (string): Human-readable error message
-- `ContractType` (ContractType enum): Type of contract violated
+- `Message` (string): The description with its prefix (see the format below)
+- `Description` (string): The description without the prefix
+- `ViolationType` (`ContractType` enum): Type of contract violated
 
 **Exception Message Format:**
 - Precondition: `"Precondition violated: {description}"`
@@ -145,8 +150,8 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 ## Performance Considerations
 
 ### When Contracts Are Disabled
-- ✅ **Zero overhead**: Conditions never evaluated
-- ✅ **No allocations**: Lambda expressions not invoked
+- ✅ **Zero overhead**: Conditions never evaluated (except `Ignore`, which evaluates its condition and returns the result; called from inside another contract's condition, it returns `false` without evaluating)
+- ✅ **No allocations**: Lambda expressions not invoked (except by `Ignore`, as above)
 - ✅ **No exceptions**: No contract violations thrown
 - ⚠️ **Parameter validation still runs**: Always validated for safety
 
@@ -172,7 +177,7 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 - `EnsureAssignable<T>()` compares the members of `T` in every kind of build. A caller that forwards its own generic parameter to it gets trim warning `IL2091` until that parameter has the same `[DynamicallyAccessedMembers]` annotation.
 - Under Native AOT it throws `InvalidOperationException` when it reaches a nested object or collection element whose type's members are not preserved. List the top-level member as assignable (plain member name; patterns are regular expressions matched against top-level member names) or preserve the type with `DynamicDependency`.
 - Framework types such as `Uri`, `Exception`, `Version` and `Lazy<T>` are affected too; listing the member is the practical choice.
-- Assignable patterns are unanchored regular expressions: `Customer` also exempts `CustomerId`. To exempt exactly one member, anchor the pattern and cover the auto-property's backing field too: `^(Customer|<Customer>k__BackingField)$`.
+- Assignable patterns are unanchored regular expressions: `Customer` also exempts `CustomerId`. To exempt exactly one member, anchor the pattern. An auto-property declared on the compared type is also compared as its backing field, so the pattern must cover that too: `^(Customer|<Customer>k__BackingField)$`. An inherited auto-property is compared only as the property, so `^Customer$` is enough.
 - In a trimmed app without Native AOT, a nested type whose property getter was removed by the trimmer makes it throw `InvalidOperationException` naming the property ("… no get method is visible through the compared type"); the same two ways out apply.
 - Not detected: a type with only some members preserved, and, in a trimmed app without Native AOT, a nested type whose members were removed entirely. A `null` member, the same instance on both sides, or an empty collection is not inspected.
 

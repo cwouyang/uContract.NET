@@ -22,7 +22,7 @@ namespace uContract;
 ///     Design by Contract principles. All contract conditions use lazy evaluation
 ///     to ensure zero performance overhead when contracts are disabled.
 ///     Contract evaluation can be controlled via environment variables:
-///     - DBC: Global toggle for all contracts
+///     - DBC: default for every contract type whose own flag is not set
 ///     - DBC_PRE: Toggle for preconditions only
 ///     - DBC_POST: Toggle for postconditions only
 ///     - DBC_INV: Toggle for invariants only
@@ -73,7 +73,9 @@ public static class Contract
     ///     null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_PRE environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_PRE is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_PRE is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     /// </remarks>
@@ -130,7 +132,9 @@ public static class Contract
     ///     null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     /// </remarks>
@@ -188,7 +192,9 @@ public static class Contract
     ///     null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_INV environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_INV is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_INV is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     /// </remarks>
@@ -244,7 +250,9 @@ public static class Contract
     ///     null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_CHECK environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_CHECK is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_CHECK is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Check statements are for runtime assertions that are neither preconditions nor postconditions.
@@ -303,10 +311,13 @@ public static class Contract
     /// </exception>
     /// <remarks>
     ///     This method supports the DDD pattern of avoiding unnecessary work when a condition is met.
-    ///     Unlike Require/Ensure/Invariant, this method always evaluates the condition and returns its result,
-    ///     without throwing exceptions. Uses the DBC_PRE environment variable for control.
-    ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
-    ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
+    ///     Unlike Require/Ensure/Invariant, it is never disabled and throws no contract violation of its own:
+    ///     it evaluates the condition and returns its result whether preconditions are enabled or not.
+    ///     The exception is a call made while another contract check is running: the recursion guard then
+    ///     returns <c>false</c> without evaluating the condition.
+    ///     DBC_PRE (or DBC, when DBC_PRE is not set) changes one thing only. While preconditions are enabled,
+    ///     contract checks made inside the condition are skipped by the recursion guard; while they are
+    ///     disabled, those checks run if their own contract type is enabled.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -367,17 +378,24 @@ public static class Contract
     ///     which is the default in trimmed and Native AOT applications.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The supplier is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Deep copy is performed via System.Text.Json serialization, which requires the type to be serializable.
     ///     This method supports both reference types and value types (no generic constraint).
+    ///     An exception thrown by the supplier propagates unchanged.
+    ///     Of the exceptions raised while copying, only <see cref="NotSupportedException" /> (or a derived type)
+    ///     is reported as <see cref="InvalidOperationException" />; other exception types from the serializer
+    ///     propagate unchanged, for example a <see cref="JsonException" /> for an object graph deeper than the
+    ///     serializer's maximum depth.
     ///     In a trimmed or Native AOT application the copy needs reflection-based JSON serialization: set the
     ///     MSBuild property <c>JsonSerializerIsReflectionEnabledByDefault</c> to <c>true</c> in the application
     ///     project, and under Native AOT also preserve the copied types, for example with
     ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c>. Otherwise this method
-    ///     throws <see cref="InvalidOperationException" /> with those instructions; setting <c>DBC_POST=off</c>
-    ///     disables all postcondition checks, this method included.
+    ///     throws <see cref="InvalidOperationException" /> with a message that names what to do; setting
+    ///     <c>DBC_POST=off</c> disables all postcondition checks, this method included.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -429,17 +447,21 @@ public static class Contract
             }
 
             // Deep copy via JSON serialization
-            string json = JsonSerializer.Serialize(obj, JsonOptions);
-            return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
-        }
-        catch (NotSupportedException ex)
-        {
-            string message =
-                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.";
-            throw new InvalidOperationException(
-                RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
-                ex
-            );
+            try
+            {
+                string json = JsonSerializer.Serialize(obj, JsonOptions);
+                return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
+            }
+            catch (NotSupportedException ex)
+            {
+                string message =
+                    $"Type {typeof(T).Name} cannot be serialized for Old<T>(). "
+                    + "Ensure the type is JSON-serializable.";
+                throw new InvalidOperationException(
+                    RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
+                    ex
+                );
+            }
         }
         finally
         {
@@ -456,7 +478,9 @@ public static class Contract
     /// <exception cref="PreconditionViolationException">Thrown when the value is null.</exception>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="description" /> is null.</exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_PRE environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_PRE is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_PRE is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     This is a convenience method that provides clearer intent than Require(() => value != null).
     /// </remarks>
@@ -512,7 +536,9 @@ public static class Contract
     ///     Thrown when <paramref name="description" /> or <paramref name="value" /> is null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_PRE environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_PRE is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_PRE is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     This is a convenience method that provides clearer intent than Require(() => !string.IsNullOrEmpty(value)).
     /// </remarks>
@@ -567,7 +593,9 @@ public static class Contract
     /// <exception cref="PostconditionViolationException">Thrown when the value is null.</exception>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="description" /> is null.</exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     This is a convenience method that provides clearer intent than Ensure(() => value != null).
     /// </remarks>
@@ -627,7 +655,9 @@ public static class Contract
     ///     Thrown when <paramref name="description" /> or <paramref name="assertion" /> is null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     This method returns the result value, enabling fluent method chaining in query methods.
     /// </remarks>
@@ -681,7 +711,10 @@ public static class Contract
     /// <exception cref="InvariantViolationException">Thrown when <paramref name="value" /> is null and invariants are enabled</exception>
     /// <remarks>
     ///     This method is a convenience wrapper around <see cref="Invariant(string, Func{bool})" />
-    ///     specifically for null checks. It is controlled by the DBC_INV environment variable.
+    ///     specifically for null checks.
+    ///     This method is disabled when DBC_INV is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_INV is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -839,7 +872,9 @@ public static class Contract
     ///     This method verifies that a collection returned from a method is immutable.
     ///     It checks if the type is from System.Collections.Immutable namespace or
     ///     if the type name starts with "Immutable" or "ReadOnly".
-    ///     Controlled by the DBC_POST environment variable.
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -942,17 +977,24 @@ public static class Contract
 
     /// <summary>
     ///     Ensures that only specified fields have changed between two object states.
-    ///     Compares all public properties and fields, throwing an exception if any non-assignable field has been modified.
+    ///     Compares the public instance properties and the instance fields of the compared type, non-public fields
+    ///     included, throwing an exception if any non-assignable field has been modified.
+    ///     Private fields declared on a base class are not compared.
     /// </summary>
     /// <typeparam name="T">
     ///     The type of objects to compare (supports both reference and value types).
     ///     Its public properties and its public and non-public fields are preserved for reflection in trimmed and
-    ///     Native AOT applications.
+    ///     Native AOT applications. Members inherited from base classes are compared and preserved too, except
+    ///     private fields declared on a base class.
     /// </typeparam>
     /// <param name="actual">The current state of the object</param>
     /// <param name="expected">The expected (old) state of the object</param>
     /// <param name="assignableFieldPatterns">
     ///     Regular expression patterns matching top-level member names that are allowed to change.
+    ///     A pattern matches anywhere in the member name (it is not anchored), so "Email" also matches
+    ///     "EmailVerified". An auto-property declared on the compared type is compared twice, as the property
+    ///     and as its backing field <c>&lt;Email&gt;k__BackingField</c>, so a pattern anchored with <c>^</c> and
+    ///     <c>$</c> must cover both, for example <c>^(Email|&lt;Email&gt;k__BackingField)$</c>.
     ///     Examples: "Email", ".*Timestamp", "^_.*"
     /// </param>
     /// <exception cref="ArgumentNullException">
@@ -966,20 +1008,24 @@ public static class Contract
     ///     Thrown under Native AOT when <typeparamref name="T" />, or the runtime type of a nested member or
     ///     collection element that has to be compared, has no properties or fields visible to reflection.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
-    ///     Also thrown, in any build, when a public property that has to be compared has no get method visible
-    ///     through the compared type: a write-only property, or one whose getter was removed by trimming. This
-    ///     applies to properties of <typeparamref name="T" />, of nested members, of collection elements and of
-    ///     base classes. A property whose getter is non-public is compared as usual when the getter is declared on
-    ///     the compared type; a getter that is not visible through the compared type — a private getter declared
-    ///     on a base class, or a virtual property whose derived class overrides only the setter — is reported by
-    ///     this rule.
+    ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method
+    ///     visible through the compared type: a write-only property, or one whose getter was removed by trimming.
+    ///     This applies to properties of <typeparamref name="T" />, of nested members, of collection elements and
+    ///     of base classes. A property whose getter is non-public is compared as usual when the getter is declared
+    ///     on the compared type; a getter that is not visible through the compared type — a private getter
+    ///     declared on a base class, or a virtual property whose derived class overrides only the setter — is
+    ///     reported by this rule.
     /// </exception>
     /// <remarks>
-    ///     This method uses reflection to compare all public properties and private fields recursively.
+    ///     This method uses reflection to compare, recursively, the public instance properties (indexers excluded)
+    ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
+    ///     base class are not compared.
     ///     Under Native AOT, a type whose members were not preserved cannot be compared; the method then throws
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed.
     ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Pattern matching uses <see cref="Regex" /> for flexible field name matching.
     /// </remarks>
@@ -995,7 +1041,7 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "EnsureAssignable uses reflection to enumerate and compare fields and properties. Members of the top-level type are preserved; the types of nested objects and collection elements are not."
+        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of the top-level type are preserved; the types of nested objects and collection elements are not."
     )]
     public static void EnsureAssignable<[DynamicallyAccessedMembers(ComparedMembers)] T>(
         T actual,
@@ -1030,7 +1076,7 @@ public static class Contract
             if (differences.Count > 0)
             {
                 string message =
-                    "Postcondition violated: Fields were modified that are not marked as assignable:\n"
+                    "Fields were modified that are not marked as assignable:\n"
                     + string.Join("\n", differences.Select(d => $"  - {d}"));
                 throw new PostconditionViolationException(message);
             }
@@ -1098,8 +1144,9 @@ public static class Contract
             type,
             t =>
             {
-                // These binding flags must stay within what ComparedMembers preserves: widening one
-                // without the other loses members silently under Native AOT.
+                // These binding flags must stay within what ComparedMembers preserves. Members are lost
+                // silently under Native AOT if the flags are widened beyond ComparedMembers, or if the
+                // constant is narrowed; widening the constant alone loses nothing.
                 PropertyInfo[] properties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
                 FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 

@@ -118,6 +118,26 @@ public sealed class DiagnosticLoggingTests : IDisposable
         Assert.Contains("Postconditions: off (from DBC_POST)", summary, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ConfigurationLoadedEvent_WhenNoVariableIsSet_ReportsEachTypeAsFromDefault()
+    {
+        using TestEventListener listener = new();
+
+        ContractConfiguration config = new();
+
+        EventWrittenEventArgs? configEvent = listener.Events.Find(e =>
+            string.Equals(e.EventName, "ConfigurationLoaded", StringComparison.Ordinal)
+        );
+        Assert.NotNull(configEvent);
+
+        string? summary = configEvent.Payload?[0] as string;
+        Assert.NotNull(summary);
+        Assert.Contains("Preconditions: on (from default)", summary, StringComparison.Ordinal);
+        Assert.Contains("Postconditions: on (from default)", summary, StringComparison.Ordinal);
+        Assert.Contains("Invariants: on (from default)", summary, StringComparison.Ordinal);
+        Assert.Contains("Check: on (from default)", summary, StringComparison.Ordinal);
+    }
+
     #endregion
 
     #region Stderr Output Tests

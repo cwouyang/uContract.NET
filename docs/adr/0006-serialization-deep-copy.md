@@ -8,6 +8,7 @@
 - **Deciders**: Project maintainers
 - **Status Date**: 2025-10-18
 - **Amended**: 2026-10-04 — "works on all .NET platforms" is qualified for trimmed and Native AOT applications by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
+- **Amended**: 2026-10-04 — from 2.0.0 an exception thrown by the supplier is not translated; only a `NotSupportedException` coming out of the serializer calls is; see the second Amendment under Implementation Notes
 
 ---
 
@@ -320,6 +321,22 @@ extends the error handling.
 - The listings above are kept as the historical record. The measurements, the exact messages and
   the remaining limits are in ADR-0021.
 
+### Amendment (2026-10-04): Supplier exceptions are not translated
+
+The decision (deep copy through `System.Text.Json`) is unchanged.
+
+- The **Error Handling** listing above calls `supplier()` inside the `try` whose
+  `catch (NotSupportedException)` wraps the exception in `InvalidOperationException`. That was
+  the behaviour in 1.0.0: a `NotSupportedException` thrown by the supplier itself was reported
+  as "cannot be serialized".
+- From 2.0.0 only a `NotSupportedException` coming out of the two serializer calls is
+  translated. Other exception types from those calls propagate as before. An exception thrown
+  while the supplier runs propagates unchanged, as the same instance.
+- A `NotSupportedException` thrown by code that the serializer runs during the copy is still
+  translated. The amendment of [ADR-0021](0021-postconditions-under-trimming-and-aot.md)
+  gives that boundary.
+- The listing stays as the historical record.
+
 ---
 
 ## References
@@ -336,3 +353,4 @@ extends the error handling.
 |------------|-------------|--------------------------------|
 | 2025-10-18 | Accepted    | Decision finalized             |
 | 2026-10-04 | Amended     | "Works on all .NET platforms" qualified for trimmed and Native AOT applications by ADR-0021. Mechanism unchanged. See Implementation Notes > Amendment. |
+| 2026-10-04 | Amended     | Supplier exceptions are not translated from 2.0.0; only a `NotSupportedException` coming out of the serializer calls is. Mechanism unchanged. See Implementation Notes > second Amendment. |

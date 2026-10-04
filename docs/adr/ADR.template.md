@@ -115,6 +115,18 @@
 - [Implementation note 1]
 - [Implementation note 2]
 
+<!--
+Amending an accepted ADR (not for a new ADR): keep the text above unchanged and add, at the end
+of this section, before References:
+
+### Amendment (YYYY-MM-DD): [Short title]
+
+[What changed and why. Say what is unchanged.]
+
+Also add `- **Amended**: YYYY-MM-DD — [one line]` to the Status block, and a row with status
+`Amended` to Revision History.
+-->
+
 ---
 
 ## References
