@@ -924,8 +924,15 @@ public static class Contract
     /// <exception cref="PostconditionViolationException">
     ///     Thrown when fields not marked as assignable have been modified
     /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown under Native AOT when <typeparamref name="T" />, or the runtime type of a nested member or
+    ///     collection element that has to be compared, has no properties or fields visible to reflection.
+    ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
+    /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare all public properties and private fields recursively.
+    ///     Under Native AOT, a type whose members were not preserved cannot be compared; the method then throws
+    ///     <see cref="InvalidOperationException" /> rather than report that nothing changed.
     ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
     ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
@@ -987,6 +994,16 @@ public static class Contract
     {
         Type type = typeof(T);
         TypeMetadata metadata = _GetOrCacheMetadata(type);
+
+        if (_MembersAreHidden(type, metadata))
+        {
+            throw new InvalidOperationException(
+                $"EnsureAssignable cannot compare {type}: no properties or fields are visible to reflection "
+                    + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
+                    + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off."
+            );
+        }
+
         List<string> differences = [];
 
         foreach (MemberAccessor member in metadata.Members)
@@ -998,9 +1015,15 @@ public static class Contract
 
             object? actualValue = member.GetValue(actual!);
             object? expectedValue = member.GetValue(expected!);
+            HiddenMembers? hidden = null;
 
-            if (!_AreEqual(actualValue, expectedValue, member.MemberType))
+            if (!_AreEqual(actualValue, expectedValue, member.MemberType, ref hidden))
             {
+                if (hidden is not null)
+                {
+                    throw _CannotCompareNested(type, _SourceName(member.Name), hidden);
+                }
+
                 differences.Add(member.Name);
             }
         }
@@ -1034,6 +1057,42 @@ public static class Contract
         );
     }
 
+    private static InvalidOperationException _CannotCompareNested(
+        Type comparedType,
+        string topLevelMember,
+        HiddenMembers hidden
+    )
+    {
+        string path = $"{comparedType.Name}.{topLevelMember}{hidden.PathBelowTopLevelMember}";
+
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
+                + "no properties or fields are visible to reflection under Native AOT. "
+                + $"Ways out: list '{topLevelMember}' as assignable (patterns are regular expressions "
+                + "matched against top-level member names, so use the plain member name); "
+                + "preserve the type's members, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "or set DBC_POST=off."
+        );
+    }
+
+    // Under Native AOT a type whose members were not preserved reflects as having none, which
+    // would make every comparison of it pass. System.Object genuinely has none (lock objects).
+    private static bool _MembersAreHidden(Type type, TypeMetadata metadata)
+    {
+        return metadata.Members.Count == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
+    }
+
+    // A compiler-generated backing field "<Name>k__BackingField" is shown as the property it backs.
+    private static string _SourceName(string memberName)
+    {
+        const string backingFieldSuffix = ">k__BackingField";
+
+        return memberName.StartsWith('<') && memberName.EndsWith(backingFieldSuffix, StringComparison.Ordinal)
+            ? memberName[1..^backingFieldSuffix.Length]
+            : memberName;
+    }
+
     private static bool _IsAssignable(string fieldName, string[] patterns)
     {
         if (patterns == null || patterns.Length == 0)
@@ -1044,7 +1103,9 @@ public static class Contract
         return patterns.Any(pattern => Regex.IsMatch(fieldName, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
     }
 
-    private static bool _AreEqual(object? actual, object? expected, Type memberType)
+    // A false return with hidden set means "could not compare" (a type with no visible members
+    // blocked the comparison), not "different". Callers must check hidden before reporting a difference.
+    private static bool _AreEqual(object? actual, object? expected, Type memberType, ref HiddenMembers? hidden)
     {
         if (ReferenceEquals(actual, expected))
         {
@@ -1063,13 +1124,13 @@ public static class Contract
 
         if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)
         {
-            return _CompareCollections(actualEnum, expectedEnum);
+            return _CompareCollections(actualEnum, expectedEnum, ref hidden);
         }
 
-        return memberType.IsClass ? _CompareRecursively(actual, expected) : Equals(actual, expected);
+        return memberType.IsClass ? _CompareRecursively(actual, expected, ref hidden) : Equals(actual, expected);
     }
 
-    private static bool _CompareCollections(IEnumerable actual, IEnumerable expected)
+    private static bool _CompareCollections(IEnumerable actual, IEnumerable expected, ref HiddenMembers? hidden)
     {
         object?[] actualArray = actual.Cast<object?>().ToArray();
         object?[] expectedArray = expected.Cast<object?>().ToArray();
@@ -1095,8 +1156,9 @@ public static class Contract
             }
 
             Type itemType = actualItem.GetType();
-            if (!_AreEqual(actualItem, expectedItem, itemType))
+            if (!_AreEqual(actualItem, expectedItem, itemType, ref hidden))
             {
+                hidden?.Prepend("[]");
                 return false;
             }
         }
@@ -1104,23 +1166,44 @@ public static class Contract
         return true;
     }
 
-    private static bool _CompareRecursively(object actual, object expected)
+    private static bool _CompareRecursively(object actual, object expected, ref HiddenMembers? hidden)
     {
         Type type = actual.GetType();
         TypeMetadata metadata = _GetOrCacheMetadata(type);
+
+        if (_MembersAreHidden(type, metadata))
+        {
+            hidden = new HiddenMembers(type);
+            return false;
+        }
 
         foreach (MemberAccessor member in metadata.Members)
         {
             object? actualValue = member.GetValue(actual);
             object? expectedValue = member.GetValue(expected);
 
-            if (!_AreEqual(actualValue, expectedValue, member.MemberType))
+            if (!_AreEqual(actualValue, expectedValue, member.MemberType, ref hidden))
             {
+                hidden?.Prepend("." + _SourceName(member.Name));
                 return false;
             }
         }
 
         return true;
+    }
+
+    // Created only when a comparison is blocked. The path is prepended one segment per level on
+    // the way back up, so a comparison that is not blocked allocates nothing for it.
+    private sealed class HiddenMembers(Type type)
+    {
+        public Type Type { get; } = type;
+
+        public string PathBelowTopLevelMember { get; private set; } = "";
+
+        public void Prepend(string segment)
+        {
+            PathBelowTopLevelMember = segment + PathBelowTopLevelMember;
+        }
     }
 
     // ============================================================
