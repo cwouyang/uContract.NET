@@ -53,3 +53,18 @@ jobs:
 
       - name: Test (Release)
         run: dotnet test -c Release --no-build --verbosity normal
+
+      # Old<T>() and EnsureAssignable<T>() behave differently under Native AOT; unit tests cannot see it.
+      - name: Publish Native AOT smoke test
+        if: runner.os == 'Linux'
+        run: dotnet publish tests/uContract.AotSmoke/uContract.AotSmoke.csproj -c Release -r linux-x64 -o "${{ runner.temp }}/aot-smoke"
+
+      - name: Run Native AOT smoke test
+        if: runner.os == 'Linux'
+        run: "${{ runner.temp }}/aot-smoke/uContract.AotSmoke --assert"
+
+      - name: Run Native AOT smoke test (DBC_POST=off)
+        if: runner.os == 'Linux'
+        env:
+          DBC_POST: "off"
+        run: "${{ runner.temp }}/aot-smoke/uContract.AotSmoke --assert"

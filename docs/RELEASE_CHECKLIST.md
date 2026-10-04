@@ -21,7 +21,7 @@ Already done for this repository; kept for reference:
 
 ### 1. CI Green
 
-- [ ] `Build and Test` passes on master (both Ubuntu and Windows jobs)
+- [ ] `Build and Test` passes on master (both Ubuntu and Windows jobs; the Ubuntu job also publishes and runs the Native AOT smoke test)
 
 ### 2. Version, Changelog, and API Baseline
 
