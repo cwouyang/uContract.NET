@@ -69,15 +69,10 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled);
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled);
-        Assert.Equal(expectedDefault, config.InvariantsEnabled);
-        Assert.Equal(expectedDefault, config.CheckEnabled);
+        Assert.True(config.PreconditionsEnabled);
+        Assert.True(config.PostconditionsEnabled);
+        Assert.True(config.InvariantsEnabled);
+        Assert.True(config.CheckEnabled);
         Assert.False(config.DocumentationEnabled); // Always false by default
     }
 
@@ -102,16 +97,11 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
         // Should ignore invalid value and use build default
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled);
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled);
-        Assert.Equal(expectedDefault, config.InvariantsEnabled);
-        Assert.Equal(expectedDefault, config.CheckEnabled);
+        Assert.True(config.PreconditionsEnabled);
+        Assert.True(config.PostconditionsEnabled);
+        Assert.True(config.InvariantsEnabled);
+        Assert.True(config.CheckEnabled);
     }
 
     #endregion
@@ -201,15 +191,10 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
         Assert.True(config.PreconditionsEnabled); // Explicitly set
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.InvariantsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.CheckEnabled); // Uses default
+        Assert.True(config.PostconditionsEnabled); // Uses default
+        Assert.True(config.InvariantsEnabled); // Uses default
+        Assert.True(config.CheckEnabled); // Uses default
     }
 
     [Fact]
@@ -219,15 +204,10 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled); // Uses default
+        Assert.True(config.PreconditionsEnabled); // Uses default
         Assert.False(config.PostconditionsEnabled); // Explicitly set
-        Assert.Equal(expectedDefault, config.InvariantsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.CheckEnabled); // Uses default
+        Assert.True(config.InvariantsEnabled); // Uses default
+        Assert.True(config.CheckEnabled); // Uses default
     }
 
     [Fact]
@@ -237,15 +217,10 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled); // Uses default
+        Assert.True(config.PreconditionsEnabled); // Uses default
+        Assert.True(config.PostconditionsEnabled); // Uses default
         Assert.False(config.InvariantsEnabled); // Explicitly set
-        Assert.Equal(expectedDefault, config.CheckEnabled); // Uses default
+        Assert.True(config.CheckEnabled); // Uses default
     }
 
     [Fact]
@@ -255,14 +230,9 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.InvariantsEnabled); // Uses default
+        Assert.True(config.PreconditionsEnabled); // Uses default
+        Assert.True(config.PostconditionsEnabled); // Uses default
+        Assert.True(config.InvariantsEnabled); // Uses default
         Assert.True(config.CheckEnabled); // Explicitly set
     }
 

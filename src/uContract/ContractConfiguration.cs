@@ -4,7 +4,7 @@ namespace uContract;
 
 /// <summary>
 ///     Manages runtime configuration for Design by Contract enforcement.
-///     Reads settings from environment variables and applies Debug/Release defaults.
+///     Reads settings from environment variables; contracts are enabled by default.
 /// </summary>
 /// <remarks>
 ///     <para>
@@ -33,11 +33,9 @@ namespace uContract;
 ///         </list>
 ///     </para>
 ///     <para>
-///         Default behavior:
-///         <list type="bullet">
-///             <item>Debug builds: All contracts enabled by default</item>
-///             <item>Release builds: All contracts disabled by default (unless explicitly enabled)</item>
-///         </list>
+///         Default behavior: with no <c>DBC</c> variable set, preconditions, postconditions,
+///         invariants and check statements are all enabled, in every build configuration.
+///         Set <c>DBC=off</c> to disable them.
 ///     </para>
 ///     <para>
 ///         Precedence order, highest first:
@@ -47,7 +45,7 @@ namespace uContract;
 ///                 <c>DBC</c>, if set — it is the default for the types that named no flag of their own,
 ///                 not a master switch that outranks them
 ///             </item>
-///             <item>Configuration defaults (Debug=true, Release=false)</item>
+///             <item>The default (enabled)</item>
 ///         </list>
 ///         ADR-0004 records this and rejects the alternative in which <c>DBC_PRE</c> could not
 ///         re-enable a type that <c>DBC</c> had disabled.
@@ -55,7 +53,7 @@ namespace uContract;
 ///     <para>
 ///         To find out what actually resolved at runtime rather than what was requested, read
 ///         <see cref="PreconditionsSource" /> and its siblings — each names whichever of the
-///         per-type flag, <c>DBC</c>, or the build default decided that type. Note that
+///         per-type flag, <c>DBC</c>, or the default decided that type. Note that
 ///         configuration is read once and frozen, so changing an environment variable after
 ///         startup has no effect.
 ///     </para>
@@ -64,12 +62,12 @@ public class ContractConfiguration
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="ContractConfiguration" /> class.
-    ///     Reads environment variables and applies Debug/Release defaults.
+    ///     Reads environment variables; contracts are enabled when none decides.
     /// </summary>
     public ContractConfiguration()
     {
-        // Determine default based on build configuration
-        bool defaultEnabled = IsDebugBuild();
+        // Contracts are enabled by default, in every build configuration
+        const bool defaultEnabled = true;
         string defaultSource = IsDebugBuild() ? "default: Debug" : "default: Release";
 
         // Read global DBC setting (acts as default when specific flags are not set)
@@ -81,11 +79,11 @@ public class ContractConfiguration
         bool? invariantsDbc = ParseEnvironmentVariable("DBC_INV");
         bool? checkDbc = ParseEnvironmentVariable("DBC_CHECK");
 
-        // Apply precedence: specific type flags > global DBC > build-specific defaults
+        // Apply precedence: specific type flags > global DBC > the default
         // null coalescing (??) ensures we use the first non-null value:
         // - If DBC_PRE is set, use it (highest priority)
         // - Else if DBC is set, use it (middle priority)
-        // - Else use build default (lowest priority)
+        // - Else use the default, enabled (lowest priority)
         PreconditionsEnabled = preconditionsDbc ?? globalDbc ?? defaultEnabled;
         PostconditionsEnabled = postconditionsDbc ?? globalDbc ?? defaultEnabled;
         InvariantsEnabled = invariantsDbc ?? globalDbc ?? defaultEnabled;
@@ -118,7 +116,7 @@ public class ContractConfiguration
     ///     <list type="number">
     ///         <item>DBC_PRE environment variable (if set)</item>
     ///         <item>DBC environment variable (if set, overrides specific settings)</item>
-    ///         <item>Debug/Release default (Debug=true, Release=false)</item>
+    ///         <item>The default (enabled)</item>
     ///     </list>
     /// </remarks>
     public bool PreconditionsEnabled { get; }
@@ -131,7 +129,7 @@ public class ContractConfiguration
     ///     <list type="number">
     ///         <item>DBC_POST environment variable (if set)</item>
     ///         <item>DBC environment variable (if set, overrides specific settings)</item>
-    ///         <item>Debug/Release default (Debug=true, Release=false)</item>
+    ///         <item>The default (enabled)</item>
     ///     </list>
     /// </remarks>
     public bool PostconditionsEnabled { get; }
@@ -144,7 +142,7 @@ public class ContractConfiguration
     ///     <list type="number">
     ///         <item>DBC_INV environment variable (if set)</item>
     ///         <item>DBC environment variable (if set, overrides specific settings)</item>
-    ///         <item>Debug/Release default (Debug=true, Release=false)</item>
+    ///         <item>The default (enabled)</item>
     ///     </list>
     /// </remarks>
     public bool InvariantsEnabled { get; }
@@ -157,7 +155,7 @@ public class ContractConfiguration
     ///     <list type="number">
     ///         <item>DBC_CHECK environment variable (if set)</item>
     ///         <item>DBC environment variable (if set, overrides specific settings)</item>
-    ///         <item>Debug/Release default (Debug=true, Release=false)</item>
+    ///         <item>The default (enabled)</item>
     ///     </list>
     /// </remarks>
     public bool CheckEnabled { get; }

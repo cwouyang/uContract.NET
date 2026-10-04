@@ -40,7 +40,7 @@ internal sealed class ContractEventSource : EventSource
     /// </summary>
     /// <param name="configurationSummary">
     ///     Human-readable summary of resolved configuration, including each setting's
-    ///     value (on/off) and source (environment variable name or build default).
+    ///     value (on/off) and source (environment variable name or the default).
     /// </param>
     [Event(1, Level = EventLevel.Informational, Message = "Configuration loaded: {0}")]
     public void ConfigurationLoaded(string configurationSummary)
