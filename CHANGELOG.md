@@ -18,7 +18,13 @@ This is a major release (2.0.0): the default for contract evaluation changes.
 with only a per-type flag (for example `DBC_PRE=on`), add `DBC=off` to keep the other types
 disabled. Use per-type flags to keep cheap contracts on and expensive ones off, for example
 `DBC_POST=off`. For trimmed and Native AOT applications, see
-[Trimming and Native AOT](README.md#trimming-and-native-aot) in the README.
+[Trimming and Native AOT](README.md#trimming-and-native-aot) in the README. Three further changes
+affect code that matches on exceptions: code that catches `ArgumentException` from
+`EnsureAssignable<T>()` for a property with no get method must catch `InvalidOperationException`;
+code that catches `InvalidOperationException` around `Old<T>()` to handle its own supplier's
+`NotSupportedException` must catch that exception itself; and code that matches the text of an
+`EnsureAssignable<T>()` violation must expect one `Postcondition violated:` prefix in `Message`
+and none in `Description` (see Changed).
 
 ### Changed
 
@@ -37,6 +43,16 @@ disabled. Use per-type flags to keep cheap contracts on and expensive ones off, 
   property, including one inherited from a base class; also a property whose getter is not visible
   through the compared type — a private getter declared on a base class, or a virtual property
   whose derived class overrides only the setter).
+- **BREAKING**: An exception thrown while the supplier passed to `Old<T>()` runs now propagates
+  unchanged. In 1.0.0 a `NotSupportedException` (or a derived type such as
+  `PlatformNotSupportedException`) thrown by the supplier was wrapped in an
+  `InvalidOperationException` saying the type cannot be serialized. One thrown by a property
+  getter, a converter or a lazily evaluated sequence during the copy is still reported that way.
+  (ADR-0021)
+- **BREAKING**: The `EnsureAssignable<T>()` violation message has one `Postcondition violated:`
+  prefix instead of two, and the exception's `Description` no longer starts with it. Before:
+  `Postcondition violated: Postcondition violated: Fields were modified …`; after:
+  `Postcondition violated: Fields were modified …`.
 - Callers that forward their own generic parameter to `EnsureAssignable<T>` and have trim analysis
   enabled get warning `IL2091` until they add
   `[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields)]`
