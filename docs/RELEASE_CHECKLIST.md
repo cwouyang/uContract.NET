@@ -25,7 +25,7 @@ Already done for this repository; kept for reference:
 
 ### 2. Version, Changelog, and API Baseline
 
-- [ ] Update `<Version>` in `src/uContract/uContract.csproj`
+- [ ] Update `<Version>`, `<AssemblyVersion>` and `<FileVersion>` in `src/uContract/uContract.csproj` (the last two take the four-part form, e.g. `2.0.0.0`)
 - [ ] Retitle the `[Unreleased]` section in `CHANGELOG.md` to the new version with the
       release date, and update the link reference at the bottom
 - [ ] Promote the public API baseline: move all entries from
@@ -35,7 +35,7 @@ Already done for this repository; kept for reference:
 ### 3. Local Package Verification
 
 ```bash
-dotnet clean && dotnet test
+dotnet clean && dotnet test && dotnet test -c Release
 dotnet pack src/uContract/uContract.csproj -c Release -o ./artifacts
 ```
 
@@ -43,8 +43,14 @@ dotnet pack src/uContract/uContract.csproj -c Release -o ./artifacts
 - [ ] Package contains `lib/net8.0/uContract.dll` + `.xml`, `README.md`, `icon.png`,
       `THIRD-PARTY-NOTICES.txt`; no test assemblies
 - [ ] `obj/Release/net8.0/uContract.sourcelink.json` exists (Source Link intact)
-- [ ] Smoke test: install the package into a fresh console project from a local feed,
-      run a passing and a failing contract with `DBC=on`, confirm IntelliSense works
+- [ ] Smoke test: install the package into a fresh console project from a local feed, restoring
+      into a throwaway folder (`dotnet restore --packages <temp dir>`) so the local build does not
+      stay in the global NuGet cache and mask the published package in step 6. With **no `DBC*`
+      variable set**, in a Debug and in a Release build of that project, a passing contract passes
+      and `Contract.Require(() => false)` throws `PreconditionViolationException`; with `DBC=off`
+      it does not throw. Confirm IntelliSense works
+- [ ] In the same project, `typeof(uContract.Contract).Assembly.GetName().Version` prints
+      `{VERSION}.0` (confirms `<AssemblyVersion>` was updated with `<Version>`)
 
 ### 4. Tag and Push
 
@@ -70,7 +76,7 @@ validates this and fails the release otherwise.
 - [ ] `publish.yml` run is green
 - [ ] Package visible at <https://www.nuget.org/packages/uContract/>
       (allow 5–10 minutes for indexing)
-- [ ] Test install from NuGet.org in a fresh project
+- [ ] Test install from NuGet.org in a fresh project and repeat the no-`DBC` smoke test
 - [ ] Add a fresh `[Unreleased]` section to `CHANGELOG.md`
 - [ ] Monitor GitHub Issues for bug reports
 

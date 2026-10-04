@@ -65,10 +65,12 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 
 ## Maintenance Workflow
 
-### After Decision Confirmation
+### After Implementation
 
-1. Write ADR (use `ADR.template.md`, set Status to "Accepted")
-2. Update this README's ADR Index
+1. Agree the decision before work starts, and record it in the issue or pull request
+2. Once the change is implemented, write the ADR (use `ADR.template.md`, set Status to "Accepted"),
+   including what the implementation turned up
+3. Update this README's ADR Index
 
 ---
 
@@ -81,6 +83,7 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 - [ADR-0002: Project Naming and Structure](0002-project-naming-structure.md) — 2025-10-18
 - [ADR-0003: API Design - Static Class Pattern](0003-api-design-static-class.md) — 2025-10-18
 - [ADR-0004: Runtime Configuration via Environment Variables](0004-runtime-configuration-environment-variables.md) — 2025-10-18
+- [ADR-0020: Contracts Enabled by Default](0020-contracts-enabled-by-default.md) — 2026-10-04
 - [ADR-0005: Generics, Type Constraints, and Nullable Reference Types](0005-generics-type-constraints-nullable.md) — 2025-10-18
 
 **Second Priority (Implementation Details)**:
@@ -122,7 +125,7 @@ See [ADR.template.md](ADR.template.md) for the standard template.
 
 ### Best Practices
 
-- Write ADRs **during** decision-making, not after implementation
+- Write ADRs **after** implementation, so they record what the implementation turned up; the decision itself is agreed before work starts
 - Keep ADRs **concise** but complete (1-2 pages max)
 - Focus on **WHY**, not just WHAT
 - Include **alternatives considered** to avoid future repetition

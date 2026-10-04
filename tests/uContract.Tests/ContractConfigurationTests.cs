@@ -2,12 +2,28 @@ namespace uContract.Tests;
 
 /// <summary>
 ///     Tests for <see cref="ContractConfiguration" /> class.
-///     Verifies environment variable parsing, precedence, and Debug/Release defaults.
+///     Verifies environment variable parsing, precedence, and defaults.
 /// </summary>
 [Collection("EnvironmentVariables")]
-public class ContractConfigurationTests
+public sealed class ContractConfigurationTests : IDisposable
 {
+    // Contract.Config freezes at first use, so these process-wide variables must not outlive a test.
+    public void Dispose()
+    {
+        _ClearEnvironment();
+    }
+
     #region Setup Helpers
+
+    private static void _ClearEnvironment()
+    {
+        Environment.SetEnvironmentVariable("DBC", null);
+        Environment.SetEnvironmentVariable("DBC_PRE", null);
+        Environment.SetEnvironmentVariable("DBC_POST", null);
+        Environment.SetEnvironmentVariable("DBC_INV", null);
+        Environment.SetEnvironmentVariable("DBC_CHECK", null);
+        Environment.SetEnvironmentVariable("DBC_DOC", null);
+    }
 
     private static void _SetupEnvironment(
         string? dbc = null,
@@ -19,12 +35,7 @@ public class ContractConfigurationTests
     )
     {
         // Clear all environment variables first
-        Environment.SetEnvironmentVariable("DBC", null);
-        Environment.SetEnvironmentVariable("DBC_PRE", null);
-        Environment.SetEnvironmentVariable("DBC_POST", null);
-        Environment.SetEnvironmentVariable("DBC_INV", null);
-        Environment.SetEnvironmentVariable("DBC_CHECK", null);
-        Environment.SetEnvironmentVariable("DBC_DOC", null);
+        _ClearEnvironment();
 
         // Set specified variables
         if (dbc is not null)
@@ -63,21 +74,16 @@ public class ContractConfigurationTests
     #region Default Configuration Tests
 
     [Fact]
-    public void Constructor_WhenNoEnvironmentVariablesSet_UsesCorrectBuildDefaults()
+    public void Constructor_WhenNoEnvironmentVariablesSet_EnablesAllContracts()
     {
         _SetupEnvironment();
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled);
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled);
-        Assert.Equal(expectedDefault, config.InvariantsEnabled);
-        Assert.Equal(expectedDefault, config.CheckEnabled);
+        Assert.True(config.PreconditionsEnabled);
+        Assert.True(config.PostconditionsEnabled);
+        Assert.True(config.InvariantsEnabled);
+        Assert.True(config.CheckEnabled);
         Assert.False(config.DocumentationEnabled); // Always false by default
     }
 
@@ -102,16 +108,11 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        // Should ignore invalid value and use build default
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled);
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled);
-        Assert.Equal(expectedDefault, config.InvariantsEnabled);
-        Assert.Equal(expectedDefault, config.CheckEnabled);
+        // Should ignore invalid value and use the default
+        Assert.True(config.PreconditionsEnabled);
+        Assert.True(config.PostconditionsEnabled);
+        Assert.True(config.InvariantsEnabled);
+        Assert.True(config.CheckEnabled);
     }
 
     #endregion
@@ -195,21 +196,16 @@ public class ContractConfigurationTests
     #region Specific Contract Type Tests
 
     [Fact]
-    public void Constructor_WhenOnlyDbcPreIsTrue_EnablesPreconditionsAndUsesDefaultsForOthers()
+    public void Constructor_WhenOnlyDbcPreIsFalse_DisablesPreconditionsAndUsesDefaultsForOthers()
     {
-        _SetupEnvironment(dbcPre: "true");
+        _SetupEnvironment(dbcPre: "false");
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.True(config.PreconditionsEnabled); // Explicitly set
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.InvariantsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.CheckEnabled); // Uses default
+        Assert.False(config.PreconditionsEnabled); // Explicitly set
+        Assert.True(config.PostconditionsEnabled); // Uses default
+        Assert.True(config.InvariantsEnabled); // Uses default
+        Assert.True(config.CheckEnabled); // Uses default
     }
 
     [Fact]
@@ -219,15 +215,10 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled); // Uses default
+        Assert.True(config.PreconditionsEnabled); // Uses default
         Assert.False(config.PostconditionsEnabled); // Explicitly set
-        Assert.Equal(expectedDefault, config.InvariantsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.CheckEnabled); // Uses default
+        Assert.True(config.InvariantsEnabled); // Uses default
+        Assert.True(config.CheckEnabled); // Uses default
     }
 
     [Fact]
@@ -237,33 +228,23 @@ public class ContractConfigurationTests
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled); // Uses default
+        Assert.True(config.PreconditionsEnabled); // Uses default
+        Assert.True(config.PostconditionsEnabled); // Uses default
         Assert.False(config.InvariantsEnabled); // Explicitly set
-        Assert.Equal(expectedDefault, config.CheckEnabled); // Uses default
+        Assert.True(config.CheckEnabled); // Uses default
     }
 
     [Fact]
-    public void Constructor_WhenOnlyDbcCheckIsTrue_EnablesChecksAndUsesDefaultsForOthers()
+    public void Constructor_WhenOnlyDbcCheckIsFalse_DisablesChecksAndUsesDefaultsForOthers()
     {
-        _SetupEnvironment(dbcCheck: "true");
+        _SetupEnvironment(dbcCheck: "false");
 
         ContractConfiguration config = new();
 
-#if DEBUG
-        const bool expectedDefault = true;
-#else
-        const bool expectedDefault = false;
-#endif
-        Assert.Equal(expectedDefault, config.PreconditionsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.PostconditionsEnabled); // Uses default
-        Assert.Equal(expectedDefault, config.InvariantsEnabled); // Uses default
-        Assert.True(config.CheckEnabled); // Explicitly set
+        Assert.True(config.PreconditionsEnabled); // Uses default
+        Assert.True(config.PostconditionsEnabled); // Uses default
+        Assert.True(config.InvariantsEnabled); // Uses default
+        Assert.False(config.CheckEnabled); // Explicitly set
     }
 
     #endregion
@@ -342,20 +323,20 @@ public class ContractConfigurationTests
     public void Constructor_WhenSpecificFlagInvalidAndGlobalValid_FallsBackToGlobal()
     {
         // Verifies the null-coalescing chain when specific flag is invalid
-        // DBC=true (valid global), DBC_PRE=invalid (should fallback to global)
+        // DBC=false (valid global), DBC_PRE=invalid (should fallback to global)
         _SetupEnvironment(
-            "true", // DBC = true (valid global)
+            "false", // DBC = false (valid global)
             "invalid_value" // DBC_PRE = invalid (should be treated as null)
         );
 
         ContractConfiguration config = new();
 
-        // PreconditionsEnabled should use global DBC=true (not build default)
-        // This verifies the null-coalescing chain: DBC_PRE (null) ?? DBC (true) ?? default
-        Assert.True(config.PreconditionsEnabled); // Fallback to global true
-        Assert.True(config.PostconditionsEnabled); // Uses global true
-        Assert.True(config.InvariantsEnabled); // Uses global true
-        Assert.True(config.CheckEnabled); // Uses global true
+        // PreconditionsEnabled should use global DBC=false (not the default)
+        // This verifies the null-coalescing chain: DBC_PRE (null) ?? DBC (false) ?? default
+        Assert.False(config.PreconditionsEnabled); // Fallback to global false
+        Assert.False(config.PostconditionsEnabled); // Uses global false
+        Assert.False(config.InvariantsEnabled); // Uses global false
+        Assert.False(config.CheckEnabled); // Uses global false
     }
 
     #endregion

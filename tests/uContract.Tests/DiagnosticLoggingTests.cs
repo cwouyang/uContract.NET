@@ -54,15 +54,11 @@ public sealed class DiagnosticLoggingTests : IDisposable
     }
 
     [Fact]
-    public void Constructor_WhenNoEnvVarSet_TracksSourceAsBuildDefault()
+    public void Constructor_WhenNoEnvVarSet_TracksSourceAsDefault()
     {
         ContractConfiguration config = new();
 
-#if DEBUG
-        string expectedSource = "default: Debug";
-#else
-        string expectedSource = "default: Release";
-#endif
+        const string expectedSource = "default";
         Assert.Equal(expectedSource, config.PreconditionsSource);
         Assert.Equal(expectedSource, config.PostconditionsSource);
         Assert.Equal(expectedSource, config.InvariantsSource);
@@ -143,6 +139,31 @@ public sealed class DiagnosticLoggingTests : IDisposable
             string output = stderrCapture.ToString();
             Assert.Contains("[uContract] Configuration loaded:", output, StringComparison.Ordinal);
             Assert.Contains("Preconditions: on", output, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Console.SetError(originalStderr);
+        }
+    }
+
+    [Fact]
+    public void Constructor_WhenDbcDocOnAndNothingElseSet_ReportsEachTypeAsFromDefaultOnStderr()
+    {
+        Environment.SetEnvironmentVariable("DBC_DOC", "on");
+
+        using StringWriter stderrCapture = new();
+        TextWriter originalStderr = Console.Error;
+        Console.SetError(stderrCapture);
+
+        try
+        {
+            ContractConfiguration config = new();
+
+            string output = stderrCapture.ToString();
+            Assert.Contains("Preconditions: on (from default)", output, StringComparison.Ordinal);
+            Assert.Contains("Postconditions: on (from default)", output, StringComparison.Ordinal);
+            Assert.Contains("Invariants: on (from default)", output, StringComparison.Ordinal);
+            Assert.Contains("Check: on (from default)", output, StringComparison.Ordinal);
         }
         finally
         {
