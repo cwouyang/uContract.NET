@@ -22,7 +22,7 @@ namespace uContract;
 ///     Design by Contract principles. All contract conditions use lazy evaluation
 ///     to ensure zero performance overhead when contracts are disabled.
 ///     Contract evaluation can be controlled via environment variables:
-///     - DBC: Global toggle for all contracts
+///     - DBC: default for every contract type whose own flag is not set
 ///     - DBC_PRE: Toggle for preconditions only
 ///     - DBC_POST: Toggle for postconditions only
 ///     - DBC_INV: Toggle for invariants only
@@ -73,7 +73,9 @@ public static class Contract
     ///     null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_PRE environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_PRE is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_PRE is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     /// </remarks>
@@ -130,7 +132,9 @@ public static class Contract
     ///     null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     /// </remarks>
@@ -188,7 +192,9 @@ public static class Contract
     ///     null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_INV environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_INV is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_INV is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     /// </remarks>
@@ -244,7 +250,9 @@ public static class Contract
     ///     null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_CHECK environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_CHECK is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_CHECK is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Check statements are for runtime assertions that are neither preconditions nor postconditions.
@@ -303,10 +311,13 @@ public static class Contract
     /// </exception>
     /// <remarks>
     ///     This method supports the DDD pattern of avoiding unnecessary work when a condition is met.
-    ///     Unlike Require/Ensure/Invariant, this method always evaluates the condition and returns its result,
-    ///     without throwing exceptions. Uses the DBC_PRE environment variable for control.
-    ///     The condition is evaluated lazily to ensure zero overhead when contracts are disabled.
-    ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
+    ///     Unlike Require/Ensure/Invariant, it is never disabled and throws no contract violation of its own:
+    ///     it evaluates the condition and returns its result whether preconditions are enabled or not.
+    ///     The exception is a call made while another contract check is running: the recursion guard then
+    ///     returns <c>false</c> without evaluating the condition.
+    ///     DBC_PRE (or DBC, when DBC_PRE is not set) changes one thing only. While preconditions are enabled,
+    ///     contract checks made inside the condition are skipped by the recursion guard; while they are
+    ///     disabled, those checks run if their own contract type is enabled.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -367,7 +378,9 @@ public static class Contract
     ///     which is the default in trimmed and Native AOT applications.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     The supplier is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Deep copy is performed via System.Text.Json serialization, which requires the type to be serializable.
@@ -460,7 +473,9 @@ public static class Contract
     /// <exception cref="PreconditionViolationException">Thrown when the value is null.</exception>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="description" /> is null.</exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_PRE environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_PRE is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_PRE is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     This is a convenience method that provides clearer intent than Require(() => value != null).
     /// </remarks>
@@ -516,7 +531,9 @@ public static class Contract
     ///     Thrown when <paramref name="description" /> or <paramref name="value" /> is null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_PRE environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_PRE is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_PRE is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     This is a convenience method that provides clearer intent than Require(() => !string.IsNullOrEmpty(value)).
     /// </remarks>
@@ -571,7 +588,9 @@ public static class Contract
     /// <exception cref="PostconditionViolationException">Thrown when the value is null.</exception>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="description" /> is null.</exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     This is a convenience method that provides clearer intent than Ensure(() => value != null).
     /// </remarks>
@@ -631,7 +650,9 @@ public static class Contract
     ///     Thrown when <paramref name="description" /> or <paramref name="assertion" /> is null.
     /// </exception>
     /// <remarks>
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     This method returns the result value, enabling fluent method chaining in query methods.
     /// </remarks>
@@ -685,7 +706,10 @@ public static class Contract
     /// <exception cref="InvariantViolationException">Thrown when <paramref name="value" /> is null and invariants are enabled</exception>
     /// <remarks>
     ///     This method is a convenience wrapper around <see cref="Invariant(string, Func{bool})" />
-    ///     specifically for null checks. It is controlled by the DBC_INV environment variable.
+    ///     specifically for null checks.
+    ///     This method is disabled when DBC_INV is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_INV is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -843,7 +867,9 @@ public static class Contract
     ///     This method verifies that a collection returned from a method is immutable.
     ///     It checks if the type is from System.Collections.Immutable namespace or
     ///     if the type name starts with "Immutable" or "ReadOnly".
-    ///     Controlled by the DBC_POST environment variable.
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -983,7 +1009,9 @@ public static class Contract
     ///     Under Native AOT, a type whose members were not preserved cannot be compared; the method then throws
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed.
     ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
-    ///     This method is disabled when the DBC_POST environment variable is set to "false" or "off".
+    ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
+    ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
+    ///     if neither decides, the method is enabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Pattern matching uses <see cref="Regex" /> for flexible field name matching.
     /// </remarks>
