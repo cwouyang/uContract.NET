@@ -5,9 +5,25 @@ namespace uContract.Tests;
 ///     Verifies environment variable parsing, precedence, and defaults.
 /// </summary>
 [Collection("EnvironmentVariables")]
-public class ContractConfigurationTests
+public sealed class ContractConfigurationTests : IDisposable
 {
+    // Contract.Config freezes at first use, so these process-wide variables must not outlive a test.
+    public void Dispose()
+    {
+        _ClearEnvironment();
+    }
+
     #region Setup Helpers
+
+    private static void _ClearEnvironment()
+    {
+        Environment.SetEnvironmentVariable("DBC", null);
+        Environment.SetEnvironmentVariable("DBC_PRE", null);
+        Environment.SetEnvironmentVariable("DBC_POST", null);
+        Environment.SetEnvironmentVariable("DBC_INV", null);
+        Environment.SetEnvironmentVariable("DBC_CHECK", null);
+        Environment.SetEnvironmentVariable("DBC_DOC", null);
+    }
 
     private static void _SetupEnvironment(
         string? dbc = null,
@@ -19,12 +35,7 @@ public class ContractConfigurationTests
     )
     {
         // Clear all environment variables first
-        Environment.SetEnvironmentVariable("DBC", null);
-        Environment.SetEnvironmentVariable("DBC_PRE", null);
-        Environment.SetEnvironmentVariable("DBC_POST", null);
-        Environment.SetEnvironmentVariable("DBC_INV", null);
-        Environment.SetEnvironmentVariable("DBC_CHECK", null);
-        Environment.SetEnvironmentVariable("DBC_DOC", null);
+        _ClearEnvironment();
 
         // Set specified variables
         if (dbc is not null)
