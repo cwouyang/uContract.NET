@@ -8,6 +8,7 @@
 - **Deciders**: Project maintainer
 - **Status Date**: 2026-10-04
 - **Amended**: 2026-10-04 — the "Trimming and Native AOT: not verified" consequence below is superseded by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
+- **Amended**: 2026-10-04 — the "3 of 40 full-suite runs" figure is one of two measured series; see the second Amendment under Implementation Notes
 
 ---
 
@@ -189,6 +190,22 @@ and what was changed.
   `[RequiresUnreferencedCode]` message changed.
 - The decision of this ADR (contracts enabled by default) is unchanged.
 
+### Amendment (2026-10-04): The test-suite ordering figure
+
+The "Test-suite ordering" note above says "3 of 40 full-suite runs then failed". That figure
+is one of two independent series measured before the fix:
+
+| Series | Runs | Failing runs |
+|---|---|---|
+| First | 40 | 3 |
+| Second | 80 | 5 |
+| Together | 120 | 8 |
+
+These figures come from the maintainer's measurement record of that change. They cannot be
+reproduced from the repository. The note above says the failing runs of the first series showed
+"the same 78 failures"; nothing is recorded about which tests failed in the second series. The
+decision and the rest of the note are unchanged.
+
 ---
 
 ## References
@@ -210,3 +227,4 @@ and what was changed.
 |------------|-------------|--------------------------------|
 | 2026-10-04 | Accepted    | Decision recorded after implementation. Supersedes the build-specific default of ADR-0004 and the default source labels of ADR-0014. |
 | 2026-10-04 | Amended     | "Trimming and Native AOT: not verified" consequence superseded by ADR-0021. Decision unchanged. See Implementation Notes > Amendment. |
+| 2026-10-04 | Amended     | "3 of 40 full-suite runs" is one of two measured series (3 of 40 and 5 of 80; 8 of 120 together). See Implementation Notes > second Amendment. |

@@ -7,6 +7,7 @@
 - **Date**: 2026-10-04
 - **Deciders**: Project maintainer
 - **Status Date**: 2026-10-04
+- **Amended**: 2026-10-04 — an exception thrown by the `Old<T>()` supplier now propagates unchanged, which supersedes one Known Limitation; three statements are qualified; see the Amendment under Implementation Notes
 
 ---
 
@@ -375,6 +376,24 @@ This ADR was written after the implementation so that it could record what the w
 - **Clean `obj` for each publish.** The measurements were taken that way because an incremental publish can keep a stale feature switch.
 - **CI.** The Linux job publishes the smoke program for `linux-x64` and runs it twice with `--assert`. `linux-x64` was not measured locally, so that job is the only place where the Linux native toolchain and the checks on Linux are exercised.
 
+### Amendment (2026-10-04): Supplier exceptions in `Old<T>()`, and three corrections
+
+The decision is unchanged. This amendment records one later decision and qualifies three statements of this ADR.
+
+**Supplier exceptions propagate unchanged.** This supersedes the Known Limitation "`Old<T>()` attributes a supplier's `NotSupportedException` to serialization", which was noted in [issue #39](https://github.com/cwouyang/uContract.NET/issues/39).
+
+- In `Old<T>()` the `catch (NotSupportedException)` that produces the "cannot be serialized" message now wraps only the two serializer calls. An exception raised while the supplier delegate executes reaches the caller as thrown, as the same instance. That includes a `NotSupportedException` and a derived type such as `PlatformNotSupportedException`. Under Native AOT such an exception therefore no longer gets the Native AOT sentence either.
+- Boundary: user code that the serializer itself runs is still inside the serializer calls. A property getter, a custom converter or a lazily evaluated sequence that throws `NotSupportedException` during the copy is re-wrapped by System.Text.Json and is still reported as "cannot be serialized". For example, `Old(() => stream.Length)` on a non-seekable stream now propagates the stream's exception; `Old(() => stream)` does not propagate it unchanged, and what it reports depends on which property getter fails first.
+- Exceptions of other types from the serializer propagate untranslated, as before: for example a `JsonException` when the object graph is deeper than the serializer's maximum depth, or an `InvalidOperationException` thrown by a getter.
+- Provenance of these statements: the property-getter case is pinned by a unit test. The converter, lazily evaluated sequence, stream and maximum-depth cases were measured once in a throwaway console project during review and are not covered by tests in the repository.
+- This is a **breaking change** for a caller that caught `InvalidOperationException` to handle its own supplier's `NotSupportedException`. In 1.0.0 the supplier ran inside the same `try`.
+
+**Unit-test figures are a snapshot.** "Unit tests went from 257 to 296" under Consequences and "296 of 296" under Questions Raised in Review describe the suite on the day this ADR was accepted. The suite has grown since; neither figure is a statement about the current suite.
+
+**An inherited auto-property is compared once.** Context says an auto-property is compared twice, as the property and as its backing field. That holds for an auto-property declared on the compared type. An inherited one is compared once, as the property: its backing field is a private field declared on a base class, and reflection through the derived type does not return such fields. For an inherited auto-property the pattern `^Customer$` therefore skips the whole comparison of that member.
+
+**The second `Accepted` row in Revision History** records a revision of the message wording after review. It is not a second acceptance; the ADR was accepted once.
+
 ---
 
 ## References
@@ -401,3 +420,4 @@ This ADR was written after the implementation so that it could record what the w
 |------------|-------------|--------------------------------|
 | 2026-10-04 | Accepted    | Decision recorded after implementation. Supersedes the "not verified" consequence of ADR-0020; qualifies ADR-0006, ADR-0007 and ADR-0016. |
 | 2026-10-04 | Accepted    | Message wording decided after review of the implementation: three of the four questions raised are implemented, one is deferred to issue #40. See Questions Raised in Review. |
+| 2026-10-04 | Amended     | Supplier exceptions in `Old<T>()` propagate unchanged (supersedes one Known Limitation). Corrections: unit-test figures are a snapshot; an inherited auto-property is compared once; the second `Accepted` row was a wording revision. See Implementation Notes > Amendment. |
