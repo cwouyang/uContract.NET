@@ -115,7 +115,7 @@ public class ContractConfiguration
     ///     Determined by (in order):
     ///     <list type="number">
     ///         <item>DBC_PRE environment variable (if set)</item>
-    ///         <item>DBC environment variable (if set, overrides specific settings)</item>
+    ///         <item>DBC environment variable (if set and the per-type flag is not)</item>
     ///         <item>The default (enabled)</item>
     ///     </list>
     /// </remarks>
@@ -128,7 +128,7 @@ public class ContractConfiguration
     ///     Determined by (in order):
     ///     <list type="number">
     ///         <item>DBC_POST environment variable (if set)</item>
-    ///         <item>DBC environment variable (if set, overrides specific settings)</item>
+    ///         <item>DBC environment variable (if set and the per-type flag is not)</item>
     ///         <item>The default (enabled)</item>
     ///     </list>
     /// </remarks>
@@ -141,7 +141,7 @@ public class ContractConfiguration
     ///     Determined by (in order):
     ///     <list type="number">
     ///         <item>DBC_INV environment variable (if set)</item>
-    ///         <item>DBC environment variable (if set, overrides specific settings)</item>
+    ///         <item>DBC environment variable (if set and the per-type flag is not)</item>
     ///         <item>The default (enabled)</item>
     ///     </list>
     /// </remarks>
@@ -154,7 +154,7 @@ public class ContractConfiguration
     ///     Determined by (in order):
     ///     <list type="number">
     ///         <item>DBC_CHECK environment variable (if set)</item>
-    ///         <item>DBC environment variable (if set, overrides specific settings)</item>
+    ///         <item>DBC environment variable (if set and the per-type flag is not)</item>
     ///         <item>The default (enabled)</item>
     ///     </list>
     /// </remarks>
