@@ -910,11 +910,15 @@ public static class Contract
     ///     Ensures that only specified fields have changed between two object states.
     ///     Compares all public properties and fields, throwing an exception if any non-assignable field has been modified.
     /// </summary>
-    /// <typeparam name="T">The type of objects to compare (supports both reference and value types)</typeparam>
+    /// <typeparam name="T">
+    ///     The type of objects to compare (supports both reference and value types).
+    ///     Its public properties and its public and non-public fields are preserved for reflection in trimmed and
+    ///     Native AOT applications.
+    /// </typeparam>
     /// <param name="actual">The current state of the object</param>
     /// <param name="expected">The expected (old) state of the object</param>
     /// <param name="assignableFieldPatterns">
-    ///     Regular expression patterns matching field names that are allowed to change.
+    ///     Regular expression patterns matching top-level member names that are allowed to change.
     ///     Examples: "Email", ".*Timestamp", "^_.*"
     /// </param>
     /// <exception cref="ArgumentNullException">
@@ -955,8 +959,17 @@ public static class Contract
     /// }
     /// </code>
     /// </example>
-    [RequiresUnreferencedCode("EnsureAssignable uses reflection to enumerate and compare fields and properties.")]
-    public static void EnsureAssignable<T>(T actual, T expected, params string[] assignableFieldPatterns)
+    [RequiresUnreferencedCode(
+        "EnsureAssignable uses reflection to enumerate and compare fields and properties. Members of the top-level type are preserved; the types of nested objects and collection elements are not."
+    )]
+    public static void EnsureAssignable<
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicProperties
+                | DynamicallyAccessedMemberTypes.PublicFields
+                | DynamicallyAccessedMemberTypes.NonPublicFields
+        )]
+            T
+    >(T actual, T expected, params string[] assignableFieldPatterns)
     {
         // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
         ArgumentNullException.ThrowIfNull(actual);
@@ -996,7 +1009,14 @@ public static class Contract
         }
     }
 
-    private static List<string> _FindDifferences<T>(T actual, T expected, string[] assignableFieldPatterns)
+    private static List<string> _FindDifferences<
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicProperties
+                | DynamicallyAccessedMemberTypes.PublicFields
+                | DynamicallyAccessedMemberTypes.NonPublicFields
+        )]
+            T
+    >(T actual, T expected, string[] assignableFieldPatterns)
     {
         Type type = typeof(T);
         TypeMetadata metadata = _GetOrCacheMetadata(type);
@@ -1040,7 +1060,7 @@ public static class Contract
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]."
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
     )]
     private static TypeMetadata _GetOrCacheMetadata(Type type)
     {
