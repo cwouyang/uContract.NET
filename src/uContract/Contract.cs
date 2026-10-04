@@ -429,17 +429,21 @@ public static class Contract
             }
 
             // Deep copy via JSON serialization
-            string json = JsonSerializer.Serialize(obj, JsonOptions);
-            return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
-        }
-        catch (NotSupportedException ex)
-        {
-            string message =
-                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.";
-            throw new InvalidOperationException(
-                RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
-                ex
-            );
+            try
+            {
+                string json = JsonSerializer.Serialize(obj, JsonOptions);
+                return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
+            }
+            catch (NotSupportedException ex)
+            {
+                string message =
+                    $"Type {typeof(T).Name} cannot be serialized for Old<T>(). "
+                    + "Ensure the type is JSON-serializable.";
+                throw new InvalidOperationException(
+                    RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
+                    ex
+                );
+            }
         }
         finally
         {

@@ -326,6 +326,89 @@ public class OldTests
 
         Assert.Same(expectedException, exception);
     }
+
+    [Fact]
+    public void Old_WhenSupplierThrowsNotSupportedException_PropagatesSameInstance()
+    {
+        NotSupportedException supplierFailure = new("stream is not seekable");
+
+        Exception? exception = Record.Exception(() => Contract.Old<long>(() => throw supplierFailure));
+
+        Assert.Same(supplierFailure, exception);
+    }
+
+    [Fact]
+    public void Old_WhenSupplierThrowsPlatformNotSupportedException_PropagatesSameInstance()
+    {
+        PlatformNotSupportedException supplierFailure = new("not available on this platform");
+
+        Exception? exception = Record.Exception(() => Contract.Old<long>(() => throw supplierFailure));
+
+        Assert.Same(supplierFailure, exception);
+    }
+
+    [Fact]
+    public void Old_WhenSupplierThrowsNotSupportedException_ResetsRecursionGuard()
+    {
+        const int balance = 42;
+        NotSupportedException supplierFailure = new("stream is not seekable");
+
+        Exception? exception = Record.Exception(() => Contract.Old<long>(() => throw supplierFailure));
+        int oldBalance = Contract.Old(() => balance);
+
+        Assert.Same(supplierFailure, exception);
+        Assert.Equal(balance, oldBalance);
+    }
+
+    [Fact]
+    public void Old_WhenTypeCannotBeDeserialized_ThrowsInvalidOperationException()
+    {
+        IHasOwner account = new OwnedAccount { Owner = "Alice" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Old(() => account)
+        );
+
+        Assert.Equal(
+            $"Type {nameof(IHasOwner)} cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.",
+            exception.Message
+        );
+        Assert.IsType<NotSupportedException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void Old_WhenPropertyGetterThrowsNotSupportedExceptionDuringCopy_ThrowsInvalidOperationException()
+    {
+        UnsupportedLengthGetter source = new();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.Old(() => source)
+        );
+
+        Assert.Equal(
+            $"Type {nameof(UnsupportedLengthGetter)} cannot be serialized for Old<T>(). "
+                + "Ensure the type is JSON-serializable.",
+            exception.Message
+        );
+        Assert.IsAssignableFrom<NotSupportedException>(exception.InnerException);
+    }
+
+    private interface IHasOwner
+    {
+        string Owner { get; }
+    }
+
+    private sealed class OwnedAccount : IHasOwner
+    {
+        public string Owner { get; set; } = "";
+    }
+
+    private sealed class UnsupportedLengthGetter
+    {
+        private readonly string _message = "length is not supported";
+
+        public long Length => throw new NotSupportedException(_message);
+    }
 }
 
 public class EnsureNotNullTests
@@ -1771,6 +1854,16 @@ public sealed class OldWhenRuntimePreventsSerializationTests
 
         Assert.Same(supplierFailure, exception);
         Assert.Equal(balance, oldBalance);
+    }
+
+    [Fact]
+    public void Old_WhenSupplierThrowsNotSupportedExceptionWithoutDynamicCode_PropagatesSameInstance()
+    {
+        NotSupportedException supplierFailure = new("stream is not seekable");
+
+        Exception? exception = RecordWithoutDynamicCode(() => Contract.Old<long>(() => throw supplierFailure));
+
+        Assert.Same(supplierFailure, exception);
     }
 
     private static Exception? RecordWithoutDynamicCode(Action act)
