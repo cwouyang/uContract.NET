@@ -385,12 +385,17 @@ public static class Contract
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Deep copy is performed via System.Text.Json serialization, which requires the type to be serializable.
     ///     This method supports both reference types and value types (no generic constraint).
+    ///     An exception thrown by the supplier propagates unchanged.
+    ///     Of the exceptions raised while copying, only <see cref="NotSupportedException" /> (or a derived type)
+    ///     is reported as <see cref="InvalidOperationException" />; other exception types from the serializer
+    ///     propagate unchanged, for example a <see cref="JsonException" /> for an object graph deeper than the
+    ///     serializer's maximum depth.
     ///     In a trimmed or Native AOT application the copy needs reflection-based JSON serialization: set the
     ///     MSBuild property <c>JsonSerializerIsReflectionEnabledByDefault</c> to <c>true</c> in the application
     ///     project, and under Native AOT also preserve the copied types, for example with
     ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c>. Otherwise this method
-    ///     throws <see cref="InvalidOperationException" /> with those instructions; setting <c>DBC_POST=off</c>
-    ///     disables all postcondition checks, this method included.
+    ///     throws <see cref="InvalidOperationException" /> with a message that names what to do; setting
+    ///     <c>DBC_POST=off</c> disables all postcondition checks, this method included.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -972,17 +977,24 @@ public static class Contract
 
     /// <summary>
     ///     Ensures that only specified fields have changed between two object states.
-    ///     Compares all public properties and fields, throwing an exception if any non-assignable field has been modified.
+    ///     Compares the public instance properties and the instance fields of the compared type, non-public fields
+    ///     included, throwing an exception if any non-assignable field has been modified.
+    ///     Private fields declared on a base class are not compared.
     /// </summary>
     /// <typeparam name="T">
     ///     The type of objects to compare (supports both reference and value types).
     ///     Its public properties and its public and non-public fields are preserved for reflection in trimmed and
-    ///     Native AOT applications.
+    ///     Native AOT applications. Members inherited from base classes are compared and preserved too, except
+    ///     private fields declared on a base class.
     /// </typeparam>
     /// <param name="actual">The current state of the object</param>
     /// <param name="expected">The expected (old) state of the object</param>
     /// <param name="assignableFieldPatterns">
     ///     Regular expression patterns matching top-level member names that are allowed to change.
+    ///     A pattern matches anywhere in the member name (it is not anchored), so "Email" also matches
+    ///     "EmailVerified". An auto-property declared on the compared type is compared twice, as the property
+    ///     and as its backing field <c>&lt;Email&gt;k__BackingField</c>, so a pattern anchored with <c>^</c> and
+    ///     <c>$</c> must cover both, for example <c>^(Email|&lt;Email&gt;k__BackingField)$</c>.
     ///     Examples: "Email", ".*Timestamp", "^_.*"
     /// </param>
     /// <exception cref="ArgumentNullException">
@@ -996,16 +1008,18 @@ public static class Contract
     ///     Thrown under Native AOT when <typeparamref name="T" />, or the runtime type of a nested member or
     ///     collection element that has to be compared, has no properties or fields visible to reflection.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
-    ///     Also thrown, in any build, when a public property that has to be compared has no get method visible
-    ///     through the compared type: a write-only property, or one whose getter was removed by trimming. This
-    ///     applies to properties of <typeparamref name="T" />, of nested members, of collection elements and of
-    ///     base classes. A property whose getter is non-public is compared as usual when the getter is declared on
-    ///     the compared type; a getter that is not visible through the compared type — a private getter declared
-    ///     on a base class, or a virtual property whose derived class overrides only the setter — is reported by
-    ///     this rule.
+    ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method
+    ///     visible through the compared type: a write-only property, or one whose getter was removed by trimming.
+    ///     This applies to properties of <typeparamref name="T" />, of nested members, of collection elements and
+    ///     of base classes. A property whose getter is non-public is compared as usual when the getter is declared
+    ///     on the compared type; a getter that is not visible through the compared type — a private getter
+    ///     declared on a base class, or a virtual property whose derived class overrides only the setter — is
+    ///     reported by this rule.
     /// </exception>
     /// <remarks>
-    ///     This method uses reflection to compare all public properties and private fields recursively.
+    ///     This method uses reflection to compare, recursively, the public instance properties (indexers excluded)
+    ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
+    ///     base class are not compared.
     ///     Under Native AOT, a type whose members were not preserved cannot be compared; the method then throws
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed.
     ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
@@ -1130,8 +1144,9 @@ public static class Contract
             type,
             t =>
             {
-                // These binding flags must stay within what ComparedMembers preserves: widening one
-                // without the other loses members silently under Native AOT.
+                // These binding flags must stay within what ComparedMembers preserves. Members are lost
+                // silently under Native AOT if the flags are widened beyond ComparedMembers, or if the
+                // constant is narrowed; widening the constant alone loses nothing.
                 PropertyInfo[] properties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
                 FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
