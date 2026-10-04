@@ -63,7 +63,7 @@ Decisions made and implemented:
 2. **`EnsureAssignable<T>()` throws when a type shows no members** (maintainer decision). Under Native AOT, when the comparison reaches a type whose member list is empty, it throws `InvalidOperationException`. It is not a contract-violation exception: the contract could not be checked.
 3. **`EnsureAssignable<T>()` reports an unreadable property.** In every build, a compared property with no get method fails with `InvalidOperationException` instead of a bare `ArgumentException`. This is the one change in ordinary builds and is **breaking**.
 4. **`Old<T>()` explains itself.** When the runtime prevents the copy, the exception says so and names what works, including the combination measured to work under Native AOT (the MSBuild property plus `DynamicDependency`), not only `DBC_POST=off`.
-5. **Regression protection** (maintainer decision). A console project, `tests/uContract.AotSmoke`, is published with Native AOT and run by CI with `--assert`, which makes the run fail if the binary is not Native AOT. It is part of the solution, so every solution build compiles it. Two things are **not** protected by CI. Trimmed, non-AOT behaviour was measured by hand once. The working `Old<T>()` path under Native AOT (`JsonSerializerIsReflectionEnabledByDefault=true` plus `DynamicDependency`) is also a one-off hand measurement: the smoke project does not set that property, so CI protects the failure message of `Old<T>()` but not the working copy.
+5. **Regression protection** (maintainer decision). A console project, `tests/uContract.AotSmoke`, is published with Native AOT and run by CI with `--assert`, which makes the run fail if `RuntimeFeature.IsDynamicCodeSupported` is `true`. It is part of the solution, so every solution build compiles it. Two things are **not** protected by CI. Trimmed, non-AOT behaviour was measured by hand once. The working `Old<T>()` path under Native AOT (`JsonSerializerIsReflectionEnabledByDefault=true` plus `DynamicDependency`) is also a one-off hand measurement: the smoke project does not set that property, so CI protects the failure message of `Old<T>()` but not the working copy.
 6. **Declarations stay.** The package still declares `IsTrimmable` and `IsAotCompatible`. `[RequiresUnreferencedCode]` stays on `EnsureAssignable<T>`; `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]` stay on `Old<T>`. Consumers keep getting publish-time warnings; the documentation states the limits.
 7. **A test seam in the shipped assembly.** `RuntimeFacts` exposes the two runtime facts with a nullable override each, and the library declares `InternalsVisibleTo("uContract.Tests")`. Unit tests cannot otherwise reach either behaviour. This is a new convention for this repository.
 
@@ -79,7 +79,7 @@ Decisions made and implemented:
 Message for a nested member or a collection element:
 
 ```text
-EnsureAssignable cannot compare {type} (reached through '{path}'): no properties or fields are visible to reflection under Native AOT. Ways out: list '{top-level member}' as assignable (patterns are regular expressions matched against top-level member names, so use the plain member name); preserve the type's members, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; or set DBC_POST=off.
+EnsureAssignable cannot compare {type} (reached through '{path}'): no properties or fields are visible to reflection under Native AOT. Ways out: list '{top-level member}' as assignable (patterns are regular expressions matched against top-level member names, so use the plain member name); if the type has members, preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; or set DBC_POST=off (disables all postcondition checks).
 ```
 
 `{type}` is `Type.ToString()` of the type with no visible members. `{path}` is `typeof(T).Name`, then `.` and the member name per level; a collection element appends `[]` without an index; a compiler-generated backing field is shown as the property it backs. Examples: `OrderHolder.Customer`, `LinesHolder.Items[]`.
@@ -87,13 +87,13 @@ EnsureAssignable cannot compare {type} (reached through '{path}'): no properties
 Message when the type is `T` itself. It names neither "assignable" nor `DynamicDependency`, because neither applies:
 
 ```text
-EnsureAssignable cannot compare {type}: no properties or fields are visible to reflection under Native AOT. If the type has members, the generic argument passed to EnsureAssignable is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off.
+EnsureAssignable cannot compare {type}: no properties or fields are visible to reflection under Native AOT. If the type has members, the generic argument passed to EnsureAssignable is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off (disables all postcondition checks).
 ```
 
 **Unreadable property.** In any build and at any level — `T`, a nested member, a collection element — when a property that has to be compared (public, instance, non-indexer, inherited ones included) has `PropertyInfo.GetMethod == null`, the read throws before the property is touched:
 
 ```text
-EnsureAssignable cannot read property {declaring type}.{name}: it has no get method. If trimming removed it, preserve the type's members, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type. Otherwise list the top-level member that leads to it as assignable, or set DBC_POST=off.
+EnsureAssignable cannot read property {declaring type}.{name}: no get method is visible through the compared type. If trimming removed it, preserve the type's members, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type. Otherwise list the top-level member that leads to it as assignable, or set DBC_POST=off (disables all postcondition checks).
 ```
 
 - A write-only public property declared on the type, on a nested type or on a base class used to fail with `ArgumentException` and now fails with `InvalidOperationException`.
@@ -110,7 +110,7 @@ The order of evaluation is unchanged up to serialization: argument null check, r
 1. If JSON reflection is disabled, `Old<T>()` throws `InvalidOperationException` with no inner exception. This applies in any build in which the application has disabled reflection-based serialization.
 
    ```text
-   Old<T>() cannot copy the value: reflection-based JSON serialization is disabled, which is the default in trimmed and Native AOT applications. Set the MSBuild property JsonSerializerIsReflectionEnabledByDefault to true in the application project; under Native AOT also preserve the copied types, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; or set DBC_POST=off.
+   Old<T>() cannot copy the value: reflection-based JSON serialization is disabled, which is the default in trimmed and Native AOT applications. Set the MSBuild property JsonSerializerIsReflectionEnabledByDefault to true in the application project; under Native AOT also preserve the copied types, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; or set DBC_POST=off (disables all postcondition checks).
    ```
 
 2. If serialization throws `NotSupportedException`, `Old<T>()` throws the existing `InvalidOperationException` with that exception as inner. In an ordinary build the message is unchanged:
@@ -122,7 +122,7 @@ The order of evaluation is unchanged up to serialization: argument null check, r
    Under Native AOT the same message is followed by a space and:
 
    ```text
-   Under Native AOT a JSON-serializable type also needs its members preserved for reflection, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; or set DBC_POST=off.
+   Under Native AOT a JSON-serializable type also needs its members preserved for reflection, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; or set DBC_POST=off (disables all postcondition checks).
    ```
 
 With postconditions disabled, `Old<T>()` returns `default` without invoking the supplier and `EnsureAssignable<T>()` returns without comparing, as before.
@@ -144,7 +144,7 @@ Environment for everything in this section except "Types measured with a prototy
 
 ### The smoke program
 
-`tests/uContract.AotSmoke` runs 21 checks, prints one line per check and exits with `0` only when every check matches. When dynamic code is supported, or `--report` is passed, it prints the outcomes without asserting (report mode). With `--assert` it never falls back to report mode: if dynamic code is supported it prints `FAIL 0 Assert mode expected=Native AOT got=dynamic code supported` and exits with `1`, so a publish that silently stopped being Native AOT cannot pass. Measured: the Native AOT binary with `--assert` gives 21 `PASS` and exit code 0, also with `DBC_POST=off`; a JIT run with `--assert` gives that single `FAIL` line and exit code 1. Types used for a "not visible" check are never passed to a reflection API in the program.
+`tests/uContract.AotSmoke` runs 21 checks, prints one line per check and exits with `0` only when every check matches. When dynamic code is supported, or `--report` is passed, it prints the outcomes without asserting (report mode). With `--assert` it never falls back to report mode: if dynamic code is supported it prints `FAIL 0 Assert mode expected=Native AOT got=dynamic code supported` and exits with `1`, so a publish whose output supports dynamic code cannot pass. Measured: the Native AOT binary with `--assert` gives 21 `PASS` and exit code 0, also with `DBC_POST=off`; a JIT run built with `-p:PublishAot=false` and given `--assert` prints that single `FAIL` line and exits with 1. A plain `dotnet run` of this project is different: it reports no dynamic-code support, so with `--assert` it runs the checks instead. Types used for a "not visible" check are never passed to a reflection API in the program.
 
 | # | Check | Expected under Native AOT, postconditions enabled |
 |---|---|---|
@@ -274,12 +274,12 @@ Accepted with this decision.
 - **Partial metadata is not detected.** If only some members of a type are visible to reflection, the others are skipped silently. The rule detects "no members", not "some missing".
 - **Detection depends on the data.** The rule fires when the comparison reaches a type: both values non-null, not the same reference and, for a collection, at least one element. A `null` member, a shared instance or an empty collection passes without the type being inspected.
 - **Trimming without Native AOT.** The "no members visible" rule does not fire, because dynamic code is supported. A removed getter is reported by the unreadable-property rule; a type whose members were removed entirely compares as equal.
-- **A boxed value in an `object`-typed member is application-dependent under Native AOT.** The comparison looks at the declared member type. `object` is a class, so the comparison recurses into the runtime type, here `System.Int32`, whose private field is visible to reflection only if the application happens to keep it. One measured program kept it and compared normally; a clean consumer application did not, and got "cannot compare System.Int32". The outcome is never silent, and listing the member as assignable works. A `string` in an `object`-typed member compares normally. Tracked in [issue #40](https://github.com/cwouyang/uContract.NET/issues/40).
-- **The rule also fires for a type that has nothing to list**: an empty marker class, `record Marker;`, a class whose only state is private fields declared on a base class. For those the message's `DynamicDependency` advice cannot help; only listing the member as assignable or `DBC_POST=off` works. Tracked in [issue #40](https://github.com/cwouyang/uContract.NET/issues/40).
+- **A boxed value in an `object`-typed member is application-dependent under Native AOT.** The comparison looks at the declared member type. `object` is a class, so the comparison recurses into the runtime type, here `System.Int32`, whose private field is visible to reflection only if the application happens to keep it. One measured program kept it and compared normally; a clean consumer application did not, and got "cannot compare System.Int32". The outcome is never silent, and listing the member as assignable works. A `string` in an `object`-typed member compares normally. This is left as it is for 2.0.0. Tracked in [issue #40](https://github.com/cwouyang/uContract.NET/issues/40).
+- **The rule also fires for a type that has nothing to list**: an empty marker class, `record Marker;`, a class whose only state is private fields declared on a base class. For those `DynamicDependency` cannot help, which is why the message offers it only "if the type has members"; only listing the member as assignable or `DBC_POST=off` works. The message is hedged; that such a type throws at all remains a limitation. Tracked in [issue #40](https://github.com/cwouyang/uContract.NET/issues/40).
 - **The Native AOT signal is a proxy.** `RuntimeFeature.IsDynamicCodeSupported == false` is also reported where reflection metadata is intact. One such case was observed: a project with `<PublishAot>true</PublishAot>` run with a plain `dotnet run`. There the only effect of the rule is that a type with genuinely no members throws.
-- **`GetMethod == null` does not always mean "no getter".** In an ordinary build, a property declared on a base class with a private getter, and a virtual property whose derived class overrides only the setter, both reflect through the derived type with `GetMethod == null`. They are reported as "it has no get method" although a getter exists, and `DynamicDependency` does not help. Two characterization tests pin this: for the private getter declared on a base class the message names the base type; for the derived class that overrides only the setter it names the derived type. Before this change the same inputs threw a bare `ArgumentException`, so this is not a regression, but the message is inaccurate for these two shapes. Tracked in [issue #40](https://github.com/cwouyang/uContract.NET/issues/40).
+- **Two property shapes with a getter are reported, not compared.** In an ordinary build, a property declared on a base class with a private getter, and a virtual property whose derived class overrides only the setter, both reflect through the derived type with `GetMethod == null`. They are reported as "no get method is visible through the compared type", which is accurate for both, but they are not compared, and `DynamicDependency` does not help. Two characterization tests pin this: for the private getter declared on a base class the message names the base type; for the derived class that overrides only the setter it names the derived type. Before this change the same inputs threw a bare `ArgumentException`, so this is not a regression. Whether to compare them is tracked in [issue #40](https://github.com/cwouyang/uContract.NET/issues/40).
 - **`Old<T>()` attributes a supplier's `NotSupportedException` to serialization.** The supplier runs inside the same `try` as the serialization. This predates the change; under Native AOT such an exception now also gets the Native AOT sentence. Noted in [issue #39](https://github.com/cwouyang/uContract.NET/issues/39).
-- **`DBC_POST=off` is broader than the messages say.** Every message offers it as a way out; it disables all postconditions, not only the helper that failed.
+- **`DBC_POST=off` is broader than the helper that failed.** Every message offers it as a way out and says "(disables all postcondition checks)". There is no switch for one helper alone.
 - **Comparison gaps that exist in every build and are not changed here**: private fields declared on a base class are not compared; the top level compares the declared type `T`, not the runtime type; dictionary values, members typed as a non-enumerable interface, and the own members of a class that is also enumerable are compared by `Equals` or by element only. These are tracked in [issue #40](https://github.com/cwouyang/uContract.NET/issues/40).
 
 ## Not Tested
@@ -291,14 +291,18 @@ Accepted with this decision.
 - A trimmed application with JSON reflection enabled whose copied type lost members to the trimmer.
 - The smoke program published with its `IL2026;IL3050` suppression removed. The warning counts above come from the separate consumer application instead.
 
-## Open Questions
+## Questions Raised in Review
 
-Raised by review of the implementation and left to the maintainer. None of them is decided.
+Review of the implementation raised four questions about the messages and the rules. The maintainer decided all four before release. Three led to changes in the message texts, which are quoted above as they now stand; one is deferred.
 
-1. Should the nested "cannot compare" message be hedged for types that have nothing to list? ([issue #40](https://github.com/cwouyang/uContract.NET/issues/40))
-2. For the two `GetMethod == null` shapes that do have a getter: correct the wording, or actually compare the property? ([issue #40](https://github.com/cwouyang/uContract.NET/issues/40))
-3. Should a boxed value type be compared with `Equals` when its members are hidden? This would change the "no members visible" rule. ([issue #40](https://github.com/cwouyang/uContract.NET/issues/40))
-4. Should the messages say that `DBC_POST=off` disables all postconditions?
+| # | Question | Decision | State |
+|---|---|---|---|
+| 1 | Should the nested "cannot compare" message be hedged for types that have nothing to list? | Yes. The `DynamicDependency` way out now reads "if the type has members, preserve them, for example with […]". | Implemented |
+| 2 | For the two `GetMethod == null` shapes that do have a getter: correct the wording, or actually compare the property? | Correct the wording: "it has no get method" became "no get method is visible through the compared type". Actually comparing the two shapes stays with [issue #40](https://github.com/cwouyang/uContract.NET/issues/40). | Wording implemented; comparison not done |
+| 3 | Should a boxed value type be compared with `Equals` when its members are hidden? | Left as it is for 2.0.0. Whether to compare it with `Equals` is to be decided in [issue #40](https://github.com/cwouyang/uContract.NET/issues/40). | Deferred; no change |
+| 4 | Should the messages say that `DBC_POST=off` disables all postconditions? | Yes. Every message that offers it now says "DBC_POST=off (disables all postcondition checks)". | Implemented |
+
+After these changes the unit tests passed 296 of 296 in both configurations, and the Native AOT smoke program passed 21 of 21 with `--assert`, also with `DBC_POST=off`.
 
 ---
 
@@ -360,7 +364,7 @@ Full support needs a path that does not depend on reflection, such as a `JsonSer
 
 This ADR was written after the implementation so that it could record what the work turned up.
 
-- **Order of the work.** The smoke program came first and was run against the unmodified library. Then: the `RuntimeFacts` seam (structural); seven characterization tests pinning ordinary-build behaviour (two more, for the `GetMethod == null` shapes, were added after review); the "no members visible" rule; the unreadable-property rule (breaking); the annotation; the `Old<T>()` messages; the CI steps.
+- **Order of the work.** The smoke program came first and was run against the unmodified library. Then: the `RuntimeFacts` seam (structural); seven characterization tests pinning ordinary-build behaviour (two more, for the `GetMethod == null` shapes, were added after review); the "no members visible" rule; the unreadable-property rule (breaking); the annotation; the `Old<T>()` messages; the CI steps. The message wording was revised last, after the questions raised in review were decided.
 - **Why `RuntimeFacts` is a separate class.** Putting the overrides on `Contract` runs `Contract`'s static initialiser when a test sets them, which freezes `Contract.Config` early.
 - **How "cannot compare" travels.** It leaves the private comparison methods through a `ref` parameter: a small object created only at the point of failure, with path segments prepended while the recursion unwinds. A comparison that is not blocked allocates nothing for the path.
 - **Where the unreadable-property check lives.** In `MemberAccessor.GetValue`, the single read point for top-level and nested members.
@@ -396,3 +400,4 @@ This ADR was written after the implementation so that it could record what the w
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2026-10-04 | Accepted    | Decision recorded after implementation. Supersedes the "not verified" consequence of ADR-0020; qualifies ADR-0006, ADR-0007 and ADR-0016. |
+| 2026-10-04 | Accepted    | Message wording decided after review of the implementation: three of the four questions raised are implemented, one is deferred to issue #40. See Questions Raised in Review. |
