@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Reflection;
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -284,6 +285,20 @@ public class OldTests
 
         Assert.Contains("cannot be serialized", exception.Message);
         Assert.IsType<NotSupportedException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void Old_WhenTypeNotSerializable_MessageIsExact()
+    {
+        NonSerializableType obj = new();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => Contract.Old(() => obj));
+
+        Assert.Equal(
+            $"Type {nameof(NonSerializableType)} cannot be serialized for Old<T>(). "
+                + "Ensure the type is JSON-serializable.",
+            exception.Message
+        );
     }
 
     [Fact]
@@ -1120,6 +1135,74 @@ public class EnsureAssignableTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenTypeHasNoMembers_DoesNotThrow()
+    {
+        EmptyType first = new();
+        EmptyType second = new();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenNestedTypeHasNoMembers_DoesNotThrow()
+    {
+        HoldsEmptyType first = new() { Child = new EmptyType() };
+        HoldsEmptyType second = new() { Child = new EmptyType() };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTypeHasNoMembersAndComparedTwice_DoesNotThrowEitherTime()
+    {
+        EmptyType first = new();
+        EmptyType second = new();
+
+        Exception? firstRun = Record.Exception(() => Contract.EnsureAssignable(first, second));
+        Exception? secondRun = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(firstRun);
+        Assert.Null(secondRun);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTypeHasLockObjectField_DoesNotThrow()
+    {
+        HoldsLock first = new();
+        HoldsLock second = new();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenGetterThrows_PropagatesTargetInvocationException()
+    {
+        ThrowingGetter first = new();
+        ThrowingGetter second = new();
+
+        TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.IsType<ArgumentException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyIsWriteOnly_ThrowsArgumentException()
+    {
+        WriteOnly first = new() { X = "a" };
+        WriteOnly second = new() { X = "a" };
+
+        Assert.Throws<ArgumentException>(() => Contract.EnsureAssignable(first, second));
+    }
+
     private sealed class TestPerson
     {
         public string Name { get; set; } = "";
@@ -1148,6 +1231,39 @@ public class EnsureAssignableTests
     {
         public int OrderId { get; set; }
         public TestPerson Customer { get; set; } = new();
+    }
+
+    private sealed class EmptyType;
+
+    private sealed class HoldsEmptyType
+    {
+        public EmptyType Child { get; set; } = new();
+    }
+
+    private sealed class HoldsLock
+    {
+        private readonly object _lock = new();
+
+        public object LockHandle => _lock;
+    }
+
+    private sealed class ThrowingGetter
+    {
+        private readonly string _message = "getter failed";
+
+        public string Value => throw new ArgumentException(_message);
+    }
+
+    private sealed class WriteOnly
+    {
+        private string _x = "";
+
+        public string X
+        {
+            set => _x = value;
+        }
+
+        public int XLength => _x.Length;
     }
 }
 
