@@ -1034,7 +1034,7 @@ public static class Contract
             if (differences.Count > 0)
             {
                 string message =
-                    "Postcondition violated: Fields were modified that are not marked as assignable:\n"
+                    "Fields were modified that are not marked as assignable:\n"
                     + string.Join("\n", differences.Select(d => $"  - {d}"));
                 throw new PostconditionViolationException(message);
             }

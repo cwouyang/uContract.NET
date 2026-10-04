@@ -1390,12 +1390,59 @@ public class EnsureAssignableTests
         Assert.Contains("DynamicDependency", exception.Message);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenTheOnlyPublicFieldIsModified_ReportsItUnderOnePrefix()
+    {
+        SinglePublicField actual = new() { Count = 2 };
+        SinglePublicField expected = new() { Count = 1 };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal("Fields were modified that are not marked as assignable:\n  - Count", exception.Description);
+        Assert.Equal(
+            "Postcondition violated: Fields were modified that are not marked as assignable:\n  - Count",
+            exception.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheOnlyAutoPropertyIsModified_ReportsPropertyThenBackingFieldUnderOnePrefix()
+    {
+        SingleAutoProperty actual = new() { Name = "Bob" };
+        SingleAutoProperty expected = new() { Name = "Alice" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Name\n  - <Name>k__BackingField",
+            exception.Description
+        );
+        Assert.Equal(
+            "Postcondition violated: Fields were modified that are not marked as assignable:\n  - Name\n  - <Name>k__BackingField",
+            exception.Message
+        );
+    }
+
     private sealed class TestPerson
     {
         public string Name { get; set; } = "";
         public int Age { get; set; }
 
         public string Email { get; set; } = "";
+    }
+
+    private sealed class SinglePublicField
+    {
+        public int Count;
+    }
+
+    private sealed class SingleAutoProperty
+    {
+        public string Name { get; set; } = "";
     }
 
     private sealed record TestPersonRecord(string Name, int Age, string Email);
