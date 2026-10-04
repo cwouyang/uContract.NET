@@ -7,6 +7,7 @@
 - **Date**: 2025-10-18
 - **Deciders**: Project maintainers
 - **Status Date**: 2025-10-18
+- **Amended**: 2026-10-04 — behaviour under trimming and Native AOT, and for a property with no get method, is added by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
 
 ---
 
@@ -385,6 +386,34 @@ public void EnsureAssignable_ShouldWorkWithRecordStruct()
 }
 ```
 
+### Amendment (2026-10-04): `EnsureAssignable<T>()` under trimming and Native AOT
+
+The decision (reflection to compare all public properties and private fields, with recursive
+comparison and reflection metadata caching, and regex patterns for assignable members) is
+unchanged. [ADR-0021](0021-postconditions-under-trimming-and-aot.md) adds three things and
+qualifies two statements above.
+
+- **Annotation.** The type parameter `T` of `EnsureAssignable<T>` carries
+  `[DynamicallyAccessedMembers(PublicProperties | PublicFields | NonPublicFields)]`, so trimming
+  and Native AOT keep the members of the top-level type that are compared. The types of nested
+  objects and collection elements are known only at run time and are not preserved by it.
+- **No members visible.** Under Native AOT, when the comparison reaches a type other than
+  `System.Object` whose member list is empty, it throws `InvalidOperationException` instead of
+  treating the two values as equal. With the `CompareRecursively` listing above, such a type
+  compared as equal, so a changed object passed.
+- **Unreadable property.** The `GetValue` listing above reads every property. In every build, a
+  property with no get method (a write-only property, or one whose getter was removed by trimming)
+  now throws `InvalidOperationException` before it is read; it used to surface as
+  `ArgumentException`.
+- **"Comprehensive validation: Catches all state changes"** and **"Deep comparison: Validates
+  nested object changes"** (Positive Consequences) hold where the members are visible to
+  reflection. Under Native AOT a nested or element type must be preserved by the consumer, or its
+  top-level member listed as assignable; in a trimmed application without Native AOT a nested type
+  whose members were removed entirely compares as equal. ADR-0021 lists these and the other
+  limits, including comparison gaps that exist in every build.
+- Assignable patterns are matched against top-level member names only, as the `FindDifferences`
+  listing above shows; ADR-0021 relies on this for the advice its messages give.
+
 ---
 
 ## References
@@ -401,3 +430,4 @@ public void EnsureAssignable_ShouldWorkWithRecordStruct()
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2025-10-18 | Accepted    | Decision finalized             |
+| 2026-10-04 | Amended     | Annotation on `T`, the "no members visible" rule and the unreadable-property rule added by ADR-0021. Comparison strategy unchanged. See Implementation Notes > Amendment. |

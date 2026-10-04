@@ -7,6 +7,7 @@
 - **Date**: 2025-10-18
 - **Deciders**: Project maintainers
 - **Status Date**: 2025-10-18
+- **Amended**: 2026-10-04 — "works on all .NET platforms" is qualified for trimmed and Native AOT applications by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
 
 ---
 
@@ -297,6 +298,28 @@ public static T Old<T>(Func<T> supplier)
 - Provide examples of compatible and incompatible types
 - Suggest workarounds for complex scenarios (manual state capture)
 
+### Amendment (2026-10-04): `Old<T>()` under trimming and Native AOT
+
+The decision (deep copy through `System.Text.Json`) is unchanged.
+[ADR-0021](0021-postconditions-under-trimming-and-aot.md) qualifies two statements above and
+extends the error handling.
+
+- **"Cross-platform: System.Text.Json works on all .NET platforms"** (Positive Consequences) and
+  the **Supported Types** list hold for ordinary builds. Reflection-based JSON serialization is
+  disabled by default in trimmed and Native AOT applications, and there `Old<T>()` throws
+  `InvalidOperationException` until the application sets the MSBuild property
+  `JsonSerializerIsReflectionEnabledByDefault` to `true`. Under Native AOT the copied types must
+  also have their members preserved, for example with `DynamicDependency`. With both in place a
+  deep copy of a user class and of `List<string>` was measured to work under Native AOT.
+- **Error Handling.** The listing above catches only `NotSupportedException`. `Old<T>()` now also
+  throws `InvalidOperationException`, with no inner exception, when the supplier returns a
+  non-null value and reflection-based JSON serialization is disabled. Under Native AOT the
+  "cannot be serialized" message gains a sentence on preserving members. In an ordinary build
+  that message is, as emitted,
+  `Type {typeof(T).Name} cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.`
+- The listings above are kept as the historical record. The measurements, the exact messages and
+  the remaining limits are in ADR-0021.
+
 ---
 
 ## References
@@ -312,3 +335,4 @@ public static T Old<T>(Func<T> supplier)
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2025-10-18 | Accepted    | Decision finalized             |
+| 2026-10-04 | Amended     | "Works on all .NET platforms" qualified for trimmed and Native AOT applications by ADR-0021. Mechanism unchanged. See Implementation Notes > Amendment. |

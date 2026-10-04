@@ -7,6 +7,7 @@
 - **Date**: 2026-04-19
 - **Deciders**: Project maintainers
 - **Status Date**: 2026-04-19
+- **Amended**: 2026-10-04 — the implication that diagnostics alone make `Old<T>()` usable under Native AOT is superseded by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); the decision stands; see the Amendment under Implementation Notes
 
 ---
 
@@ -135,6 +136,26 @@ The `TypeReference<T>` overload in Java exists solely to work around type erasur
 
 - If a future AOT / trimming / polymorphic serialization scenario genuinely requires an explicit type hint, a new ADR must be written rather than silently amending this one. This ADR is immutable once accepted, per the ADR workflow established in [./README.md](./README.md).
 
+### Amendment (2026-10-04): Native AOT statement qualified by ADR-0021
+
+This amendment adds no overload and changes no decision. It records a correction that
+[ADR-0021](0021-postconditions-under-trimming-and-aot.md) makes to one sentence, in the open
+rather than silently.
+
+- **Stands**: the decision. No overload of `Old<T>()` accepting a type hint is provided; the sole
+  public signature is `Old<T>(Func<T> supplier)`.
+- **Stands**: the statement under Alternative 3 that the `[RequiresUnreferencedCode]` and
+  `[RequiresDynamicCode]` annotations on `Old<T>()` surface as diagnostics at the caller site. A
+  Native AOT publish of a consumer application reported `IL2026` and `IL3050` for its `Old` calls.
+- **Superseded**: only the implication, in "Current AOT support is already handled by" those
+  annotations, that diagnostics alone make `Old<T>()` usable under Native AOT. Measured: with
+  application defaults `Old<T>()` throws in a trimmed or Native AOT application, because
+  reflection-based JSON serialization is disabled there. It works under Native AOT once the
+  application enables that serialization and preserves the copied types. ADR-0021 holds the
+  measurements and the messages `Old<T>()` now gives.
+- **Stands**: a `JsonTypeInfo<T>` or other source-generated path still needs its own ADR, as
+  Alternative 3 and the note above require. ADR-0021 does not add one.
+
 ---
 
 ## References
@@ -153,3 +174,4 @@ The `TypeReference<T>` overload in Java exists solely to work around type erasur
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2026-04-19 | Accepted    | Decision recorded during pre-publish review; clarifies that .NET reified generics make the Java `TypeReference<T>` overload unnecessary and that the single `Old<T>(Func<T>)` signature is complete. |
+| 2026-10-04 | Amended     | Implication that diagnostics alone make `Old<T>()` usable under Native AOT superseded by ADR-0021. Decision and diagnostics statement unchanged. See Implementation Notes > Amendment. |
