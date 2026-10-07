@@ -393,8 +393,10 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "Old<T> copies T field by field through reflection. The fields of nested types and of runtime types other than T "
-            + "may not be preserved by trimming; such fields are then copied bitwise, so the copy shares them with the original."
+        "Old<T> copies T field by field through reflection. Trimming preserves the fields declared on T; "
+            + "private fields of T's base classes, and the fields of nested types and of runtime types other than T, may not be preserved. "
+            + "A field that is not preserved is copied bitwise, so an object it refers to is shared with the original. "
+            + "Preserve such types with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]."
     )]
     public static T Old<
         [DynamicallyAccessedMembers(
