@@ -121,12 +121,14 @@ internal static class MemberComparison
             return false;
         }
 
-        // FieldInfo.GetValue boxes a pointer-typed field as a Pointer object; it is compared by address.
-        if (actual is Pointer actualPointer)
+        // FieldInfo.GetValue boxes a pointer-typed field as a Pointer object, whose Equals compares addresses.
+        if (actual is Pointer)
         {
-            return PointToSameAddress(actualPointer, (Pointer)expected);
+            return Equals(actual, expected);
         }
 
+        // Two different value types reach this point only as sequences (for example ImmutableArray<T> and
+        // ArraySegment<T>); they are compared element by element below, not field by field.
         if (actualType.IsValueType && actualType == expected.GetType())
         {
             return CompareValues(actual, expected, actualType, ref hidden);
@@ -145,13 +147,9 @@ internal static class MemberComparison
         return CompareRecursively(actual, expected, ref hidden);
     }
 
-    private static unsafe bool PointToSameAddress(Pointer actual, Pointer expected)
-    {
-        return Pointer.Unbox(actual) == Pointer.Unbox(expected);
-    }
-
     // A value type decides equality first; when it says "unequal", its fields are compared, because
-    // ValueType.Equals compares reference-typed fields by reference.
+    // ValueType.Equals calls each field's own Equals, which for most classes (List<T>, arrays) compares
+    // by reference.
     private static bool CompareValues(object actual, object expected, Type type, ref HiddenMembers? hidden)
     {
         if (Equals(actual, expected))

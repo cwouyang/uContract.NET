@@ -41,8 +41,6 @@ Perfect for DDD aggregates, value objects, and domain services.</Description>
     <!-- Trimming and AOT -->
     <IsTrimmable>true</IsTrimmable>
     <IsAotCompatible>true</IsAotCompatible>
-    <!-- Only for comparing pointer-typed fields by address (Pointer.Unbox) in MemberComparison. -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <!-- Symbols and Debugging -->
     <DebugType>embedded</DebugType>
