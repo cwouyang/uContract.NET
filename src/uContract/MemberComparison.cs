@@ -150,9 +150,8 @@ internal static class MemberComparison
     }
 
     // A value type decides equality first; when it says "unequal", its elements (for a sequence) or its
-    // fields are compared, because
-    // ValueType.Equals calls each field's own Equals, which for most classes (List<T>, arrays) compares
-    // by reference.
+    // fields are compared, because ValueType.Equals calls each field's own Equals, which for most
+    // classes (List<T>, arrays) compares by reference.
     private static bool CompareValues(object actual, object expected, Type type, ref HiddenMembers? hidden)
     {
         if (Equals(actual, expected))
