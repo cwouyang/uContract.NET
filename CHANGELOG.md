@@ -29,9 +29,14 @@ README.
   No constructor, property accessor, `Equals`, `GetHashCode` or serialization callback runs. The copy
   is a read-only snapshot: delegates are shared, so an event raised on the copy reaches the
   original's subscribers. Instances of resource types are shared with the original, not copied: every
-  `Stream`, `Task`, `Lazy<T>`, `CancellationTokenSource`, handle, timer and `HttpClient`, and the
-  default comparers of the base class library. State inside them is not snapshotted. Everything
-  reachable is copied, so prefer `Old(() => _balance)` to `Old(() => this)`. (ADR-0022)
+  `Stream`, `Task`, `Lazy<T>`, `CancellationTokenSource`, handle, timer and `HttpClient`, every
+  frozen collection (`System.Collections.Frozen`), every `Regex`, `AsyncLocal<T>` and
+  `System.Threading.Lock`, and the comparers of the base class library. A copy of a `Regex`,
+  `AsyncLocal<T>` or `Lock` would differ from an unchanged original (a `Regex` caches a runner when it
+  is used, an `AsyncLocal<T>` value is keyed by the instance, a `Lock` changes state under
+  contention), so `EnsureAssignable<T>()` would report a false violation. State inside shared
+  instances is not snapshotted. Everything reachable is copied, so prefer `Old(() => _balance)` to
+  `Old(() => this)`. (ADR-0022)
 - **BREAKING**: Callers that forward their own generic parameter to `Old<T>()` get warning `IL2091`.
   This applies to a method's type parameter and to a generic class's type parameter. Only
   `[RequiresUnreferencedCode]` on the caller, or the same
@@ -49,14 +54,17 @@ README.
   `NotSupportedException` from a getter or converter. It throws nothing of its own while copying;
   an exception from the supplier or from the runtime propagates. (ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` reports more. Distinct instances of shared types are now
-  different. Members whose runtime types differ are unequal; the runtime type decides, not the
-  declared type. Base and derived instances are unequal. A `string` and a `char[]` are unequal.
-  A user-defined struct that implements `IEnumerable`, held in an interface-typed or `object`
-  member, is compared by its fields, so state besides its elements is reported. A change outside the
-  window of a `Memory<T>` or `ReadOnlyMemory<T>` is reported. A dictionary value whose `Equals`
-  ignores the changed content is reported, because values are compared by their members. Members
-  declared on an interface are walked deeply, and their getters run. A getter that throws on a class
-  reached through a struct field propagates. When the two sides of a member have different runtime
+  different, frozen collections (`System.Collections.Frozen`) included: two equal frozen sets that are
+  different instances are a violation. Other shared instances (see `Old<T>()` above) are compared by
+  reference; a `string` is compared with `Equals` and a delegate by its methods. Members whose
+  runtime types differ are unequal; the runtime type decides, not the declared type. Base and
+  derived instances are unequal. A `string` and a `char[]` are unequal. A user-defined struct that
+  implements `IEnumerable`, held in an interface-typed or `object` member, is compared by its
+  fields, so state besides its elements is reported. A change outside the window of a `Memory<T>` or
+  `ReadOnlyMemory<T>` is reported. A dictionary value whose `Equals` ignores the changed content is
+  reported, because values are compared by their members. A member whose declared type is an
+  interface is walked into the members of its runtime type, and their getters run. A getter that
+  throws on a class reached through a struct field propagates. When the two sides of a member have different runtime
   types, a violation is reported where 2.0.0 threw `ArgumentException` or `TargetException`. (ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` reports less. A back-reference to the compared object (for
   example `Order.Lines[i].Order`) is no longer a difference of the member that holds it; 2.0.0
@@ -74,6 +82,10 @@ README.
   `Equals`, so a change to it passes silently, where a JIT build reports a violation and 2.0.0
   reported "cannot compare". Preserve the type with `DynamicDependency` to compare it member by
   member. (ADR-0022)
+- Known limitation: a property that returns a new instance of its own type on every read (for
+  example `DirectoryInfo.Root`) now makes the comparison grow without bound, where 2.0.0 overflowed
+  the stack. Fields-only comparison ([#46](https://github.com/cwouyang/uContract.NET/issues/46))
+  would remove it. (ADR-0022)
 - Known limitation, unchanged from 2.0.0: for fixed-size buffers and `[InlineArray]` structs, the
   elements after the first are invisible to reflection and to `ValueType.Equals`. A change there with
   an equal first element passes silently. (ADR-0022)
@@ -87,7 +99,8 @@ README.
   graphs, on chains of 10 000 nodes or more, on a property that returns `this`, on multicast
   delegates and on pointer fields (ADR-0022).
 - `EnsureAssignable<T>()` no longer reports false violations for unchanged dictionaries, structs
-  that hold a reference and interface-typed members (ADR-0022).
+  that hold a reference, interface-typed members, and objects that hold a `Regex` (also after it is
+  used), an `AsyncLocal<T>` or a `System.Threading.Lock` (ADR-0022).
 
 ### Removed
 

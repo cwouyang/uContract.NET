@@ -337,7 +337,7 @@ public class User
 
 In trimmed and Native AOT applications, `EnsureAssignable<T>()` can throw `InvalidOperationException` for nested types; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot).
 
-> **Note**: When postconditions are off (`DBC_POST=off` or `DBC=off`), `Old<T>()` returns `default`, and `EnsureAssignable<T>()` still validates its arguments before it reads the configuration. So the `Old` + `EnsureAssignable` pair above throws `ArgumentNullException` in that setup. This is tracked in [issue #47](https://github.com/cwouyang/uContract.NET/issues/47).
+> **Note**: When postconditions are off (`DBC_POST=off`, or `DBC=off` with `DBC_POST` unset), `Old<T>()` returns `default`, and `EnsureAssignable<T>()` still validates its arguments before it reads the configuration. So the `Old` + `EnsureAssignable` pair above throws `ArgumentNullException` in that setup. This is tracked in [issue #47](https://github.com/cwouyang/uContract.NET/issues/47).
 
 **Using Regex Patterns:**
 

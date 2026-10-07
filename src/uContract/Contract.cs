@@ -355,7 +355,7 @@ public static class Contract
     ///     This method supports both reference types and value types (no generic constraint).
     ///     An exception thrown by the supplier propagates unchanged. The copy itself throws nothing of its own.
     ///     Instances of types that wrap an operating system handle, a timer, a callback list or a lazily run factory
-    ///     (for example any <see cref="System.IO.Stream" />, <c>Task</c>, <c>Lazy&lt;T&gt;</c>) and the default
+    ///     (for example any <see cref="System.IO.Stream" />, <c>Task</c>, <c>Lazy&lt;T&gt;</c>) and the
     ///     comparers of the base class library are shared, so state inside them is not snapshotted.
     ///     The copy is a read-only snapshot: delegates are shared, so raising an event on the copy notifies the
     ///     original's subscribers. Everything reachable is copied, so <c>Old(() =&gt; _balance)</c> is cheaper than
@@ -382,8 +382,8 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "Old<T> copies T field by field through reflection. Trimming preserves the fields declared on T; "
-            + "private fields of T's base classes, the fields of the types that T's fields refer to, and of the runtime types other than T, may not be preserved. "
+        "Old<T> copies T field by field through reflection. Trimming preserves the fields declared on T. "
+            + "These may not be preserved: private fields of T's base classes, fields of the types that T's fields refer to, and fields of runtime types other than T. "
             + "A field that is not preserved is copied bitwise, so an object it refers to is shared with the original. "
             + "Preserve such types with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]."
     )]
@@ -986,7 +986,8 @@ public static class Contract
     ///     unequal, except two sequences, which are compared by element. Value types are equal when their
     ///     <c>Equals</c> says so, and are otherwise compared by their fields. Dictionaries are compared entry by
     ///     entry in enumeration order. Delegates are equal when their methods match; their targets are not
-    ///     compared. Shared instances (see <see cref="Old{T}" />) are compared by reference.
+    ///     compared. Other shared instances (see <see cref="Old{T}" />) are compared by reference; a
+    ///     <see cref="string" /> is compared with <c>Equals</c> and a delegate by its methods.
     ///     Under Native AOT, a nested class whose members were not preserved is compared by its own
     ///     <c>Equals</c>: equal when it returns true. When it returns false, the method throws
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose

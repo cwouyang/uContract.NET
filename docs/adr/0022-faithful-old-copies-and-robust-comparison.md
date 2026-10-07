@@ -128,13 +128,20 @@ returning `default`, and supplier exceptions propagating unchanged.
     `Module`, `Pointer`; `Stream`; `WaitHandle`, `CancellationTokenSource`, `Thread`, `Timer`,
     `SynchronizationContext`, `SemaphoreSlim`, `ManualResetEventSlim`, `CountdownEvent`,
     `ReaderWriterLockSlim`, `Barrier`; `Task`; `WeakReference`; `Component`; `HttpMessageHandler`,
-    `HttpClient`; `Socket`;
+    `HttpClient`; `Socket`; `Regex`;
   - by open generic definition, matched along `BaseType`: `ThreadLocal<>`, `Lazy<>`,
-    `WeakReference<>`, `ConditionalWeakTable<,>`.
+    `WeakReference<>`, `ConditionalWeakTable<,>`, `AsyncLocal<>`;
+  - by full name, matched along `BaseType`: `System.Threading.Lock` (.NET 9 and later runtimes; net8.0
+    cannot reference it).
 
   Copying these gives a second object over the same OS handle, timer, callback list or lazy factory.
   Disposing or cancelling the copy then affects the original, and some getters block. The BCL
-  compares default comparers by reference, so they must stay the same instance. A plain
+  compares default comparers by reference, so they must stay the same instance. `Regex`,
+  `AsyncLocal<T>` and `Lock` were added after the final review (user decision 2026-10-07), because
+  a copy of each differs from an unchanged original: a `Regex` caches a runner and its scratch state
+  when it is used, an `AsyncLocal<T>` value is keyed by the instance in the `ExecutionContext` (a
+  copy reads the default), and a `Lock` changes its spin and waiter state under contention. Without
+  them, `EnsureAssignable(x, Old(() => x))` reports a false violation for an unchanged object. A plain
   `System.Object` (a lock) is copied as a new `object`.
 - **B4 — Identity and cycles.** An instance reached more than once is copied once, and cycles are
   reproduced. Identity is tracked by reference only. The copier uses an explicit work list: a
@@ -153,7 +160,7 @@ returning `default`, and supplier exceptions propagating unchanged.
   stays, with this message:
 
   ```text
-  Old<T> copies T field by field through reflection. Trimming preserves the fields declared on T; private fields of T's base classes, the fields of the types that T's fields refer to, and of the runtime types other than T, may not be preserved. A field that is not preserved is copied bitwise, so an object it refers to is shared with the original. Preserve such types with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))].
+  Old<T> copies T field by field through reflection. Trimming preserves the fields declared on T. These may not be preserved: private fields of T's base classes, fields of the types that T's fields refer to, and fields of runtime types other than T. A field that is not preserved is copied bitwise, so an object it refers to is shared with the original. Preserve such types with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))].
   ```
 
 The copy is a read-only snapshot. Delegates are shared, so their targets are the original objects:
