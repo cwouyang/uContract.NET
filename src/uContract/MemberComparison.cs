@@ -124,9 +124,15 @@ internal static class MemberComparison
         }
 
         // FieldInfo.GetValue boxes a pointer-typed field as a Pointer object, whose Equals compares addresses.
-        if (actual is Pointer)
+        if (actual is Pointer or string)
         {
             return Equals(actual, expected);
+        }
+
+        // A shared type (see SharedTypes) is compared by reference, its members never read; so is a mixed pair.
+        if (SharedTypes.IsShared(actualType) || SharedTypes.IsShared(expectedType))
+        {
+            return false;
         }
 
         // Values of different runtime types reach this point only as two non-string sequences (for example
@@ -135,11 +141,6 @@ internal static class MemberComparison
         if (actualType.IsValueType && actualType == expectedType)
         {
             return CompareValues(actual, expected, actualType, ref hidden);
-        }
-
-        if (actual is string)
-        {
-            return Equals(actual, expected);
         }
 
         if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)

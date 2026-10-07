@@ -1,5 +1,7 @@
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.Immutable;
+using System.Reflection;
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -786,6 +788,155 @@ public class EnsureAssignableRobustnessTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenTaskMemberHoldsDistinctPendingTasks_ReportsTheMemberWithoutBlocking()
+    {
+        Job actual = new() { Work = new TaskCompletionSource<int>().Task };
+        Job expected = new() { Work = new TaskCompletionSource<int>().Task };
+        PostconditionViolationException? exception = null;
+
+        SmallStack.OnSmallStack(
+            () =>
+                exception = Assert.Throws<PostconditionViolationException>(() =>
+                    Contract.EnsureAssignable(actual, expected)
+                ),
+            timeoutMilliseconds: PendingTimeoutMilliseconds
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Work\n  - <Work>k__BackingField",
+            exception!.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenLazyMemberHoldsDistinctInstances_ReportsTheMemberWithoutRunningTheFactory()
+    {
+        int factoryRuns = 0;
+        Func<int> factory = () => ++factoryRuns;
+        Deferred actual = new() { Value = new Lazy<int>(factory) };
+        Deferred expected = new() { Value = new Lazy<int>(factory) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Value\n  - <Value>k__BackingField",
+            exception.Description
+        );
+        Assert.Equal(0, factoryRuns);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenSemaphoreMemberHoldsDistinctInstances_ReportsTheMemberWithoutCreatingAWaitHandle()
+    {
+        using SemaphoreSlim actualGate = new(1);
+        using SemaphoreSlim expectedGate = new(1);
+        Turnstile actual = new() { Gate = actualGate };
+        Turnstile expected = new() { Gate = expectedGate };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Gate\n  - <Gate>k__BackingField",
+            exception.Description
+        );
+        // Reading AvailableWaitHandle is the only way the wait handle is created; no public member reports it.
+        Assert.Null(SemaphoreWaitHandle(actualGate));
+        Assert.Null(SemaphoreWaitHandle(expectedGate));
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenCancellationTokenMemberComesFromDistinctSources_ReportsTheMember()
+    {
+        using CancellationTokenSource actualSource = new();
+        using CancellationTokenSource expectedSource = new();
+        Request actual = new() { Cancellation = actualSource.Token };
+        Request expected = new() { Cancellation = expectedSource.Token };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Cancellation\n  - <Cancellation>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenValueTaskMemberWrapsDistinctPendingTasks_ReportsTheMemberWithoutBlocking()
+    {
+        Promise actual = new() { Pending = new ValueTask<int>(new TaskCompletionSource<int>().Task) };
+        Promise expected = new() { Pending = new ValueTask<int>(new TaskCompletionSource<int>().Task) };
+        PostconditionViolationException? exception = null;
+
+        SmallStack.OnSmallStack(
+            () =>
+                exception = Assert.Throws<PostconditionViolationException>(() =>
+                    Contract.EnsureAssignable(actual, expected)
+                ),
+            timeoutMilliseconds: PendingTimeoutMilliseconds
+        );
+
+        Assert.Equal("Fields were modified that are not marked as assignable:\n  - Pending", exception!.Description);
+    }
+
+    // Limitation: the state inside a shared instance is not compared, so cancelling the same source is not a change.
+    [Fact]
+    public void EnsureAssignable_WhenSameCancellationSourceIsCancelledInBetween_DoesNotThrow()
+    {
+        using CancellationTokenSource source = new();
+        Canceller actual = new() { Source = source };
+        Canceller expected = new() { Source = source };
+        source.Cancel();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenStringMemberHoldsDistinctEqualStrings_DoesNotThrow()
+    {
+        Label actual = new() { Text = new string('a', 3) };
+        Label expected = new() { Text = new string('a', 3) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenSequenceMemberHoldsListAndFrozenSetWithEqualElements_ReportsTheMember()
+    {
+        List<int> list = [1, 2];
+        Scores actual = new() { Values = list };
+        Scores expected = new() { Values = list.ToFrozenSet() };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Values\n  - <Values>k__BackingField",
+            exception.Description
+        );
+    }
+
+    private static object? SemaphoreWaitHandle(SemaphoreSlim semaphore)
+    {
+        return typeof(SemaphoreSlim)
+            .GetField("m_waitHandle", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(semaphore);
+    }
+
+    // Long enough for a comparison that reads no blocking member; a comparison that waits on a pending task never ends.
+    private const int PendingTimeoutMilliseconds = 3000;
+
     private interface IAnimal;
 
     private sealed class Elem(int value)
@@ -1072,5 +1223,40 @@ public class EnsureAssignableRobustnessTests
     private sealed class Archive
     {
         public Hashtable Table { get; set; } = [];
+    }
+
+    private sealed class Job
+    {
+        public Task<int> Work { get; set; } = Task.FromResult(0);
+    }
+
+    private sealed class Deferred
+    {
+        public Lazy<int> Value { get; set; } = new(0);
+    }
+
+    private sealed class Turnstile
+    {
+        public SemaphoreSlim? Gate { get; set; }
+    }
+
+    private sealed class Request
+    {
+        public CancellationToken Cancellation { get; set; }
+    }
+
+    private sealed class Promise
+    {
+        public ValueTask<int> Pending;
+    }
+
+    private sealed class Canceller
+    {
+        public CancellationTokenSource? Source { get; set; }
+    }
+
+    private sealed class Label
+    {
+        public string Text { get; set; } = "";
     }
 }
