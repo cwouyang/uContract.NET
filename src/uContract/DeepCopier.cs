@@ -10,12 +10,14 @@ namespace uContract;
 /// <summary>
 ///     Copies a value for <see cref="Contract.Old{T}" /> without running user code: each object starts as a
 ///     bitwise clone, so every instance field keeps the original's value; then each reference-typed field
-///     visible to reflection is replaced by the copy of what it refers to.
+///     visible to reflection is replaced by the copy of what it refers to. A struct field stays bitwise
+///     except for the reference-typed fields inside it, replaced the same way at any nesting depth. An
+///     array keeps its runtime type, rank and bounds, and its elements are replaced by the same rules.
 /// </summary>
 /// <remarks>
 ///     Shared types (<see cref="SharedTypes" />, <see cref="string" /> included) are never cloned. An instance
 ///     reached more than once is copied once, so cycles are reproduced. The graph is walked with an explicit
-///     work list, not recursion.
+///     work list, not recursion. An array whose element type holds no reference is not visited.
 /// </remarks>
 internal static class DeepCopier
 {
@@ -78,12 +80,22 @@ internal static class DeepCopier
         {
             foreach (FieldInfo field in type.GetFields(DeclaredInstanceFields))
             {
-                if (!IsReferenceTyped(field.FieldType) || field.GetValue(clone) is not { } referenced)
+                if (!HoldsReferences(field.FieldType) || field.GetValue(clone) is not { } value)
                 {
                     continue;
                 }
 
-                field.SetValue(clone, CopyOf(referenced, copies, pending));
+                if (field.FieldType.IsValueType)
+                {
+                    // A struct field arrives boxed: replace the references inside the box, then store it back.
+                    // This recurses once per level of struct nesting, which the type bounds, not the graph.
+                    ReplaceReferenceFields(value, copies, pending);
+                    field.SetValue(clone, value);
+                }
+                else
+                {
+                    field.SetValue(clone, CopyOf(value, copies, pending));
+                }
             }
         }
     }

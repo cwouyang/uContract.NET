@@ -750,6 +750,63 @@ public class OldDeepCopyTests
         );
     }
 
+    [Fact]
+    public void Old_WhenStructMemberHoldsAPrivateList_CopiesTheList()
+    {
+        Holder<Ledger> original = new(new Ledger([1, 2]));
+
+        Holder<Ledger> copy = Contract.Old(() => original);
+
+        Assert.NotSame(original.Value.Entries, copy.Value.Entries);
+        Assert.Equal(original.Value.Entries, copy.Value.Entries);
+    }
+
+    [Fact]
+    public void Old_WhenStructInsideAStructHoldsAList_CopiesTheList()
+    {
+        Holder<Folder> original = new(new Folder(new Ledger([1, 2])));
+
+        Holder<Folder> copy = Contract.Old(() => original);
+
+        Assert.NotSame(original.Value.Ledger.Entries, copy.Value.Ledger.Entries);
+        Assert.Equal(original.Value.Ledger.Entries, copy.Value.Ledger.Entries);
+    }
+
+    [Fact]
+    public void Old_WhenArrayElementNestsAStructHoldingAList_CopiesTheList()
+    {
+        Holder<Folder[]> original = new([new Folder(new Ledger([1, 2]))]);
+
+        Holder<Folder[]> copy = Contract.Old(() => original);
+
+        Assert.NotSame(original.Value[0].Ledger.Entries, copy.Value[0].Ledger.Entries);
+        Assert.Equal(original.Value[0].Ledger.Entries, copy.Value[0].Ledger.Entries);
+    }
+
+    [Fact]
+    public void Old_WhenBoxNestsAStructHoldingAList_CopiesTheList()
+    {
+        Holder<object> original = new(new Folder(new Ledger([1, 2])));
+
+        Holder<object> copy = Contract.Old(() => original);
+
+        List<int> originalEntries = ((Folder)original.Value).Ledger.Entries;
+        List<int> copiedEntries = ((Folder)copy.Value).Ledger.Entries;
+        Assert.NotSame(originalEntries, copiedEntries);
+        Assert.Equal(originalEntries, copiedEntries);
+    }
+
+    [Fact]
+    public void Old_WhenNullableStructMemberHoldsAList_CopiesTheList()
+    {
+        Holder<Ledger?> original = new(new Ledger([1, 2]));
+
+        Holder<Ledger?> copy = Contract.Old(() => original);
+
+        Assert.NotSame(original.Value!.Value.Entries, copy.Value!.Value.Entries);
+        Assert.Equal(original.Value.Value.Entries, copy.Value.Value.Entries);
+    }
+
     private class Ancestor
     {
         private int _secret;
@@ -1053,6 +1110,18 @@ public class OldDeepCopyTests
     private readonly struct Slot(Address home)
     {
         public Address Home { get; } = home;
+    }
+
+    private readonly struct Ledger(List<int> entries)
+    {
+        private readonly List<int> _entries = entries;
+
+        public List<int> Entries => _entries;
+    }
+
+    private readonly struct Folder(Ledger ledger)
+    {
+        public Ledger Ledger { get; } = ledger;
     }
 
     private sealed class Elem
