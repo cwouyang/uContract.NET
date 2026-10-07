@@ -1560,7 +1560,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenMemberlessValuesDifferByEquals_ThrowsWithValuesDifferSentence()
+    public void EnsureAssignable_WhenMemberlessValuesDifferByEquals_ThrowsWithEqualsUnequalSentence()
     {
         OrderWithMarker first = new() { Marker = new NeverEqualMarker() };
         OrderWithMarker second = new() { Marker = new NeverEqualMarker() };
@@ -1571,7 +1571,26 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         Assert.Contains(typeof(NeverEqualMarker).ToString(), cannotCompare.Message);
         Assert.Contains("'OrderWithMarker.Marker'", cannotCompare.Message);
         Assert.Contains("'Marker' as assignable", cannotCompare.Message);
-        Assert.Contains("The two values differ, but their members cannot be listed.", cannotCompare.Message);
+        Assert.Contains(
+            "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed.",
+            cannotCompare.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberlessEqualsIgnoresState_TrustsEqualsAndDoesNotThrow()
+    {
+        StatefulMarker.Notes.Clear();
+        StatefulMarker firstMarker = new();
+        StatefulMarker secondMarker = new();
+        StatefulMarker.Notes.Add(firstMarker, "before");
+        StatefulMarker.Notes.Add(secondMarker, "after");
+        OrderWithMarker first = new() { Marker = firstMarker };
+        OrderWithMarker second = new() { Marker = secondMarker };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -1653,7 +1672,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
             $"EnsureAssignable cannot compare {typeof(NoVisibleMembers)} "
                 + "(reached through 'OrderWithWrappedLines.Lines[].Inner'): "
                 + "no properties or fields are visible to reflection under Native AOT. "
-                + "The two values differ, but their members cannot be listed. "
+                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
                 + "Ways out: list 'Lines' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
@@ -1790,6 +1809,16 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     private sealed class NeverEqualMarker : IMarker
     {
         public override bool Equals(object? obj) => false;
+
+        public override int GetHashCode() => 0;
+    }
+
+    private sealed class StatefulMarker : IMarker
+    {
+        // State kept outside the instance, so the class has no fields for reflection to see.
+        public static readonly System.Runtime.CompilerServices.ConditionalWeakTable<StatefulMarker, string> Notes = [];
+
+        public override bool Equals(object? obj) => obj is StatefulMarker;
 
         public override int GetHashCode() => 0;
     }

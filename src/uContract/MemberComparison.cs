@@ -65,7 +65,7 @@ internal static class MemberComparison
         return new InvalidOperationException(
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
                 + "no properties or fields are visible to reflection under Native AOT. "
-                + "The two values differ, but their members cannot be listed. "
+                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
                 + $"Ways out: list '{topLevelMember}' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
@@ -381,6 +381,7 @@ internal static class MemberComparison
             equalWithoutWalk = actual.Equals(expected);
             if (!equalWithoutWalk)
             {
+                // CannotCompareNested's wording relies on Equals having returned false here.
                 context.Hidden = new HiddenMembers(type);
             }
 
