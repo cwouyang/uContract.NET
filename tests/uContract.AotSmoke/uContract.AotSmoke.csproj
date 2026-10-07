@@ -15,8 +15,17 @@
     <NoWarn>IL2026;MA0048;MA0008;MA0051</NoWarn>
   </PropertyGroup>
 
-  <ItemGroup>
+  <PropertyGroup Condition="'$(UContractPackageVersion)' != ''">
+    <!-- IL3050: the published 2.0.0 package's Old still carries RequiresDynamicCode; package mode compares against it. -->
+    <NoWarn>$(NoWarn);IL3050</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UContractPackageVersion)' == ''">
     <ProjectReference Include="..\..\src\uContract\uContract.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UContractPackageVersion)' != ''">
+    <PackageReference Include="uContract" Version="$(UContractPackageVersion)" />
   </ItemGroup>
 
 </Project>

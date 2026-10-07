@@ -108,11 +108,19 @@ internal sealed class PreservedOuter
     public PreservedInner Inner { get; set; } = new();
 }
 
-internal sealed record Expect(Type? ExceptionType, string[] Substrings, bool ExpectDefault)
+internal sealed record Expect(
+    Type? ExceptionType,
+    string[] Substrings,
+    bool ExpectDefault,
+    string? ExpectedValue = null
+)
 {
     public static Expect Ok { get; } = new(null, [], false);
 
     public static Expect DefaultValue { get; } = new(null, [], true);
+
+    // Passes when the result, rendered as a string, equals expected (ordinal); a null or default result renders as "default".
+    public static Expect Value(string expected) => new(null, [], false, expected);
 
     public static Expect Throws<TException>(params string[] substrings)
         where TException : Exception => new(typeof(TException), substrings, false);
@@ -192,10 +200,18 @@ public static class Program
         else
         {
             bool isDefault = value is null || (value is int number && number == 0);
-            expected = expect.ExpectDefault ? "default value" : "no exception";
+            string rendered = isDefault ? "default" : value?.ToString() ?? "default";
+            expected =
+                expect.ExpectedValue is not null ? $"value {expect.ExpectedValue}"
+                : expect.ExpectDefault ? "default value"
+                : "no exception";
             if (thrown is not null)
             {
                 got = thrown.GetType().Name;
+            }
+            else if (expect.ExpectedValue is not null)
+            {
+                got = $"value {rendered}";
             }
             else if (expect.ExpectDefault)
             {
@@ -206,7 +222,13 @@ public static class Program
                 got = "no exception";
             }
 
-            pass = thrown is null && (!expect.ExpectDefault || isDefault);
+            pass =
+                thrown is null
+                && (
+                    expect.ExpectedValue is not null
+                        ? string.Equals(rendered, expect.ExpectedValue, StringComparison.Ordinal)
+                        : !expect.ExpectDefault || isDefault
+                );
         }
 
         string status =
