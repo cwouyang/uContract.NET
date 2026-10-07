@@ -1308,6 +1308,45 @@ public class EnsureAssignableRobustnessTests
         Assert.Null(exception);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenObjectReliesOnAChangedObjectOnlyThroughADeeperOne_ReportsBothMembers()
+    {
+        Duo<Cell> actual = Cell.ThreeCycle(changingValue: 1);
+        Duo<Cell> expected = Cell.ThreeCycle(changingValue: 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(BothDuoMembersChanged, exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenObjectReachesOneFoundEqualWhileRelyingOnAChangedObject_ReportsBothMembers()
+    {
+        Duo<Hub> actual = Hub.HandedOverCycle(changingValue: 1);
+        Duo<Hub> expected = Hub.HandedOverCycle(changingValue: 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(BothDuoMembersChanged, exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenObjectWasFoundEqualRelyingOnAnObjectThatThenReliedOnAChangedOne_ReportsBothMembers()
+    {
+        Duo<Hub> actual = Hub.AbsorbedCycle(changingValue: 1);
+        Duo<Hub> expected = Hub.AbsorbedCycle(changingValue: 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(BothDuoMembersChanged, exception.Description);
+    }
+
     private static object? SemaphoreWaitHandle(SemaphoreSlim semaphore)
     {
         return typeof(SemaphoreSlim)
@@ -1796,6 +1835,68 @@ public class EnsureAssignableRobustnessTests
     {
         public Probe? A { get; set; }
         public Probe? B { get; set; }
+    }
+
+    private const string BothDuoMembersChanged =
+        "Fields were modified that are not marked as assignable:\n  - M1\n  - M2\n"
+        + "  - <M1>k__BackingField\n  - <M2>k__BackingField";
+
+    private sealed class Duo<TNode>
+        where TNode : class
+    {
+        public TNode? M1 { get; set; }
+        public TNode? M2 { get; set; }
+    }
+
+    // Public fields only: each reference is compared once, so no second member records a reliance again.
+    private sealed class Cell
+    {
+        public Cell? X;
+        public int V;
+
+        // a -> b -> c -> a, with M1 = a and M2 = b: b relies on a only through c.
+        public static Duo<Cell> ThreeCycle(int changingValue)
+        {
+            Cell a = new() { V = changingValue };
+            Cell b = new();
+            Cell c = new() { X = a };
+            a.X = b;
+            b.X = c;
+            return new Duo<Cell> { M1 = a, M2 = b };
+        }
+    }
+
+    private sealed class Hub
+    {
+        public Hub? X { get; set; }
+        public Hub? Y { get; set; }
+        public int V { get; set; }
+
+        // a.X = b, b.X = c, c.X = b, b.Y = a, a.Y = d, d.X = c, with M1 = a and M2 = d. c is found equal
+        // relying on b, and b relying on a; d, compared next at b's former depth, then reaches c.
+        public static Duo<Hub> HandedOverCycle(int changingValue)
+        {
+            Hub a = new() { V = changingValue };
+            Hub b = new() { Y = a };
+            Hub c = new() { X = b };
+            Hub d = new() { X = c };
+            a.X = b;
+            a.Y = d;
+            b.X = c;
+            return new Duo<Hub> { M1 = a, M2 = d };
+        }
+
+        // p.X = q, q.X = r, r.X = q, q.Y = p, with M1 = p and M2 = r. r is found equal relying only on q,
+        // and q then relies on p, which differs.
+        public static Duo<Hub> AbsorbedCycle(int changingValue)
+        {
+            Hub p = new() { V = changingValue };
+            Hub q = new() { Y = p };
+            Hub r = new() { X = q };
+            p.X = q;
+            q.X = r;
+            return new Duo<Hub> { M1 = p, M2 = r };
+        }
     }
 
     private sealed class Knot
