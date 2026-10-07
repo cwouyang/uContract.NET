@@ -952,6 +952,120 @@ public class EnsureAssignableRobustnessTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenDelegatesCallSameMethodOnTargetsWithDifferentContent_DoesNotThrow()
+    {
+        NonSerializableType actual = new() { Callback = new Switch { IsOn = true }.Read };
+        NonSerializableType expected = new() { Callback = new Switch { IsOn = false }.Read };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMulticastDelegatesCombineSameDelegatesInSameOrder_DoesNotThrow()
+    {
+        Switch light = new() { IsOn = true };
+        Func<bool> read = light.Read;
+        Func<bool> flip = light.Flip;
+        NonSerializableType actual = new() { Callback = read + flip };
+        NonSerializableType expected = new() { Callback = read + flip };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMulticastDelegateIsComparedWithItsLastDelegate_ReportsTheMember()
+    {
+        Switch light = new() { IsOn = true };
+        Func<bool> read = light.Read;
+        Func<bool> flip = light.Flip;
+        NonSerializableType actual = new() { Callback = read + flip };
+        NonSerializableType expected = new() { Callback = flip };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Callback\n  - <Callback>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDelegatesAreLambdasWithDifferentBodies_ReportsTheMember()
+    {
+        NonSerializableType actual = new() { Callback = () => true };
+        NonSerializableType expected = new() { Callback = () => false };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Callback\n  - <Callback>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDelegateIsComparedWithNull_ReportsTheMember()
+    {
+        NonSerializableType actual = new() { Callback = () => true };
+        NonSerializableType expected = new() { Callback = null! };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Callback\n  - <Callback>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMulticastDelegatesCombineSameDelegatesInReverseOrder_ReportsTheMember()
+    {
+        Switch light = new() { IsOn = true };
+        Func<bool> read = light.Read;
+        Func<bool> flip = light.Flip;
+        NonSerializableType actual = new() { Callback = read + flip };
+        NonSerializableType expected = new() { Callback = flip + read };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Callback\n  - <Callback>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMulticastDelegateIsComparedWithItsFirstDelegate_ReportsTheMember()
+    {
+        Switch light = new() { IsOn = true };
+        Func<bool> read = light.Read;
+        Func<bool> flip = light.Flip;
+        NonSerializableType actual = new() { Callback = read + flip };
+        NonSerializableType expected = new() { Callback = read };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Callback\n  - <Callback>k__BackingField",
+            exception.Description
+        );
+    }
+
     private static object? SemaphoreWaitHandle(SemaphoreSlim semaphore)
     {
         return typeof(SemaphoreSlim)
@@ -1278,6 +1392,15 @@ public class EnsureAssignableRobustnessTests
     private sealed class Canceller
     {
         public CancellationTokenSource? Source { get; set; }
+    }
+
+    private sealed class Switch
+    {
+        public bool IsOn { get; set; }
+
+        public bool Read() => IsOn;
+
+        public bool Flip() => !IsOn;
     }
 
     private sealed class Label

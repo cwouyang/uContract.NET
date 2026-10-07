@@ -129,6 +129,11 @@ internal static class MemberComparison
             return Equals(actual, expected);
         }
 
+        if (actual is Delegate actualDelegate && expected is Delegate expectedDelegate)
+        {
+            return CompareDelegates(actualDelegate, expectedDelegate);
+        }
+
         // A shared type (see SharedTypes) is compared by reference, its members never read.
         if (actualType == expectedType && SharedTypes.IsShared(actualType))
         {
@@ -149,6 +154,48 @@ internal static class MemberComparison
         }
 
         return CompareRecursively(actual, expected, ref hidden);
+    }
+
+    // A delegate is compared by the methods it calls, in order. Its targets are never compared or walked,
+    // and a multicast delegate is never walked into: its fields would lead back to the delegates it holds.
+    private static bool CompareDelegates(Delegate actual, Delegate expected)
+    {
+        if (actual.Equals(expected))
+        {
+            return true;
+        }
+
+        Delegate[] actualList = actual.GetInvocationList();
+        Delegate[] expectedList = expected.GetInvocationList();
+        if (actualList.Length != expectedList.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < actualList.Length; i++)
+        {
+            if (!HaveSameMethod(actualList[i], expectedList[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // A method that is unknown (null) or cannot be read (NotSupportedException, possible under Native AOT)
+    // makes the two delegates unequal.
+    private static bool HaveSameMethod(Delegate actual, Delegate expected)
+    {
+        try
+        {
+            MethodInfo? actualMethod = actual.Method;
+            return actualMethod is not null && actualMethod == expected.Method;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static bool CompareSequences(IEnumerable actual, IEnumerable expected, ref HiddenMembers? hidden)
