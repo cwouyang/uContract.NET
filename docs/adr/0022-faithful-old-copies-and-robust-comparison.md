@@ -153,7 +153,7 @@ returning `default`, and supplier exceptions propagating unchanged.
   stays, with this message:
 
   ```text
-  Old<T> copies T field by field through reflection. Trimming preserves the fields declared on T; private fields of T's base classes, and the fields of nested types and of runtime types other than T, may not be preserved. A field that is not preserved is copied bitwise, so an object it refers to is shared with the original. Preserve such types with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))].
+  Old<T> copies T field by field through reflection. Trimming preserves the fields declared on T; private fields of T's base classes, the fields of the types that T's fields refer to, and of the runtime types other than T, may not be preserved. A field that is not preserved is copied bitwise, so an object it refers to is shared with the original. Preserve such types with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))].
   ```
 
 The copy is a read-only snapshot. Delegates are shared, so their targets are the original objects:
