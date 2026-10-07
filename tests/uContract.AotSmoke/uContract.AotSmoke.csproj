@@ -8,15 +8,31 @@
     <IsPackable>false</IsPackable>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <!-- IL2026;IL3050: the program deliberately calls the helpers annotated with RequiresUnreferencedCode / RequiresDynamicCode; that is what it tests. -->
+    <!-- The pointer-field checks declare an int* field. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- IL2026: the program deliberately calls the helpers annotated with RequiresUnreferencedCode; that is what it tests. No public API requires dynamic code, so IL3050 is not suppressed. -->
     <!-- MA0048: the fixture types and the program share one file; a single-file test program does not need one file per type. -->
     <!-- MA0008: the struct fixture is a plain data holder; layout and equality are irrelevant here. -->
     <!-- MA0051: the check table is one flat declarative list of rows; splitting it would only scatter it. -->
-    <NoWarn>IL2026;IL3050;MA0048;MA0008;MA0051</NoWarn>
+    <NoWarn>IL2026;MA0048;MA0008;MA0051</NoWarn>
   </PropertyGroup>
 
-  <ItemGroup>
+  <PropertyGroup Condition="'$(UContractPackageVersion)' != ''">
+    <!-- IL3050: the published 2.0.0 package's Old still carries RequiresDynamicCode; package mode compares against it. -->
+    <NoWarn>$(NoWarn);IL3050</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(AotSmokeHiddenDictionaryEntry)' == 'true'">
+    <!-- Builds the variant in which no check preserves Dictionary<,>, so Dictionary<,>.Entry stays hidden. -->
+    <DefineConstants>$(DefineConstants);HIDDEN_DICTIONARY_ENTRY</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UContractPackageVersion)' == ''">
     <ProjectReference Include="..\..\src\uContract\uContract.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UContractPackageVersion)' != ''">
+    <PackageReference Include="uContract" Version="$(UContractPackageVersion)" />
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 
 namespace uContract.Tests;
 
@@ -31,28 +30,5 @@ public sealed class RuntimeFactsTests
         }
 
         Assert.Equal(real, RuntimeFacts.IsDynamicCodeSupported);
-    }
-
-    [Fact]
-    public void IsJsonReflectionEnabled_ByDefault_ReturnsRuntimeValue()
-    {
-        Assert.Equal(JsonSerializer.IsReflectionEnabledByDefault, RuntimeFacts.IsJsonReflectionEnabled);
-    }
-
-    [Fact]
-    public void IsJsonReflectionEnabled_WhenOverridden_ReturnsOverrideThenRuntimeValueAfterReset()
-    {
-        var real = JsonSerializer.IsReflectionEnabledByDefault;
-        try
-        {
-            RuntimeFacts.JsonReflectionEnabledOverride = !real;
-            Assert.Equal(!real, RuntimeFacts.IsJsonReflectionEnabled);
-        }
-        finally
-        {
-            RuntimeFacts.JsonReflectionEnabledOverride = null;
-        }
-
-        Assert.Equal(real, RuntimeFacts.IsJsonReflectionEnabled);
     }
 }

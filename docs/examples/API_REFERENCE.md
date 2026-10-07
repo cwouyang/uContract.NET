@@ -158,7 +158,7 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 ### When Contracts Are Enabled
 - ⚠️ **Condition evaluation cost**: Lambda expressions are invoked
 - ⚠️ **Recursion guard overhead**: AsyncLocal access (minimal)
-- ⚠️ **Old<T>() serialization cost**: JSON serialization for deep copy
+- ⚠️ **Old<T>() copy cost**: reflection deep copy of everything reachable from the value
 - ⚠️ **EnsureAssignable<T>() reflection cost**: Metadata cached, but comparison is expensive
 
 ### Optimization Tips
@@ -171,12 +171,13 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 
 ## Trimming and Native AOT
 
-`Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications in 2.0.0. `DBC_POST=off` turns off every postcondition check, these two helpers included.
+`Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications. `DBC_POST=off` turns off every postcondition check, these two helpers included. With it, `Old<T>()` returns `default`, so the documented `Old` + `EnsureAssignable` pair throws `ArgumentNullException` ([#47](https://github.com/cwouyang/uContract.NET/issues/47)).
 
-- `Old<T>()` needs reflection-based JSON serialization: set `JsonSerializerIsReflectionEnabledByDefault` to `true`, and under Native AOT also preserve the copied types with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`.
+- `Old<T>()` copies field by field with reflection and needs no JSON setup. A field that the trimmer removed from reflection keeps its bitwise value, so the object it refers to is shared with the original. Preserve such types with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]` on `Main` or any method that runs. A caller that forwards its own generic parameter to it gets trim warning `IL2091` unless it carries `[RequiresUnreferencedCode]` or the same `[DynamicallyAccessedMembers]` annotation on that parameter.
 - `EnsureAssignable<T>()` compares the members of `T` in every kind of build. A caller that forwards its own generic parameter to it gets trim warning `IL2091` until that parameter has the same `[DynamicallyAccessedMembers]` annotation.
-- Under Native AOT it throws `InvalidOperationException` when it reaches a nested object or collection element whose type's members are not preserved. List the top-level member as assignable (plain member name; patterns are regular expressions matched against top-level member names) or preserve the type with `DynamicDependency`.
-- Framework types such as `Uri`, `Exception`, `Version` and `Lazy<T>` are affected too; listing the member is the practical choice.
+- Under Native AOT, when it reaches a nested class or collection element whose members are not preserved, it asks that class's `Equals`: `true` means equal, `false` throws `InvalidOperationException`. List the top-level member as assignable (plain member name; patterns are regular expressions matched against top-level member names) or preserve the type with `DynamicDependency`.
+- Blind spot: a nested class whose `Equals` ignores state (for example entity equality by ID) compares equal when it has no visible members, so a change to it passes silently. Preserve the type with `DynamicDependency` to compare it member by member.
+- A value type is equal when its `Equals` says so; otherwise its visible fields are compared. Types that `Old<T>()` shares (`Lazy<T>`, `Task`, streams and similar) are compared by reference.
 - Assignable patterns are unanchored regular expressions: `Customer` also exempts `CustomerId`. To exempt exactly one member, anchor the pattern. An auto-property declared on the compared type is also compared as its backing field, so the pattern must cover that too: `^(Customer|<Customer>k__BackingField)$`. An inherited auto-property is compared only as the property, so `^Customer$` is enough.
 - In a trimmed app without Native AOT, a nested type whose property getter was removed by the trimmer makes it throw `InvalidOperationException` naming the property ("… no get method is visible through the compared type"); the same two ways out apply.
 - Not detected: a type with only some members preserved, and, in a trimmed app without Native AOT, a nested type whose members were removed entirely. A `null` member, the same instance on both sides, or an empty collection is not inspected.

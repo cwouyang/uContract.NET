@@ -22,7 +22,7 @@ Features:
 • Full nullable reference type support
 • Thread-safe with recursion guard
 • Reflection-based field comparison (EnsureAssignable)
-• JSON-based state capture (Old&lt;T&gt;)
+• Reflection deep copy for state capture (Old&lt;T&gt;)
 
 Perfect for DDD aggregates, value objects, and domain services.</Description>
     <PackageTags>dbc;design-by-contract;contracts;ddd;domain-driven-design;invariants;preconditions;postconditions;dotnet;csharp</PackageTags>

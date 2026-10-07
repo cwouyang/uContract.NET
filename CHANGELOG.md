@@ -9,6 +9,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Migrating from 2.x**: `Old<T>()` now copies every field, private ones included, and keeps runtime
+types, shared references and cycles. Code that relied on the lossy JSON copy changes behaviour: a
+`[JsonIgnore]` or other `System.Text.Json` attribute no longer limits the copy (capture only the
+state you need, for example `Old(() => _balance)`), an `object` member holds the boxed value instead
+of a `JsonElement`, and a lazily evaluated sequence is cloned as an iterator instead of being
+materialized (capture it with `.ToList()`). `EnsureAssignable<T>()` now reports some differences it
+missed and no longer reports some it raised wrongly; each case is listed under Changed. Code that
+catches the `InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or
+the `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. For trimmed
+and Native AOT applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) in the
+README.
+
+### Changed
+
+- **BREAKING**: `Old<T>()` copies by reflection instead of JSON. Each object is a bitwise clone, so
+  the copy keeps private state, `readonly` fields, base-class fields and the runtime type of every
+  node, the top level included. A shared or cyclic reference is copied once and the cycle is kept.
+  No constructor, property accessor, `Equals`, `GetHashCode` or serialization callback runs. The copy
+  is a read-only snapshot: delegates are shared, so an event raised on the copy reaches the
+  original's subscribers. Instances of resource types are shared with the original, not copied: every
+  `Stream`, `Task`, `Lazy<T>`, `CancellationTokenSource`, handle, timer and `HttpClient`, every
+  frozen collection (`System.Collections.Frozen`), every `Regex`, `AsyncLocal<T>` and
+  `System.Threading.Lock`, and the comparers of the base class library. A copy of a `Regex`,
+  `AsyncLocal<T>` or `Lock` would differ from an unchanged original (a `Regex` caches a runner when it
+  is used, an `AsyncLocal<T>` value is keyed by the instance, a `Lock` changes state under
+  contention), so `EnsureAssignable<T>()` would report a false violation. State inside shared
+  instances is not snapshotted. Everything reachable is copied, so prefer `Old(() => _balance)` to
+  `Old(() => this)`. (ADR-0022)
+- **BREAKING**: Callers that forward their own generic parameter to `Old<T>()` get warning `IL2091`.
+  This applies to a method's type parameter and to a generic class's type parameter. Only
+  `[RequiresUnreferencedCode]` on the caller, or the same
+  `[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields)]`
+  on its type parameter, silences it. Suppressing `IL2026` does not. Warning `IL3050` is no longer
+  raised for `Old<T>()`. (ADR-0022)
+- **BREAKING**: Under Native AOT, a field that is hidden from reflection keeps its bitwise value, so
+  the object it refers to is shared with the original. A change to a base-class auto-property (for
+  example a `List<Line>`) or to the storage of a collection whose fields are hidden then passes
+  silently. Preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`.
+  (ADR-0022)
+- **BREAKING**: `Old<T>()` no longer throws `InvalidOperationException` for a type that "cannot be
+  serialized" or because reflection-based JSON serialization is disabled. It no longer throws
+  `JsonException` for a graph deeper than 64 levels, and it no longer translates a
+  `NotSupportedException` from a getter or converter. It throws nothing of its own while copying;
+  an exception from the supplier or from the runtime propagates. (ADR-0022)
+- **BREAKING**: `EnsureAssignable<T>()` reports more. Distinct instances of shared types are now
+  different, frozen collections (`System.Collections.Frozen`) included: two equal frozen sets that are
+  different instances are a violation. Other shared instances (see `Old<T>()` above) are compared by
+  reference; a `string` is compared with `Equals` and a delegate by its methods. Members whose
+  runtime types differ are unequal; the runtime type decides, not the declared type. Base and
+  derived instances are unequal. A `string` and a `char[]` are unequal. A user-defined struct that
+  implements `IEnumerable`, held in an interface-typed or `object` member, is compared by its
+  fields, so state besides its elements is reported. A change outside the window of a `Memory<T>` or
+  `ReadOnlyMemory<T>` is reported. A dictionary value whose `Equals` ignores the changed content is
+  reported, because values are compared by their members. A member whose declared type is an
+  interface is walked into the members of its runtime type, and their getters run. A getter that
+  throws on a class reached through a struct field propagates. When the two sides of a member have different runtime
+  types, a violation is reported where 2.0.0 threw `ArgumentException` or `TargetException`. (ADR-0022)
+- **BREAKING**: `EnsureAssignable<T>()` reports less. A back-reference to the compared object (for
+  example `Order.Lines[i].Order`) is no longer a difference of the member that holds it; 2.0.0
+  overflowed the stack or reported it. A cycle whose shape changed but whose values unroll
+  identically compares equal. Delegate targets and closure state are not compared. State inside
+  shared instances (`Lazy<T>`, `Task`, `CancellationTokenSource`, streams, `Regex`) is not compared;
+  the `Value` of a shared `AsyncLocal<T>` is not compared either, so a value first set after `Old`
+  passes. Structs,
+  tuples and dictionaries whose content is equal but whose references differ are equal. (ADR-0022)
+- **BREAKING**: Under Native AOT, `EnsureAssignable<T>()` asks `Equals` first for a nested class with
+  no members visible to reflection. A class whose `Equals` returns `true` is equal. Otherwise it
+  throws `InvalidOperationException`, as before; the message now says that `Equals` reports the values
+  unequal. Two cases differ from 2.0.0. First, a changed hidden record in an interface-typed member,
+  a struct whose `Equals` is false that holds a hidden class with reference `Equals`, and a
+  dictionary value of that kind report "cannot compare" where 2.0.0 reported a violation. Second, a
+  nested class whose `Equals` ignores state (for example entity equality by ID) is compared by that
+  `Equals`, so a change to it passes silently, where a JIT build reports a violation and 2.0.0
+  reported "cannot compare". Preserve the type with `DynamicDependency` to compare it member by
+  member. (ADR-0022)
+- Known limitation: a property that returns a new instance of its own type on every read (for
+  example `DirectoryInfo.Root`) now makes the comparison grow without bound, where 2.0.0 overflowed
+  the stack. Fields-only comparison ([#46](https://github.com/cwouyang/uContract.NET/issues/46))
+  would remove it. (ADR-0022)
+- Known limitation, unchanged from 2.0.0: for fixed-size buffers and `[InlineArray]` structs, the
+  elements after the first are invisible to reflection and to `ValueType.Equals`. A change there with
+  an equal first element passes silently. (ADR-0022)
+
+### Fixed
+
+- `Old<T>()` copied only public fields and lost private state, runtime types, `object` members and
+  the shape of the graph. The documented `User.ChangeEmail` example, which pairs `Old(() => this)`
+  with `EnsureAssignable<T>()`, now works (#45; ADR-0022).
+- `EnsureAssignable<T>()` no longer overflows the stack, which ends the process, on cyclic object
+  graphs, on chains of 10 000 nodes or more, on a property that returns `this`, on multicast
+  delegates and on pointer fields (ADR-0022).
+- `EnsureAssignable<T>()` no longer reports false violations for unchanged dictionaries, structs
+  that hold a reference, interface-typed members, and objects that hold a `Regex` (also after it is
+  used), an `AsyncLocal<T>` or a `System.Threading.Lock` (ADR-0022).
+
+### Removed
+
+- `[RequiresDynamicCode]` on `Old<T>()` (ADR-0022).
+- The need to set `JsonSerializerIsReflectionEnabledByDefault` to `true` in trimmed and Native AOT
+  applications. The library no longer uses `System.Text.Json` (ADR-0022).
+
 ---
 
 ## [2.0.0] - 2026-10-05

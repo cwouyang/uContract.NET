@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 
 namespace uContract;
 
@@ -13,11 +12,7 @@ namespace uContract;
 internal static class RuntimeFacts
 {
     internal static bool? DynamicCodeSupportedOverride;
-    internal static bool? JsonReflectionEnabledOverride;
 
     internal static bool IsDynamicCodeSupported =>
         DynamicCodeSupportedOverride ?? RuntimeFeature.IsDynamicCodeSupported;
-
-    internal static bool IsJsonReflectionEnabled =>
-        JsonReflectionEnabledOverride ?? JsonSerializer.IsReflectionEnabledByDefault;
 }

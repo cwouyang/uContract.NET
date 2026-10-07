@@ -2,11 +2,12 @@
 
 ## Status
 
-**Accepted**
+**Superseded by ADR-0022**
 
 - **Date**: 2025-10-18
 - **Deciders**: Project maintainers
-- **Status Date**: 2025-10-18
+- **Status Date**: 2026-10-07
+- **Superseded**: 2026-10-07 — `Old<T>()` now copies by reflection, not through System.Text.Json; see [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md). The statement "Private fields require `[JsonInclude]` or `IncludeFields = true`" below was wrong: `IncludeFields` covers public fields only. The text below is kept as the historical record
 - **Amended**: 2026-10-04 — "works on all .NET platforms" is qualified for trimmed and Native AOT applications by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
 - **Amended**: 2026-10-04 — from 2.0.0 an exception thrown by the supplier is not translated; only a `NotSupportedException` coming out of the serializer calls is; see the second Amendment under Implementation Notes
 
@@ -354,3 +355,4 @@ The decision (deep copy through `System.Text.Json`) is unchanged.
 | 2025-10-18 | Accepted    | Decision finalized             |
 | 2026-10-04 | Amended     | "Works on all .NET platforms" qualified for trimmed and Native AOT applications by ADR-0021. Mechanism unchanged. See Implementation Notes > Amendment. |
 | 2026-10-04 | Amended     | Supplier exceptions are not translated from 2.0.0; only a `NotSupportedException` coming out of the serializer calls is. Mechanism unchanged. See Implementation Notes > second Amendment. |
+| 2026-10-07 | Superseded  | Superseded by ADR-0022: `Old<T>()` copies by reflection (ADR-0006 Alternative 2). The `IncludeFields` statement under Limitations was wrong. Text kept as the historical record. |

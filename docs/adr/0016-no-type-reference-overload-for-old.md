@@ -8,6 +8,7 @@
 - **Deciders**: Project maintainers
 - **Status Date**: 2026-04-19
 - **Amended**: 2026-10-04 — the implication that diagnostics alone make `Old<T>()` usable under Native AOT is superseded by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); the decision stands; see the Amendment under Implementation Notes
+- **Amended**: 2026-10-07 — `Old<T>()` no longer uses JSON ([ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)), so the JSON rationale and Alternative 3 no longer apply; the decision stands; see the second Amendment under Implementation Notes
 
 ---
 
@@ -156,6 +157,20 @@ rather than silently.
 - **Stands**: a `JsonTypeInfo<T>` or other source-generated path still needs its own ADR, as
   Alternative 3 and the note above require. ADR-0021 does not add one.
 
+### Amendment (2026-10-07): `Old<T>()` no longer uses JSON
+
+The decision stands: the sole public signature is `Old<T>(Func<T> supplier)`.
+[ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) replaces the JSON copy with a
+reflection copy.
+
+- The rationale that `JsonSerializer.Deserialize<T>` receives a reified `T` no longer describes the
+  mechanism. The copy keeps each object's runtime type, so a type hint is even less useful than
+  before.
+- Alternative 3 (a `JsonTypeInfo<T>` overload) no longer applies: there is no serializer to give it
+  to. Completing `Old<T>()` under Native AOT is now tracked as making hidden fields visible, in
+  [issue #39](https://github.com/cwouyang/uContract.NET/issues/39).
+- `[RequiresDynamicCode]` is removed from `Old<T>()`. `[RequiresUnreferencedCode]` stays.
+
 ---
 
 ## References
@@ -175,3 +190,4 @@ rather than silently.
 |------------|-------------|--------------------------------|
 | 2026-04-19 | Accepted    | Decision recorded during pre-publish review; clarifies that .NET reified generics make the Java `TypeReference<T>` overload unnecessary and that the single `Old<T>(Func<T>)` signature is complete. |
 | 2026-10-04 | Amended     | Implication that diagnostics alone make `Old<T>()` usable under Native AOT superseded by ADR-0021. Decision and diagnostics statement unchanged. See Implementation Notes > Amendment. |
+| 2026-10-07 | Amended     | `Old<T>()` copies by reflection (ADR-0022); the JSON rationale and Alternative 3 no longer apply. Decision unchanged. See Implementation Notes > second Amendment. |

@@ -8,6 +8,7 @@
 - **Deciders**: Project maintainers
 - **Status Date**: 2025-10-18
 - **Amended**: 2026-10-04 — behaviour under trimming and Native AOT, and for a property with no get method, is added by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
+- **Amended**: 2026-10-07 — the comparison rules are replaced by rules R0–R8 of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), and the walk is iterative; see the second Amendment under Implementation Notes
 
 ---
 
@@ -414,6 +415,24 @@ qualifies two statements above.
 - Assignable patterns are matched against top-level member names only, as the `FindDifferences`
   listing above shows; ADR-0021 relies on this for the advice its messages give.
 
+### Amendment (2026-10-07): Comparison rules R0–R8 and an iterative walk
+
+The decision (reflection over public properties and instance fields, metadata caching, regex
+patterns for top-level members) is unchanged. How two values are compared is replaced by rules
+R0–R8 of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md).
+
+- **The walk is iterative.** The `CompareRecursively` listing above recurses once per level. The
+  comparison now uses an explicit stack, so cycles and deep graphs no longer overflow the stack.
+- **Runtime types, not declared types.** The `AreEqual` listing above dispatches on the declared
+  member type. Every rule now decides on the values' runtime types (R0). Values of different runtime
+  types are unequal (R6).
+- **Value types** are compared by `Equals`, then by their fields when `Equals` says "unequal" (R3).
+  **Dictionaries** are compared by key and value (R7). **Cycles and shared sub-graphs** are tracked
+  by reference (R1). **Delegates** are compared by method (R4). **Shared types** are compared by
+  reference (R5). A class with no members visible under Native AOT is equal when its `Equals` says
+  so (R8).
+- The listings above stay as the historical record. ADR-0022 holds the rules and their limits.
+
 ---
 
 ## References
@@ -431,3 +450,4 @@ qualifies two statements above.
 |------------|-------------|--------------------------------|
 | 2025-10-18 | Accepted    | Decision finalized             |
 | 2026-10-04 | Amended     | Annotation on `T`, the "no members visible" rule and the unreadable-property rule added by ADR-0021. Comparison strategy unchanged. See Implementation Notes > Amendment. |
+| 2026-10-07 | Amended     | Comparison rules replaced by R0–R8 of ADR-0022; the walk is iterative (explicit stack). Members compared and patterns unchanged. See Implementation Notes > second Amendment. |
