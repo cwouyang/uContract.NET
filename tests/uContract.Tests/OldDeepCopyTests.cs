@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+using System.ComponentModel;
 using System.Runtime.Serialization;
 using uContract.Exceptions;
 
@@ -351,6 +353,154 @@ public class OldDeepCopyTests
         );
     }
 
+    [Theory]
+    [MemberData(nameof(SharedTypesTests.ListedTypeInstances), MemberType = typeof(SharedTypesTests))]
+    public void Old_WhenFieldHoldsAListedType_SharesItWithTheOriginal(string listedType, Func<object> createInstance)
+    {
+        object instance = createInstance();
+        try
+        {
+            Holder<object> original = new(instance);
+
+            Holder<object> copy = Contract.Old(() => original);
+
+            Assert.True(ReferenceEquals(original.Value, copy.Value), $"{listedType}: {instance.GetType()}");
+        }
+        finally
+        {
+            (instance as IDisposable)?.Dispose();
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(SharedTypesTests.CategoryInstances), MemberType = typeof(SharedTypesTests))]
+    public void Old_WhenFieldHoldsASharedCategoryType_SharesItWithTheOriginal(
+        string category,
+        Func<object> createInstance
+    )
+    {
+        object instance = createInstance();
+        try
+        {
+            Holder<object> original = new(instance);
+
+            Holder<object> copy = Contract.Old(() => original);
+
+            Assert.True(ReferenceEquals(original.Value, copy.Value), $"{category}: {instance.GetType()}");
+        }
+        finally
+        {
+            (instance as IDisposable)?.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Old_WhenFieldHoldsADelegate_SharesItWithTheOriginal()
+    {
+        NonSerializableType original = new();
+
+        NonSerializableType copy = Contract.Old(() => original);
+
+        Assert.Same(original.Callback, copy.Callback);
+    }
+
+    [Fact]
+    public void Old_WhenFieldHoldsAnUncreatedLazy_SharesItWithoutRunningTheFactory()
+    {
+        int factoryCalls = 0;
+        Holder<Lazy<int>> original = new(
+            new Lazy<int>(() =>
+            {
+                factoryCalls++;
+                return Seed;
+            })
+        );
+
+        Holder<Lazy<int>> copy = Contract.Old(() => original);
+
+        Assert.Same(original.Value, copy.Value);
+        Assert.Equal(0, factoryCalls);
+    }
+
+    [Fact]
+    public void Old_WhenValueIsACancellationTokenSource_ReturnsTheSameInstance()
+    {
+        using CancellationTokenSource original = new();
+
+        CancellationTokenSource copy = Contract.Old(() => original);
+
+        Assert.Same(original, copy);
+    }
+
+    [Fact]
+    public void Old_WhenFieldHoldsAMemoryStream_SharesItWithTheOriginal()
+    {
+        using MemoryStream stream = new();
+        Holder<MemoryStream> original = new(stream);
+
+        Holder<MemoryStream> copy = Contract.Old(() => original);
+
+        Assert.Same(original.Value, copy.Value);
+    }
+
+    [Fact]
+    public void Old_WhenFieldHoldsAMemoryStreamSubclass_SharesItWithTheOriginal()
+    {
+        using RecordingStream stream = new();
+        Holder<MemoryStream> original = new(stream);
+
+        Holder<MemoryStream> copy = Contract.Old(() => original);
+
+        Assert.Same(original.Value, copy.Value);
+    }
+
+    [Fact]
+    public void Old_WhenSortedSetUsesAStringComparer_SharesTheComparerWithTheOriginal()
+    {
+        Holder<SortedSet<string>> original = new(new SortedSet<string>(StringComparer.Ordinal) { "a", "b" });
+
+        Holder<SortedSet<string>> copy = Contract.Old(() => original);
+
+        Assert.Same(original.Value.Comparer, copy.Value.Comparer);
+    }
+
+    [Fact]
+    public void Old_WhenFieldHoldsTheDefaultStringEqualityComparer_SharesItWithTheOriginal()
+    {
+#pragma warning disable MA0024 // The row is about the default comparer itself.
+        Holder<IEqualityComparer<string>> original = new(EqualityComparer<string>.Default);
+#pragma warning restore MA0024
+
+        Holder<IEqualityComparer<string>> copy = Contract.Old(() => original);
+
+        Assert.Same(original.Value, copy.Value);
+    }
+
+    [Fact]
+    public void Old_WhenFieldHoldsAPlainObject_CopiesItAsANewObject()
+    {
+        Holder<object> original = new(new object());
+
+        Holder<object> copy = Contract.Old(() => original);
+
+        Assert.NotSame(original.Value, copy.Value);
+        Assert.IsType<object>(copy.Value);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenSharedResourcesAreUnchangedAfterOld_DoesNotThrow()
+    {
+        using CancellationTokenSource source = new();
+        using Component component = new();
+        FrozenSet<string> names = new List<string> { "a", "b" }.ToFrozenSet(StringComparer.Ordinal);
+        ResourceBundle bundle = new(component, source, names);
+        ResourceBundle oldBundle = Contract.Old(() => bundle);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(bundle, oldBundle));
+
+        Assert.Null(exception);
+    }
+
     private class Ancestor
     {
         private int _secret;
@@ -611,4 +761,18 @@ public class OldDeepCopyTests
     }
 
     private sealed class ParallelNode<TTag>(int coins) : ParallelNode(coins);
+
+    private sealed class Holder<T>(T value)
+    {
+        public T Value { get; } = value;
+    }
+
+    private sealed class RecordingStream : MemoryStream;
+
+    private sealed class ResourceBundle(Component component, CancellationTokenSource source, FrozenSet<string> names)
+    {
+        public Component Component { get; } = component;
+        public CancellationTokenSource Source { get; } = source;
+        public FrozenSet<string> Names { get; } = names;
+    }
 }
