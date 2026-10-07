@@ -116,7 +116,8 @@ internal static class MemberComparison
         // Values of different runtime types are unequal, and neither is read: the members of one type
         // cannot be read from the other. Two sequences are still compared element by element.
         Type actualType = actual.GetType();
-        if (actualType != expected.GetType() && !(IsSequence(actual) && IsSequence(expected)))
+        Type expectedType = expected.GetType();
+        if (actualType != expectedType && !(IsSequence(actual) && IsSequence(expected)))
         {
             return false;
         }
@@ -127,9 +128,10 @@ internal static class MemberComparison
             return Equals(actual, expected);
         }
 
-        // Two different value types reach this point only as sequences (for example ImmutableArray<T> and
-        // ArraySegment<T>); they are compared element by element below, not field by field.
-        if (actualType.IsValueType && actualType == expected.GetType())
+        // Values of different runtime types reach this point only as two non-string sequences (for example
+        // ImmutableArray<T> and ArraySegment<T>, or a value-type sequence and an array); they are compared
+        // element by element below, not field by field.
+        if (actualType.IsValueType && actualType == expectedType)
         {
             return CompareValues(actual, expected, actualType, ref hidden);
         }
