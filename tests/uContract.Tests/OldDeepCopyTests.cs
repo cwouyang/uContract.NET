@@ -39,6 +39,16 @@ public sealed class OldWithoutDynamicCodeTests
         Assert.Same(original.Callback, copy.Callback);
     }
 
+    [Fact]
+    public void Old_WhenDynamicCodeIsUnsupportedAndSupplierReturnsNull_ReturnsDefault()
+    {
+        NonSerializableType? original = null;
+
+        NonSerializableType? copy = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => original));
+
+        Assert.Null(copy);
+    }
+
     private static Exception? RecordWithoutJsonReflection(Action act)
     {
         try
