@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Immutable;
 using uContract.Exceptions;
 
@@ -625,6 +626,135 @@ public class EnsureAssignableRobustnessTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenDictionaryValueChangesContentItsEqualsIgnores_ReportsTheMember()
+    {
+        Registry actual = new() { Accounts = new(StringComparer.Ordinal) { ["alice"] = new Account(1, "Alice") } };
+        Registry expected = new() { Accounts = new(StringComparer.Ordinal) { ["alice"] = new Account(1, "Alicia") } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Accounts\n  - <Accounts>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDictionaryHoldsEqualDistinctValues_DoesNotThrow()
+    {
+        Catalog actual = new()
+        {
+            Items = new(StringComparer.Ordinal) { ["apple"] = new Elem(1), ["pear"] = new Elem(2) },
+        };
+        Catalog expected = new()
+        {
+            Items = new(StringComparer.Ordinal) { ["apple"] = new Elem(1), ["pear"] = new Elem(2) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDictionaryHoldsDistinctListsWithEqualElements_DoesNotThrow()
+    {
+        Roster actual = new() { Scores = new(StringComparer.Ordinal) { ["alice"] = [90, 85] } };
+        Roster expected = new() { Scores = new(StringComparer.Ordinal) { ["alice"] = [90, 85] } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenKeyValuePairArrayHoldsEqualDistinctValues_DoesNotThrow()
+    {
+        Listing actual = new() { Entries = [new KeyValuePair<string, Elem>("apple", new Elem(1))] };
+        Listing expected = new() { Entries = [new KeyValuePair<string, Elem>("apple", new Elem(1))] };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDictionaryValueChanges_ReportsTheMember()
+    {
+        Catalog actual = new()
+        {
+            Items = new(StringComparer.Ordinal) { ["apple"] = new Elem(1), ["pear"] = new Elem(2) },
+        };
+        Catalog expected = new()
+        {
+            Items = new(StringComparer.Ordinal) { ["apple"] = new Elem(1), ["pear"] = new Elem(3) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Items\n  - <Items>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDictionaryKeyChanges_ReportsTheMember()
+    {
+        Catalog actual = new() { Items = new(StringComparer.Ordinal) { ["a"] = new Elem(1) } };
+        Catalog expected = new() { Items = new(StringComparer.Ordinal) { ["b"] = new Elem(1) } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Items\n  - <Items>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDictionaryEntryCountDiffers_ReportsTheMember()
+    {
+        Catalog actual = new() { Items = new(StringComparer.Ordinal) { ["apple"] = new Elem(1) } };
+        Catalog expected = new()
+        {
+            Items = new(StringComparer.Ordinal) { ["apple"] = new Elem(1), ["pear"] = new Elem(2) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Items\n  - <Items>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenHashtableHoldsEqualDistinctValues_DoesNotThrow()
+    {
+        Archive actual = new()
+        {
+            Table = new Hashtable { ["apple"] = new Elem(1), ["pear"] = new Elem(2) },
+        };
+        Archive expected = new()
+        {
+            Table = new Hashtable { ["apple"] = new Elem(1), ["pear"] = new Elem(2) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     private interface IAnimal;
 
     private sealed class Elem(int value)
@@ -874,5 +1004,42 @@ public class EnsureAssignableRobustnessTests
     private sealed class Book
     {
         public Page Page;
+    }
+
+    // Equal by Id alone, so its Equals ignores a changed Owner.
+    private sealed class Account(int id, string owner)
+    {
+        public int Id { get; } = id;
+
+        public string Owner { get; } = owner;
+
+        public override bool Equals(object? obj) => obj is Account other && Id == other.Id;
+
+        public override int GetHashCode() => Id;
+    }
+
+    private sealed class Registry
+    {
+        public Dictionary<string, Account> Accounts { get; set; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed class Catalog
+    {
+        public Dictionary<string, Elem> Items { get; set; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed class Roster
+    {
+        public Dictionary<string, List<int>> Scores { get; set; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed class Listing
+    {
+        public KeyValuePair<string, Elem>[] Entries { get; set; } = [];
+    }
+
+    private sealed class Archive
+    {
+        public Hashtable Table { get; set; } = [];
     }
 }

@@ -153,6 +153,11 @@ internal static class MemberComparison
                     && CompareCollections(actualItems, expectedItems, ref hidden);
             }
 
+            if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
+            {
+                return CompareDictionaries(actualDictionary, expectedDictionary, ref hidden);
+            }
+
             return CompareCollections(actualEnum, expectedEnum, ref hidden);
         }
 
@@ -273,6 +278,40 @@ internal static class MemberComparison
         }
 
         return true;
+    }
+
+    // A dictionary is compared entry by entry, in enumeration order, by the keys and values its own
+    // enumerator reports, not by the KeyValuePair or DictionaryEntry it yields as a sequence: their
+    // Equals calls each value's Equals, which may ignore content that the comparison rules compare.
+    private static bool CompareDictionaries(IDictionary actual, IDictionary expected, ref HiddenMembers? hidden)
+    {
+        IDictionaryEnumerator actualEntries = actual.GetEnumerator();
+        IDictionaryEnumerator expectedEntries = expected.GetEnumerator();
+
+        while (true)
+        {
+            bool hasActual = actualEntries.MoveNext();
+            bool hasExpected = expectedEntries.MoveNext();
+
+            if (hasActual != hasExpected)
+            {
+                return false;
+            }
+
+            if (!hasActual)
+            {
+                return true;
+            }
+
+            if (
+                !AreEqual(actualEntries.Key, expectedEntries.Key, ref hidden)
+                || !AreEqual(actualEntries.Value, expectedEntries.Value, ref hidden)
+            )
+            {
+                hidden?.Prepend("[]");
+                return false;
+            }
+        }
     }
 
     internal static bool CompareRecursively(object actual, object expected, ref HiddenMembers? hidden)
