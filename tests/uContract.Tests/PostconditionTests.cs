@@ -1615,6 +1615,28 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenHiddenTypeIsThreeLevelsDeep_ThrowsWithFullPathInMessage()
+    {
+        OrderWithWrappedLines first = new();
+        OrderWithWrappedLines second = new();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(NoVisibleMembers)} "
+                + "(reached through 'OrderWithWrappedLines.Lines[].Inner'): "
+                + "no properties or fields are visible to reflection under Native AOT. "
+                + "Ways out: list 'Lines' as assignable (patterns are regular expressions "
+                + "matched against top-level member names, so use the plain member name); "
+                + "if the type has members, preserve them, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenHiddenTypeIsReachedThroughBackingFields_PathShowsPropertyNames()
     {
         OrderWithNonPublicCustomer first = new();
@@ -1748,6 +1770,16 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     private sealed class OrderWithLines
     {
         public List<NoVisibleMembers> Lines { get; set; } = [];
+    }
+
+    private sealed class OrderWithWrappedLines
+    {
+        public List<WrappedLine> Lines { get; set; } = [new WrappedLine()];
+    }
+
+    private sealed class WrappedLine
+    {
+        public NoVisibleMembers Inner { get; set; } = new();
     }
 
     private sealed class OrderWithLinedCustomer
