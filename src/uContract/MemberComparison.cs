@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 
 namespace uContract;
@@ -158,7 +159,8 @@ internal static class MemberComparison
             return true;
         }
 
-        if (type.IsPrimitive || type.IsEnum)
+        // Reflection shows only the first element of an inline array, so it has no fully visible fields.
+        if (type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
         {
             return false;
         }

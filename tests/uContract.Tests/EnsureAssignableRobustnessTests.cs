@@ -347,6 +347,42 @@ public class EnsureAssignableRobustnessTests
         Assert.Contains("'Holder.Pouch.Content'", cannotCompare.Message);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenInlineArrayElementAfterTheFirstChanges_ReportsTheMember()
+    {
+        Buffered actual = new();
+        actual.B[0] = [1];
+        actual.B[1] = [2];
+        Buffered expected = new();
+        expected.B[0] = [1];
+        expected.B[1] = [3];
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal("Fields were modified that are not marked as assignable:\n  - B", exception.Description);
+    }
+
+    // An inline array exposes only its first element to reflection, so its fields are never compared:
+    // when its Equals says "unequal", it is reported even if every element has equal content.
+    [Fact]
+    public void EnsureAssignable_WhenInlineArrayHoldsDistinctListsWithEqualElements_ReportsTheMember()
+    {
+        Buffered actual = new();
+        actual.B[0] = [1];
+        actual.B[1] = [2];
+        Buffered expected = new();
+        expected.B[0] = [1];
+        expected.B[1] = [2];
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal("Fields were modified that are not marked as assignable:\n  - B", exception.Description);
+    }
+
     private interface IAnimal;
 
     private sealed class Elem(int value)
@@ -534,5 +570,16 @@ public class EnsureAssignableRobustnessTests
     private sealed class Holder
     {
         public Pouch Pouch { get; set; }
+    }
+
+    [System.Runtime.CompilerServices.InlineArray(2)]
+    private struct RefBuf2
+    {
+        private List<int> _element;
+    }
+
+    private sealed class Buffered
+    {
+        public RefBuf2 B;
     }
 }
