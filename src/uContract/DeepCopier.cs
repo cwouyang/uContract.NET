@@ -85,17 +85,7 @@ internal static class DeepCopier
                     continue;
                 }
 
-                if (field.FieldType.IsValueType)
-                {
-                    // A struct field arrives boxed: replace the references inside the box, then store it back.
-                    // This recurses once per level of struct nesting, which the type bounds, not the graph.
-                    ReplaceReferenceFields(value, copies, pending);
-                    field.SetValue(clone, value);
-                }
-                else
-                {
-                    field.SetValue(clone, CopyOf(value, copies, pending));
-                }
+                field.SetValue(clone, Replacement(value, field.FieldType, copies, pending));
             }
         }
     }
@@ -127,17 +117,26 @@ internal static class DeepCopier
                 continue;
             }
 
-            if (elementType.IsValueType)
-            {
-                // The element arrives boxed: replace the references inside the box, then store it back.
-                ReplaceReferenceFields(element, copies, pending);
-                clone.SetValue(element, indices);
-            }
-            else
-            {
-                clone.SetValue(CopyOf(element, copies, pending), indices);
-            }
+            clone.SetValue(Replacement(element, elementType, copies, pending), indices);
         } while (Advance(clone, indices));
+    }
+
+    // A struct (field or element) arrives boxed: the references inside the box are replaced and the box is
+    // stored back. This recurses once per level of struct nesting, which the type bounds, not the graph.
+    private static object Replacement(
+        object value,
+        Type declaredType,
+        Dictionary<object, object> copies,
+        Stack<object> pending
+    )
+    {
+        if (!declaredType.IsValueType)
+        {
+            return CopyOf(value, copies, pending);
+        }
+
+        ReplaceReferenceFields(value, copies, pending);
+        return value;
     }
 
     // Moves the indices to the next element in row-major order; false once past the last one.
