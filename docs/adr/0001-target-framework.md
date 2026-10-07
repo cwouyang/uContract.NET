@@ -7,6 +7,7 @@
 - **Date**: 2025-10-18
 - **Deciders**: Project maintainers
 - **Status Date**: 2025-10-18
+- **Amended**: 2026-10-07 — System.Text.Json is no longer required for `Old<T>()`, which now copies by reflection ([ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the Amendment under Implementation Notes
 
 ---
 
@@ -143,6 +144,14 @@ We need to decide which .NET version(s) to target for uContract.NET. This decisi
 - Documentation should clearly state ".NET 8+ required"
 - NuGet package metadata should specify minimum framework version
 
+### Amendment (2026-10-07): System.Text.Json no longer required for `Old<T>()`
+
+The decision (target .NET 8) is unchanged.
+[ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) replaces the JSON copy of
+`Old<T>()` with a reflection copy. The statements above that System.Text.Json is "required for
+`Old<T>()`" and must be supported for deep copy no longer hold. The library no longer uses
+System.Text.Json. The copy uses `[UnsafeAccessor]`, which .NET 8 provides.
+
 ---
 
 ## References
@@ -158,3 +167,4 @@ We need to decide which .NET version(s) to target for uContract.NET. This decisi
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2025-10-18 | Accepted    | Decision finalized             |
+| 2026-10-07 | Amended     | System.Text.Json no longer required for `Old<T>()` (ADR-0022). Decision unchanged. See Implementation Notes > Amendment. |

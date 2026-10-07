@@ -7,6 +7,7 @@
 - **Date**: 2025-10-18
 - **Deciders**: Project maintainers
 - **Status Date**: 2025-10-18
+- **Amended**: 2026-10-07 — `Old<T>()` no longer copies through System.Text.Json ([ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); the decision stands; see the Amendment under Implementation Notes
 
 ---
 
@@ -467,6 +468,20 @@ public void EnsureAssignable_ShouldWorkWithRecordStruct()
 }
 ```
 
+### Amendment (2026-10-07): `Old<T>()` no longer uses System.Text.Json
+
+The decision is unchanged: `Old<T>()` and `EnsureAssignable<T>()` have no generic constraint and
+support both reference and value types.
+[ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) replaces the JSON copy with a
+reflection copy.
+
+- The `Old<T>()` listings above, and the statements that System.Text.Json is required for
+  `Old<T>()`, describe the old mechanism. They stay as the historical record.
+- Value types are still supported. A value is copied bitwise, and the reference-typed fields inside
+  it are replaced by their copies.
+- `T` of `Old<T>()` now carries `[DynamicallyAccessedMembers(PublicFields | NonPublicFields)]`.
+  This adds no constraint.
+
 ---
 
 ## References
@@ -482,3 +497,4 @@ public void EnsureAssignable_ShouldWorkWithRecordStruct()
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2025-10-18 | Accepted    | Decision finalized             |
+| 2026-10-07 | Amended     | `Old<T>()` copies by reflection, not System.Text.Json (ADR-0022). No-constraint decision unchanged. See Implementation Notes > Amendment. |

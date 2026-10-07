@@ -104,11 +104,11 @@ main decision, write a new ADR that supersedes the old one instead.
 - [ADR-0005: Generics, Type Constraints, and Nullable Reference Types](0005-generics-type-constraints-nullable.md) — 2025-10-18
 
 **Second Priority (Implementation Details)**:
-- [ADR-0006: Serialization and Deep Copy Mechanism for Old<T>()](0006-serialization-deep-copy.md) — 2025-10-18
 - [ADR-0007: Reflection and Field Comparison for EnsureAssignable<T>()](0007-reflection-field-comparison.md) — 2025-10-18
 - [ADR-0008: Exception Hierarchy Design](0008-exception-hierarchy.md) — 2025-10-18
 - [ADR-0009: Thread Safety and Async/Await Support](0009-thread-safety-async-support.md) — 2025-10-18
 - [ADR-0021: Postcondition Helpers under Trimming and Native AOT](0021-postconditions-under-trimming-and-aot.md) — 2026-10-04
+- [ADR-0022: Faithful Old<T>() Copies and Robust EnsureAssignable<T>() Comparison](0022-faithful-old-copies-and-robust-comparison.md) — 2026-10-07
 
 **Third Priority (Publishing and Maintenance)**:
 - [ADR-0010: Testing Framework - xUnit](0010-testing-framework-xunit.md) — 2025-10-18
@@ -129,6 +129,10 @@ main decision, write a new ADR that supersedes the old one instead.
 **Seventh Priority (Tooling and Quality)**:
 - [ADR-0015: Code Quality Tooling](0015-code-quality-tooling.md) — 2026-04-18
 - [ADR-0019: Public API Baseline Tracking](0019-public-api-baseline-tracking.md) — 2026-04-19
+
+### Superseded
+
+- [ADR-0006: Serialization and Deep Copy Mechanism for Old<T>()](0006-serialization-deep-copy.md) — 2025-10-18; superseded by [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) on 2026-10-07
 
 ---
 

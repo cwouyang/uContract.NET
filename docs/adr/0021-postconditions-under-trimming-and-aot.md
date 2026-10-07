@@ -8,6 +8,7 @@
 - **Deciders**: Project maintainer
 - **Status Date**: 2026-10-04
 - **Amended**: 2026-10-04 — an exception thrown by the `Old<T>()` supplier now propagates unchanged, which supersedes one Known Limitation; three statements are qualified; see the Amendment under Implementation Notes
+- **Amended**: 2026-10-07 — the `Old<T>()` decisions are superseded by [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), and the open statements on value types, boxed values and framework types are settled there; see the second Amendment under Implementation Notes
 
 ---
 
@@ -394,6 +395,16 @@ The decision is unchanged. This amendment records one later decision and qualifi
 
 **The second `Accepted` row in Revision History** records a revision of the message wording after review. It is not a second acceptance; the ADR was accepted once.
 
+### Amendment (2026-10-07): `Old<T>()` parts superseded by ADR-0022
+
+[ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) supersedes the `Old<T>()` parts of this ADR. The `EnsureAssignable<T>()` decisions stand: the annotation on `T`, the "no members visible" rule (now asking `Equals` first, R8), the unreadable-property rule, and the smoke program in CI.
+
+- **Superseded**: decision 4 and the `Old<T>()` messages. `Old<T>()` no longer uses JSON, so the "reflection-based JSON serialization is disabled" and "cannot be serialized" exceptions are gone. Under Native AOT a field hidden from reflection is copied bitwise instead.
+- **Superseded**: in decision 6, "`[RequiresDynamicCode]` stays on `Old<T>`". It is removed. `[RequiresUnreferencedCode]` stays, with a new message, and `T` gains `[DynamicallyAccessedMembers(PublicFields | NonPublicFields)]`.
+- **Settled**: the statement that a member declared as a value type is compared with `Equals`, the Known Limitation on a boxed value in an `object`-typed member, and the open question 3 on boxed values. Dispatch now uses runtime types (R0), and value types are compared by R3. Framework types such as `Lazy<int>`, `SemaphoreSlim` and `CancellationTokenSource` are compared by reference (R5), so they no longer reach the "no members visible" rule.
+- **Settled in part**: ADR-0021 Alternative 2 ("ask `Equals` first") is re-adopted for nested classes (R8). The nested "cannot compare" message gained a sentence; ADR-0022 quotes it.
+- The measurements above stay as the record of 2.0.0. ADR-0022 holds the measurements of the new behaviour.
+
 ---
 
 ## References
@@ -421,3 +432,4 @@ The decision is unchanged. This amendment records one later decision and qualifi
 | 2026-10-04 | Accepted    | Decision recorded after implementation. Supersedes the "not verified" consequence of ADR-0020; qualifies ADR-0006, ADR-0007 and ADR-0016. |
 | 2026-10-04 | Accepted    | Message wording decided after review of the implementation: three of the four questions raised are implemented, one is deferred to issue #40. See Questions Raised in Review. |
 | 2026-10-04 | Amended     | Supplier exceptions in `Old<T>()` propagate unchanged (supersedes one Known Limitation). Corrections: unit-test figures are a snapshot; an inherited auto-property is compared once; the second `Accepted` row was a wording revision. See Implementation Notes > Amendment. |
+| 2026-10-07 | Amended     | `Old<T>()` decisions and the `[RequiresDynamicCode]` statement superseded by ADR-0022; value-type, boxed-value and framework-type statements settled there. `EnsureAssignable<T>()` decisions and measurements unchanged. See Implementation Notes > second Amendment. |
