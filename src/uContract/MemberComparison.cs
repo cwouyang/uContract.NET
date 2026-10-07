@@ -144,6 +144,11 @@ internal static class MemberComparison
 
         if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)
         {
+            if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
+            {
+                return CompareDictionaries(actualDictionary, expectedDictionary, ref hidden);
+            }
+
             // Two sequences of different runtime types: one that cannot be enumerated (a default
             // ImmutableArray<T>) is reported as changed rather than letting its exception escape.
             if (actualType != expectedType)
@@ -151,11 +156,6 @@ internal static class MemberComparison
                 return TryEnumerate(actualEnum, out object?[]? actualItems)
                     && TryEnumerate(expectedEnum, out object?[]? expectedItems)
                     && CompareCollections(actualItems, expectedItems, ref hidden);
-            }
-
-            if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
-            {
-                return CompareDictionaries(actualDictionary, expectedDictionary, ref hidden);
             }
 
             return CompareCollections(actualEnum, expectedEnum, ref hidden);
@@ -280,9 +280,10 @@ internal static class MemberComparison
         return true;
     }
 
-    // A dictionary is compared entry by entry, in enumeration order, by the keys and values its own
-    // enumerator reports, not by the KeyValuePair or DictionaryEntry it yields as a sequence: their
-    // Equals calls each value's Equals, which may ignore content that the comparison rules compare.
+    // A dictionary, even one compared with a dictionary of another type, is compared entry by entry, in
+    // enumeration order, by the keys and values its own enumerator reports, not by the KeyValuePair or
+    // DictionaryEntry it yields as a sequence: those differ between dictionary types, and their Equals
+    // calls each value's Equals, which may ignore content that the comparison rules compare.
     private static bool CompareDictionaries(IDictionary actual, IDictionary expected, ref HiddenMembers? hidden)
     {
         IDictionaryEnumerator actualEntries = actual.GetEnumerator();

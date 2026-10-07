@@ -755,6 +755,37 @@ public class EnsureAssignableRobustnessTests
         Assert.Null(exception);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenObjectMemberHoldsDictionaryAndHashtableWithEqualEntries_DoesNotThrow()
+    {
+        Dictionary<string, Elem> dictionary = new(StringComparer.Ordinal) { ["apple"] = new Elem(1) };
+        Hashtable hashtable = new() { ["apple"] = new Elem(1) };
+        Box actual = new() { Content = dictionary };
+        Box expected = new() { Content = hashtable };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenObjectMemberHoldsDictionaryAndHashtableWithChangedValue_ReportsTheMember()
+    {
+        Dictionary<string, Elem> dictionary = new(StringComparer.Ordinal) { ["apple"] = new Elem(1) };
+        Hashtable hashtable = new() { ["apple"] = new Elem(2) };
+        Box actual = new() { Content = dictionary };
+        Box expected = new() { Content = hashtable };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Content\n  - <Content>k__BackingField",
+            exception.Description
+        );
+    }
+
     private interface IAnimal;
 
     private sealed class Elem(int value)
