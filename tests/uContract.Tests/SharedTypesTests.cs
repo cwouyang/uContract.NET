@@ -108,7 +108,7 @@ public sealed class SharedTypesTests
         Assert.True(SharedTypes.IsShared(type));
     }
 
-    [Fact]
+    [WindowsFact]
     public void IsShared_WhenTypeIsAComImport_ReturnsTrue()
     {
         Assert.True(typeof(ImportedComClass).IsCOMObject);
