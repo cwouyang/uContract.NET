@@ -129,8 +129,8 @@ internal static class MemberComparison
             return Equals(actual, expected);
         }
 
-        // A shared type (see SharedTypes) is compared by reference, its members never read; so is a mixed pair.
-        if (SharedTypes.IsShared(actualType) || SharedTypes.IsShared(expectedType))
+        // A shared type (see SharedTypes) is compared by reference, its members never read.
+        if (actualType == expectedType && SharedTypes.IsShared(actualType))
         {
             return false;
         }

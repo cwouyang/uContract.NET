@@ -911,11 +911,36 @@ public class EnsureAssignableRobustnessTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenSequenceMemberHoldsListAndFrozenSetWithEqualElements_ReportsTheMember()
+    public void EnsureAssignable_WhenSequenceMemberHoldsListAndFrozenSetWithEqualElements_DoesNotThrow()
     {
         List<int> list = [1, 2];
         Scores actual = new() { Values = list };
         Scores expected = new() { Values = list.ToFrozenSet() };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenSequenceMemberHoldsFrozenSetAndListWithEqualElements_DoesNotThrow()
+    {
+        List<int> list = [1, 2];
+        Scores actual = new() { Values = list.ToFrozenSet() };
+        Scores expected = new() { Values = list };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenSequenceMemberHoldsListAndFrozenSetWithDifferentElements_ReportsTheMember()
+    {
+        List<int> list = [1, 2];
+        List<int> changed = [1, 3];
+        Scores actual = new() { Values = list };
+        Scores expected = new() { Values = changed.ToFrozenSet() };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
