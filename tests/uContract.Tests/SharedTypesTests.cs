@@ -126,6 +126,7 @@ public sealed class SharedTypesTests
     [InlineData(typeof(List<int>))]
     [InlineData(typeof(Elem))]
     [InlineData(typeof(object))]
+    [InlineData(typeof(UserStringComparer))]
     public void IsShared_WhenTypeIsAnOrdinaryValueHolder_ReturnsFalse(Type type)
     {
         Assert.False(SharedTypes.IsShared(type));
@@ -158,6 +159,12 @@ public sealed class SharedTypesTests
     }
 
     private sealed class RecordingStream : MemoryStream;
+
+    // A comparer outside CoreLib: the comparer category covers only the comparers of the base class library.
+    private sealed class UserStringComparer : IComparer<string>
+    {
+        public int Compare(string? x, string? y) => string.CompareOrdinal(x, y);
+    }
 
     private sealed class DerivedLock : System.Threading.Lock;
 

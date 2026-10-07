@@ -978,6 +978,23 @@ public class EnsureAssignableRobustnessTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenMulticastDelegatesCallSameMethodsOnDifferentTargets_DoesNotThrow()
+    {
+        Switch lit = new() { IsOn = true };
+        Switch dark = new() { IsOn = false };
+        Func<bool> readLit = lit.Read;
+        Func<bool> flipLit = lit.Flip;
+        Func<bool> readDark = dark.Read;
+        Func<bool> flipDark = dark.Flip;
+        CallbackHolder actual = new() { Callback = readLit + flipLit };
+        CallbackHolder expected = new() { Callback = readDark + flipDark };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenMulticastDelegateIsComparedWithItsLastDelegate_ReportsTheMember()
     {
         Switch light = new() { IsOn = true };
@@ -1446,6 +1463,19 @@ public class EnsureAssignableRobustnessTests
     {
         FieldDuo actual = Strut.RelianceThenProvisionalObject(changingValue: 1);
         FieldDuo expected = Strut.RelianceThenProvisionalObject(changingValue: 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(BothFieldDuoMembersChanged, exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenObjectsFoundEqualRelyingOnAChangedObjectAreDiscarded_ReportsBothMembers()
+    {
+        FieldDuo actual = Strut.AbsorbedThenDiscarded(changingValue: 1);
+        FieldDuo expected = Strut.AbsorbedThenDiscarded(changingValue: 2);
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -2151,6 +2181,19 @@ public class EnsureAssignableRobustnessTests
             b.P = z;
             b.Q = y;
             return new FieldDuo { M1 = a, M2 = y };
+        }
+
+        // p.P = q, q.P = r, r.P = q, q.Q = p, with M1 = p and M2 = r: r is found equal relying only on q; q then
+        // relies on p, so r's group is absorbed into p's and discarded when p turns out different. r is
+        // compared again for M2.
+        public static FieldDuo AbsorbedThenDiscarded(int changingValue)
+        {
+            Strut p = new() { V = changingValue };
+            Strut q = new() { Q = p };
+            Strut r = new() { P = q };
+            p.P = q;
+            q.P = r;
+            return new FieldDuo { M1 = p, M2 = r };
         }
     }
 

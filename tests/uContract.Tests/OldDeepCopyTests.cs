@@ -687,6 +687,7 @@ public class OldDeepCopyTests
         Holder<HashSet<string>> copy = Contract.Old(() => original);
 
         Assert.Contains("A", copy.Value);
+        Assert.NotSame(original.Value, copy.Value);
     }
 
     [Fact]
@@ -699,6 +700,8 @@ public class OldDeepCopyTests
         Holder<Dictionary<RecordKey, Elem>> copy = Contract.Old(() => original);
 
         Assert.Equal(1, copy.Value[new RecordKey("one")].Value);
+        Assert.NotSame(original.Value, copy.Value);
+        Assert.NotSame(original.Value[new RecordKey("one")], copy.Value[new RecordKey("one")]);
     }
 
     // Accepted limitation: a key without a value GetHashCode keeps its original's identity hash in the
