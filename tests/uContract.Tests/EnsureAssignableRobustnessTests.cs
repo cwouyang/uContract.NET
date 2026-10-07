@@ -404,8 +404,14 @@ public class EnsureAssignableRobustnessTests
     {
         int first = 1;
         int second = 1;
-        Bookmark actual = new() { Mark = new Mark { P = &first, L = [1, 2] } };
-        Bookmark expected = new() { Mark = new Mark { P = &second, L = [1, 2] } };
+        Bookmark actual = new()
+        {
+            Mark = new Mark { P = &first, L = [1, 2] },
+        };
+        Bookmark expected = new()
+        {
+            Mark = new Mark { P = &second, L = [1, 2] },
+        };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
