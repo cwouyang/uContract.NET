@@ -1343,6 +1343,23 @@ public class EnsureAssignableRobustnessTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenEqualLongChainLeadsEveryNodeToItsLast_CompletesInTime()
+    {
+        FarChain actual = new() { Head = FarNode.Chain(FarChainLength) };
+        FarChain expected = new() { Head = FarNode.Chain(FarChainLength) };
+
+        Exception? exception = Record.Exception(() =>
+            SmallStack.OnSmallStack(
+                () => Contract.EnsureAssignable(actual, expected),
+                SmallStackSize,
+                FarChainTimeoutMilliseconds
+            )
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenObjectReliesOnAChangedObjectOnlyThroughADeeperOne_ReportsBothMembers()
     {
         Duo<Cell> actual = Cell.ThreeCycle(changingValue: 1);
@@ -1892,6 +1909,41 @@ public class EnsureAssignableRobustnessTests
     private sealed class NodeChain
     {
         public Node? Head { get; set; }
+    }
+
+    // Each node relies on the one before it, and the last node is reached again from every node, through a
+    // chain of groups handed over once per node: looking its group up without shortening that chain is
+    // quadratic (737 ms already at 20 000 nodes), the linear lookup well under a second at this length.
+    private const int FarChainLength = 100_000;
+    private const int FarChainTimeoutMilliseconds = 5000;
+
+    private sealed class FarNode
+    {
+        public FarNode? Prev { get; set; }
+        public FarNode? Next { get; set; }
+        public FarNode? Far { get; set; }
+
+        public static FarNode Chain(int length)
+        {
+            FarNode[] nodes = new FarNode[length];
+            for (int i = 0; i < length; i++)
+            {
+                nodes[i] = new FarNode { Prev = i > 0 ? nodes[i - 1] : null };
+            }
+
+            for (int i = 0; i < length; i++)
+            {
+                nodes[i].Next = i + 1 < length ? nodes[i + 1] : null;
+                nodes[i].Far = nodes[length - 1];
+            }
+
+            return nodes[0];
+        }
+    }
+
+    private sealed class FarChain
+    {
+        public FarNode? Head { get; set; }
     }
 
     private sealed class Inventory
