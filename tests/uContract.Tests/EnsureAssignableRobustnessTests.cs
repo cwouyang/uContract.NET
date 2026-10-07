@@ -1347,6 +1347,45 @@ public class EnsureAssignableRobustnessTests
         Assert.Equal(BothDuoMembersChanged, exception.Description);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenObjectReliesOnAChangedObjectBeforeAndOnItselfAfterADeeperOne_ReportsBothMembers()
+    {
+        FieldDuo actual = Strut.RelianceBeforeDeeperObject(changingValue: 1);
+        FieldDuo expected = Strut.RelianceBeforeDeeperObject(changingValue: 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(BothFieldDuoMembersChanged, exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenObjectReliesOnAChangedObjectAndThenOnItself_ReportsBothMembers()
+    {
+        FieldDuo actual = Strut.RelianceThenSelfLoop(changingValue: 1);
+        FieldDuo expected = Strut.RelianceThenSelfLoop(changingValue: 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(BothFieldDuoMembersChanged, exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenObjectReliesOnAChangedObjectAndThenOnAProvisionallyEqualOne_ReportsBothMembers()
+    {
+        FieldDuo actual = Strut.RelianceThenProvisionalObject(changingValue: 1);
+        FieldDuo expected = Strut.RelianceThenProvisionalObject(changingValue: 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(BothFieldDuoMembersChanged, exception.Description);
+    }
+
     private static object? SemaphoreWaitHandle(SemaphoreSlim semaphore)
     {
         return typeof(SemaphoreSlim)
@@ -1896,6 +1935,61 @@ public class EnsureAssignableRobustnessTests
             p.X = q;
             q.X = r;
             return new Duo<Hub> { M1 = p, M2 = r };
+        }
+    }
+
+    private const string BothFieldDuoMembersChanged =
+        "Fields were modified that are not marked as assignable:\n  - M1\n  - M2";
+
+    // Public fields only, so each member is compared once and records its reliance once.
+    private sealed class FieldDuo
+    {
+        public Strut? M1;
+        public Strut? M2;
+    }
+
+    // Public fields only, compared in declaration order: P, then Q, then V. In each graph only a.V changes,
+    // and it is compared after everything reached through a.P, which relies on a.
+    private sealed class Strut
+    {
+        public Strut? P;
+        public Strut? Q;
+        public int V;
+
+        // a.P = x, x.P = a, x.Q = c, c.P = x, with M1 = a and M2 = x: x relies on a before it compares c,
+        // which relies only on x.
+        public static FieldDuo RelianceBeforeDeeperObject(int changingValue)
+        {
+            Strut a = new() { V = changingValue };
+            Strut x = new() { P = a };
+            Strut c = new() { P = x };
+            a.P = x;
+            x.Q = c;
+            return new FieldDuo { M1 = a, M2 = x };
+        }
+
+        // a.P = x, x.P = a, x.Q = x, with M1 = a and M2 = x: x relies on a, then on itself.
+        public static FieldDuo RelianceThenSelfLoop(int changingValue)
+        {
+            Strut a = new() { V = changingValue };
+            Strut x = new() { P = a };
+            a.P = x;
+            x.Q = x;
+            return new FieldDuo { M1 = a, M2 = x };
+        }
+
+        // a.P = b, b.P = z, z.P = b, b.Q = y, y.P = a, y.Q = z, with M1 = a and M2 = y: z is provisionally
+        // equal relying on b when y, having relied on a, reaches it.
+        public static FieldDuo RelianceThenProvisionalObject(int changingValue)
+        {
+            Strut a = new() { V = changingValue };
+            Strut b = new();
+            Strut z = new() { P = b };
+            Strut y = new() { P = a, Q = z };
+            a.P = b;
+            b.P = z;
+            b.Q = y;
+            return new FieldDuo { M1 = a, M2 = y };
         }
     }
 
