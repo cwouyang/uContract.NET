@@ -383,6 +383,22 @@ public class EnsureAssignableRobustnessTests
         Assert.Equal("Fields were modified that are not marked as assignable:\n  - B", exception.Description);
     }
 
+    // Pins a documented limitation shared with 2.0.0: ValueType.Equals and reflection see only element 0.
+    [Fact]
+    public void EnsureAssignable_WhenInlineArrayFirstElementIsEqual_DoesNotSeeLaterElements()
+    {
+        Labelled actual = new();
+        actual.Labels[0] = "x";
+        actual.Labels[1] = "before";
+        Labelled expected = new();
+        expected.Labels[0] = "x";
+        expected.Labels[1] = "after";
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     [Fact]
     public unsafe void EnsureAssignable_WhenStructPointerFieldsHoldDifferentAddresses_ReportsTheMember()
     {
@@ -647,5 +663,16 @@ public class EnsureAssignableRobustnessTests
     private sealed class Dial
     {
         public Enum? Setting { get; set; }
+    }
+
+    [System.Runtime.CompilerServices.InlineArray(2)]
+    private struct StringBuf2
+    {
+        private string _element;
+    }
+
+    private sealed class Labelled
+    {
+        public StringBuf2 Labels;
     }
 }
