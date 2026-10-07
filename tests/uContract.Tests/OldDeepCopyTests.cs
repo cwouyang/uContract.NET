@@ -1,4 +1,5 @@
 using System.Runtime.Serialization;
+using uContract.Exceptions;
 
 namespace uContract.Tests;
 
@@ -192,6 +193,164 @@ public class OldDeepCopyTests
         Assert.Equal(Enumerable.Range(Seed, originals.Length), copies.Select(copy => copy.Coins));
     }
 
+    [Fact]
+    public void Old_WhenCalledInBaseClassMethodOnDerivedInstance_CopiesAsDerivedType()
+    {
+        const int derivedOnly = 7;
+        DerivedKennel original = new(derivedOnly);
+
+        Kennel copy = original.Snapshot();
+
+        DerivedKennel derivedCopy = Assert.IsType<DerivedKennel>(copy);
+        Assert.Equal(derivedOnly, derivedCopy.DerivedOnly);
+    }
+
+    [Fact]
+    public void Old_WhenMemberIsDeclaredAsBaseClass_CopiesItAsRuntimeType()
+    {
+        Zoo original = new();
+
+        Zoo copy = Contract.Old(() => original);
+
+        Assert.IsType<Puppy>(copy.Pet);
+        Assert.NotSame(original.Pet, copy.Pet);
+    }
+
+    [Fact]
+    public void Old_WhenMemberIsDeclaredAsInterface_CopiesItAsRuntimeType()
+    {
+        Zoo original = new();
+
+        Zoo copy = Contract.Old(() => original);
+
+        Assert.IsType<Circle>(copy.Shape);
+        Assert.NotSame(original.Shape, copy.Shape);
+    }
+
+    [Fact]
+    public void Old_WhenMemberIsDeclaredAsAbstractClass_CopiesItAsRuntimeType()
+    {
+        Zoo original = new();
+
+        Zoo copy = Contract.Old(() => original);
+
+        Assert.IsType<ConcreteExhibit>(copy.Exhibit);
+        Assert.NotSame(original.Exhibit, copy.Exhibit);
+    }
+
+    [Fact]
+    public void Old_WhenObjectMemberHoldsBoxedInt_CopiesItAsInt()
+    {
+        Zoo original = new();
+
+        Zoo copy = Contract.Old(() => original);
+
+        Assert.IsType<int>(copy.BoxedCount);
+        Assert.Equal(BoxedCount, copy.BoxedCount);
+    }
+
+    [Fact]
+    public void Old_WhenObjectMemberHoldsBoxedStruct_LeavesOriginalBoxUntouched()
+    {
+        Zoo original = new();
+        List<int> originalVisits = ((Tag)original.BoxedTag!).Visits;
+
+        Zoo copy = Contract.Old(() => original);
+
+        Assert.Same(originalVisits, ((Tag)original.BoxedTag!).Visits);
+    }
+
+    [Fact]
+    public void Old_WhenObjectMemberHoldsBoxedStruct_CopiesItsReferenceTypedField()
+    {
+        Zoo original = new();
+
+        Zoo copy = Contract.Old(() => original);
+
+        List<int> copiedVisits = ((Tag)copy.BoxedTag!).Visits;
+        Assert.NotSame(((Tag)original.BoxedTag!).Visits, copiedVisits);
+        Assert.Equal(((Tag)original.BoxedTag!).Visits, copiedVisits);
+    }
+
+    [Fact]
+    public void Old_WhenNullableAndObjectMembersAreNull_KeepsThemNull()
+    {
+        Zoo original = new();
+
+        Zoo copy = Contract.Old(() => original);
+
+        Assert.Null(copy.MissingCount);
+        Assert.Null(copy.Nothing);
+    }
+
+    [Fact]
+    public void Old_WhenValueIsRecordWithInitProperties_CopiesContentAndReferences()
+    {
+        PersonRecord original = new() { Name = "Alice", Home = new Address("Main Street") };
+
+        PersonRecord copy = Contract.Old(() => original);
+
+        Assert.Equal(original.Name, copy.Name);
+        Assert.Equal(original.Home.Street, copy.Home.Street);
+        Assert.NotSame(original.Home, copy.Home);
+    }
+
+    [Fact]
+    public void Old_WhenValueIsAnonymousType_CopiesContentAndReferences()
+    {
+        var original = new { Name = "Alice", Home = new Address("Main Street") };
+
+        var copy = Contract.Old(() => original);
+
+        Assert.Equal(original.Name, copy.Name);
+        Assert.Equal(original.Home.Street, copy.Home.Street);
+        Assert.NotSame(original.Home, copy.Home);
+    }
+
+    [Fact]
+    public void Old_WhenValueIsTuple_CopiesContentAndReferences()
+    {
+        (Address Home, int Rooms) original = (new Address("Main Street"), 3);
+
+        (Address Home, int Rooms) copy = Contract.Old(() => original);
+
+        Assert.Equal(original.Rooms, copy.Rooms);
+        Assert.Equal(original.Home.Street, copy.Home.Street);
+        Assert.NotSame(original.Home, copy.Home);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenNothingChangedAfterOld_DoesNotThrow()
+    {
+        Zoo zoo = new();
+        Zoo oldZoo = Contract.Old(() => zoo);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(zoo, oldZoo));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenFieldInsideDeclaredBaseMemberChanged_ListsThatMember()
+    {
+        Zoo zoo = new();
+        Zoo oldZoo = Contract.Old(() => zoo);
+        ((Puppy)zoo.Pet).Nickname = "Rex";
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(zoo, oldZoo)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:"
+                + NL
+                + "  - Pet"
+                + NL
+                + "  - <Pet>k__BackingField",
+            exception.Message.Replace("Postcondition violated: ", "", StringComparison.Ordinal)
+        );
+    }
+
     private class Ancestor
     {
         private int _secret;
@@ -368,6 +527,75 @@ public class OldDeepCopyTests
         public override bool Equals(object? obj) => ReferenceEquals(this, obj);
 
         public override int GetHashCode() => throw new InvalidOperationException("GetHashCode ran.");
+    }
+
+    private const int BoxedCount = 5;
+    private static readonly string NL = char.ConvertFromUtf32(10);
+
+    private class Kennel
+    {
+        public Kennel Snapshot()
+        {
+            return Contract.Old(() => this);
+        }
+    }
+
+    private sealed class DerivedKennel(int derivedOnly) : Kennel
+    {
+        private readonly int _derivedOnly = derivedOnly;
+
+        public int DerivedOnly => _derivedOnly;
+    }
+
+    private class Animal
+    {
+        public string Name { get; set; } = "Animal";
+    }
+
+    private sealed class Puppy : Animal
+    {
+        public string Nickname { get; set; } = "Pup";
+    }
+
+    private interface IShape;
+
+    private sealed class Circle : IShape
+    {
+        public int Radius { get; set; } = 2;
+    }
+
+    private abstract class Exhibit;
+
+    private sealed class ConcreteExhibit : Exhibit
+    {
+        public int Visitors { get; set; } = 3;
+    }
+
+    private struct Tag
+    {
+        public List<int> Visits { get; set; }
+    }
+
+    private sealed class Zoo
+    {
+        public Animal Pet { get; set; } = new Puppy();
+        public IShape Shape { get; set; } = new Circle();
+        public Exhibit Exhibit { get; set; } = new ConcreteExhibit();
+        public object? BoxedCount { get; set; } = OldDeepCopyTests.BoxedCount;
+        public object? BoxedTag { get; set; } = new Tag { Visits = [1, 2] };
+        public int? MissingCount { get; set; }
+        public object? Nothing { get; set; }
+    }
+
+    private sealed class Address(string street)
+    {
+        public string Street { get; } = street;
+    }
+
+    private sealed record PersonRecord
+    {
+        public required string Name { get; init; }
+        public required Address Home { get; init; }
     }
 
     private abstract class ParallelNode(int coins)
