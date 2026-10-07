@@ -9,25 +9,13 @@ using uContract.Exceptions;
 namespace uContract.Tests;
 
 /// <summary>
-///     Old under trimming and Native AOT, simulated through the <see cref="RuntimeFacts" /> seam.
-///     The overrides are process-wide state, so this class shares the collection of the other
+///     Old without dynamic code, simulated through the <see cref="RuntimeFacts" /> seam.
+///     The override is process-wide state, so this class shares the collection of the other
 ///     tests that mutate process-wide state.
 /// </summary>
 [Collection("EnvironmentVariables")]
 public sealed class OldWithoutDynamicCodeTests
 {
-    [Fact]
-    public void Old_WhenJsonReflectionDisabledAndSupplierReturnsNull_ReturnsDefault()
-    {
-        TestAccount? account = null;
-        TestAccount? oldAccount = new();
-
-        Exception? exception = RecordWithoutJsonReflection(() => oldAccount = Contract.Old(() => account));
-
-        Assert.Null(exception);
-        Assert.Null(oldAccount);
-    }
-
     [Fact]
     public void Old_WhenDynamicCodeIsUnsupported_ReturnsACopyOfTheValue()
     {
@@ -47,19 +35,6 @@ public sealed class OldWithoutDynamicCodeTests
         NonSerializableType? copy = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => original));
 
         Assert.Null(copy);
-    }
-
-    private static Exception? RecordWithoutJsonReflection(Action act)
-    {
-        try
-        {
-            RuntimeFacts.JsonReflectionEnabledOverride = false;
-            return Record.Exception(act);
-        }
-        finally
-        {
-            RuntimeFacts.JsonReflectionEnabledOverride = null;
-        }
     }
 }
 

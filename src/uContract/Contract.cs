@@ -6,8 +6,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using uContract.Exceptions;
@@ -32,27 +30,6 @@ public static class Contract
 {
     private static readonly ContractConfiguration Config = new();
     private static readonly AsyncLocal<bool> Entered = new();
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        ReferenceHandler = ReferenceHandler.IgnoreCycles,
-        WriteIndented = false,
-        IncludeFields = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-    };
-
-    private const string OldJsonReflectionDisabledMessage =
-        "Old<T>() cannot copy the value: reflection-based JSON serialization is disabled, "
-        + "which is the default in trimmed and Native AOT applications. "
-        + "Set the MSBuild property JsonSerializerIsReflectionEnabledByDefault to true "
-        + "in the application project; under Native AOT also preserve the copied types, "
-        + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
-        + "or set DBC_POST=off (disables all postcondition checks).";
-
-    private const string OldNativeAotSerializationHint =
-        " Under Native AOT a JSON-serializable type also needs its members preserved for reflection, "
-        + "for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]; "
-        + "or set DBC_POST=off (disables all postcondition checks).";
 
     /// <summary>
     ///     Validates a precondition and throws an exception if the condition is false.
@@ -436,35 +413,6 @@ public static class Contract
         finally
         {
             Entered.Value = false;
-        }
-    }
-
-    // The former JSON copy of Old<T>: no longer called, kept until a later structural change removes it.
-    [RequiresUnreferencedCode(
-        "Old<T> uses System.Text.Json serialization for deep copy, which requires unreferenced code."
-    )]
-    [RequiresDynamicCode("Old<T> uses System.Text.Json serialization, which requires dynamic code generation.")]
-    private static T CopyViaJson<T>(T obj)
-    {
-        if (!RuntimeFacts.IsJsonReflectionEnabled)
-        {
-            throw new InvalidOperationException(OldJsonReflectionDisabledMessage);
-        }
-
-        // Deep copy via JSON serialization
-        try
-        {
-            string json = JsonSerializer.Serialize(obj, JsonOptions);
-            return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
-        }
-        catch (NotSupportedException ex)
-        {
-            string message =
-                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.";
-            throw new InvalidOperationException(
-                RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
-                ex
-            );
         }
     }
 
