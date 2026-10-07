@@ -31,8 +31,9 @@ public class OldPairingTests
 
     // ---- P1: the User class of docs/examples/USAGE_EXAMPLES.md (Field Assignment Validation) ----
 
-    // Copied from docs/examples/USAGE_EXAMPLES.md, adapted only for the analyzers (a read accessor for the
-    // otherwise unread fields, and a variant that also changes _name).
+    // Copied from docs/examples/USAGE_EXAMPLES.md (Field Assignment Validation). Differences, all required
+    // by the analyzers or by the tests: the class is private and sealed; Contains takes StringComparison.Ordinal
+    // (MA0001); the CreatedAt accessor reads _createdAt (CS0414); ChangeEmailAndName is added for the failing case.
     private sealed class User
     {
         private string _email;
@@ -65,9 +66,35 @@ public class OldPairingTests
             _email = newEmail;
             _lastModified = DateTime.UtcNow;
 
+            // Only email and lastModified should change (not name, createdAt, loginCount)
             Contract.EnsureAssignable(this, oldState, nameof(_email), nameof(_lastModified));
         }
 
+        public void ChangeName(string newName)
+        {
+            Contract.RequireNotEmpty("Name", newName);
+
+            var oldState = Contract.Old(() => this);
+
+            _name = newName;
+            _lastModified = DateTime.UtcNow;
+
+            // Only name and lastModified should change
+            Contract.EnsureAssignable(this, oldState, nameof(_name), nameof(_lastModified));
+        }
+
+        public void RecordLogin()
+        {
+            var oldState = Contract.Old(() => this);
+
+            _loginCount++;
+            _lastModified = DateTime.UtcNow;
+
+            // Only loginCount and lastModified should change
+            Contract.EnsureAssignable(this, oldState, nameof(_loginCount), nameof(_lastModified));
+        }
+
+        // Not in the sample: a method that changes _name although only _email and _lastModified are assignable.
         public void ChangeEmailAndName(string newEmail, string newName)
         {
             var oldState = Contract.Old(() => this);
@@ -78,18 +105,21 @@ public class OldPairingTests
 
             Contract.EnsureAssignable(this, oldState, nameof(_email), nameof(_lastModified));
         }
+    }
 
-        public void RecordLogin()
-        {
-            _loginCount++;
-        }
+    private static User NewUsedUser()
+    {
+        User user = new("ada@example.com", "Ada");
+        user.ChangeName("Ada Byron");
+        user.ChangeEmail("ada@byron.example");
+        user.RecordLogin();
+        return user;
     }
 
     [Fact]
     public void Pairing_UserChangeEmail_WhenOnlyAssignableMembersChange_DoesNotThrow()
     {
-        User user = new("ada@example.com", "Ada");
-        user.RecordLogin();
+        User user = NewUsedUser();
 
         Exception? exception = Record.Exception(() => user.ChangeEmail("ada@lovelace.example"));
 
@@ -99,8 +129,7 @@ public class OldPairingTests
     [Fact]
     public void Pairing_UserChangeEmailAndName_WhenNameIsNotAssignable_ReportsOnlyName()
     {
-        User user = new("ada@example.com", "Ada");
-        user.RecordLogin();
+        User user = NewUsedUser();
 
         string[] entries = ViolationsOf(() => user.ChangeEmailAndName("ada@lovelace.example", "Ada Lovelace"));
 
@@ -109,11 +138,12 @@ public class OldPairingTests
 
     // ---- P2: private fields ----
 
-#pragma warning disable CS0414 // Assigned but never read: the fields exist to be compared.
     private sealed class Ledger
     {
         private int _count = 7;
+#pragma warning disable CS0414 // Assigned but never read: the field exists to be compared.
         private string _label = "ledger";
+#pragma warning restore CS0414
         private decimal _total = 12.5m;
 
         public void Bump(bool alsoRelabel)
@@ -128,6 +158,13 @@ public class OldPairingTests
             Contract.EnsureAssignable(this, old, nameof(_count));
         }
 
+        public void Prepare()
+        {
+            _count = 70;
+            _label = "prepared";
+            _total = 99.5m;
+        }
+
         public decimal Total => _total;
     }
 
@@ -135,17 +172,19 @@ public class OldPairingTests
     public void Pairing_PrivateFields_WhenOnlyAssignableFieldChanges_DoesNotThrow()
     {
         Ledger ledger = new();
+        ledger.Prepare();
 
         Exception? exception = Record.Exception(() => ledger.Bump(alsoRelabel: false));
 
         Assert.Null(exception);
-        Assert.Equal(12.5m, ledger.Total);
+        Assert.Equal(99.5m, ledger.Total);
     }
 
     [Fact]
     public void Pairing_PrivateFields_WhenAnotherFieldChanges_ReportsThatField()
     {
         Ledger ledger = new();
+        ledger.Prepare();
 
         string[] entries = ViolationsOf(() => ledger.Bump(alsoRelabel: true));
 
@@ -162,6 +201,12 @@ public class OldPairingTests
 
         protected abstract bool ChangesStatus { get; }
 
+        public void Prepare()
+        {
+            _balance = 250m;
+            _status = 4;
+        }
+
         public void Run()
         {
             var old = Contract.Old(() => this);
@@ -177,17 +222,24 @@ public class OldPairingTests
 
     private sealed class SavingsAccount(bool changeStatus) : Account
     {
+#pragma warning disable CS0414 // Assigned but never read: the field exists to be compared.
         private decimal _rate = 0.02m;
+#pragma warning restore CS0414
 
         protected override bool ChangesStatus => changeStatus;
-    }
 
-#pragma warning restore CS0414
+        public void Reprice()
+        {
+            _rate = 0.05m;
+        }
+    }
 
     [Fact]
     public void Pairing_BaseClassMethod_WhenOnlyAssignableBaseFieldChanges_DoesNotThrow()
     {
         SavingsAccount account = new(changeStatus: false);
+        account.Prepare();
+        account.Reprice();
 
         Exception? exception = Record.Exception(account.Run);
 
@@ -198,6 +250,8 @@ public class OldPairingTests
     public void Pairing_BaseClassMethod_WhenAnotherBaseFieldChanges_ReportsThatField()
     {
         SavingsAccount account = new(changeStatus: true);
+        account.Prepare();
+        account.Reprice();
 
         string[] entries = ViolationsOf(account.Run);
 
@@ -375,6 +429,12 @@ public class OldPairingTests
         private readonly object _gate = new();
         private readonly List<Entry> _entries = [new("apple", 2), new("pear", 5)];
 
+        public void Prepare()
+        {
+            _entries[0].Quantity = 40;
+            _entries.Add(new Entry("fig", 1));
+        }
+
         public void Run(Action<List<Entry>> body)
         {
             var old = Contract.Old(() => this);
@@ -391,6 +451,7 @@ public class OldPairingTests
     public void Pairing_LockAndRecordList_WhenNothingChanged_DoesNotThrow()
     {
         Basket basket = new();
+        basket.Prepare();
 
         Exception? exception = Record.Exception(() => basket.Run(_ => { }));
 
@@ -401,6 +462,7 @@ public class OldPairingTests
     public void Pairing_LockAndRecordList_WhenARecordChanges_ReportsTheList()
     {
         Basket basket = new();
+        basket.Prepare();
 
         string[] entries = ViolationsOf(() => basket.Run(list => list[1].Quantity = 6));
 
@@ -417,6 +479,12 @@ public class OldPairingTests
             ["b"] = new Entry("beta", 2),
         };
 
+        public void Prepare()
+        {
+            _index["a"].Quantity = 10;
+            _index["c"] = new Entry("gamma", 3);
+        }
+
         public void Run(Action<Dictionary<string, Entry>> body)
         {
             var old = Contract.Old(() => this);
@@ -429,6 +497,7 @@ public class OldPairingTests
     public void Pairing_DictionaryMember_WhenNothingChanged_DoesNotThrow()
     {
         Registry registry = new();
+        registry.Prepare();
 
         Exception? exception = Record.Exception(() => registry.Run(_ => { }));
 
@@ -439,6 +508,7 @@ public class OldPairingTests
     public void Pairing_DictionaryMember_WhenAValueChanges_ReportsTheMember()
     {
         Registry registry = new();
+        registry.Prepare();
 
         string[] entries = ViolationsOf(() => registry.Run(index => index["b"].Quantity = 20));
 
@@ -450,6 +520,12 @@ public class OldPairingTests
     private sealed class PairList
     {
         private readonly List<(Entry Left, Entry Right)> _pairs = [(new Entry("l", 1), new Entry("r", 2))];
+
+        public void Prepare()
+        {
+            _pairs[0].Left.Quantity = 7;
+            _pairs.Add((new Entry("x", 8), new Entry("y", 9)));
+        }
 
         public void Run(Action<List<(Entry Left, Entry Right)>> body)
         {
@@ -463,6 +539,7 @@ public class OldPairingTests
     public void Pairing_TupleList_WhenNothingChanged_DoesNotThrow()
     {
         PairList pairs = new();
+        pairs.Prepare();
 
         Exception? exception = Record.Exception(() => pairs.Run(_ => { }));
 
@@ -473,6 +550,7 @@ public class OldPairingTests
     public void Pairing_TupleList_WhenATupleElementChanges_ReportsTheMember()
     {
         PairList pairs = new();
+        pairs.Prepare();
 
         string[] entries = ViolationsOf(() => pairs.Run(list => list[0].Right.Quantity = 3));
 
@@ -485,6 +563,12 @@ public class OldPairingTests
     {
         private readonly SemaphoreSlim _slots = new(2);
         private int _served = 4;
+
+        public void Prepare()
+        {
+            _served = 11;
+            _slots.Wait();
+        }
 
         public void Run(bool serve)
         {
@@ -508,6 +592,7 @@ public class OldPairingTests
     public void Pairing_SemaphoreField_WhenOnlyTheSemaphoreIsUsed_DoesNotThrow()
     {
         using Throttled throttled = new();
+        throttled.Prepare();
 
         Exception? exception = Record.Exception(() => throttled.Run(serve: false));
 
@@ -518,6 +603,7 @@ public class OldPairingTests
     public void Pairing_SemaphoreField_WhenAnotherFieldChanges_ReportsOnlyThatField()
     {
         using Throttled throttled = new();
+        throttled.Prepare();
 
         string[] entries = ViolationsOf(() => throttled.Run(serve: true));
 
@@ -528,6 +614,12 @@ public class OldPairingTests
     {
         private readonly MemoryStream _sink = new([1, 2, 3]);
         private int _lines = 2;
+
+        public void Prepare()
+        {
+            _lines = 8;
+            _sink.WriteByte(9);
+        }
 
         public void Run(bool addLine)
         {
@@ -551,6 +643,7 @@ public class OldPairingTests
     public void Pairing_StreamField_WhenOnlyTheStreamIsWritten_DoesNotThrow()
     {
         using Journal journal = new();
+        journal.Prepare();
 
         Exception? exception = Record.Exception(() => journal.Run(addLine: false));
 
@@ -561,6 +654,7 @@ public class OldPairingTests
     public void Pairing_StreamField_WhenAnotherFieldChanges_ReportsOnlyThatField()
     {
         using Journal journal = new();
+        journal.Prepare();
 
         string[] entries = ViolationsOf(() => journal.Run(addLine: true));
 
