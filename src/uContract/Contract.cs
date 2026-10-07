@@ -1101,6 +1101,10 @@ public static class Contract
         List<string> differences = [];
         ComparisonContext context = new();
 
+        // The top-level pair is in progress for the whole call, so a member leading back to it is not a
+        // difference. (A value-type T is boxed here afresh, so that pair is never reached again.)
+        context.EnterTopLevel(new ReferencePair(actual!, expected!));
+
         foreach (MemberAccessor member in metadata.Members)
         {
             if (MemberComparison.IsAssignable(member.Name, assignableFieldPatterns))

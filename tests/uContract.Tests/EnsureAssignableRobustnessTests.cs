@@ -1066,6 +1066,214 @@ public class EnsureAssignableRobustnessTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenDistinctSelfCyclesAreEqual_DoesNotThrow()
+    {
+        Fuse fuse = new();
+        Link actual = Link.SelfCycle(1, fuse);
+        Link expected = Link.SelfCycle(1, fuse);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenDistinctSelfCyclesDifferInId_ReportsOnlyTheId()
+    {
+        Fuse fuse = new();
+        Link actual = Link.SelfCycle(1, fuse);
+        Link expected = Link.SelfCycle(2, fuse);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Id\n  - <Id>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyReturnsItsOwnerAndOwnersAreEqual_DoesNotThrow()
+    {
+        Fuse fuse = new();
+        Mirror actual = new(fuse) { Z = 1 };
+        Mirror expected = new(fuse) { Z = 1 };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyReturnsItsOwnerAndSiblingDiffers_ReportsOnlyTheSibling()
+    {
+        Fuse fuse = new();
+        Mirror actual = new(fuse) { Z = 1 };
+        Mirror expected = new(fuse) { Z = 2 };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Z\n  - <Z>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenPropertyReturnsNewInstanceMethodGroupOnEachRead_DoesNotThrow()
+    {
+        Ticker actual = new();
+        Ticker expected = new();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenInterfaceTypedMembersFormEqualSelfCycles_DoesNotThrow()
+    {
+        Fuse fuse = new();
+        Chain actual = Chain.SelfCycle(fuse);
+        Chain expected = Chain.SelfCycle(fuse);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEqualCyclesPassThroughAStructField_DoesNotThrow()
+    {
+        Fuse fuse = new();
+        Nest actual = Nest.CycleThroughWrap(fuse);
+        Nest expected = Nest.CycleThroughWrap(fuse);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOneChangedObjectIsReachedFromTwoMembers_ReportsBothMembers()
+    {
+        Leaf before = new() { V = 1 };
+        Leaf after = new() { V = 2 };
+        Twins actual = new() { A = before, B = before };
+        Twins expected = new() { A = after, B = after };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - A\n  - B\n"
+                + "  - <A>k__BackingField\n  - <B>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenReferenceTypedAutoPropertyObjectChanges_ReportsPropertyAndBackingField()
+    {
+        Carrier actual = new() { X = new Leaf { V = 1 } };
+        Carrier expected = new() { X = new Leaf { V = 2 } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - X\n  - <X>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEqualAcyclicDiamondLadderIsDeep_CompletesInTime()
+    {
+        Rung actual = Rung.AcyclicLadder(LadderDepth);
+        Rung expected = Rung.AcyclicLadder(LadderDepth);
+
+        Exception? exception = Record.Exception(() =>
+            SmallStack.OnSmallStack(
+                () => Contract.EnsureAssignable(actual, expected),
+                timeoutMilliseconds: LadderTimeoutMilliseconds
+            )
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenObjectLeadsBackToAChangedObjectBeingCompared_ReportsBothMembers()
+    {
+        Tangle actual = Tangle.Of(changingValue: 1);
+        Tangle expected = Tangle.Of(changingValue: 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - M1\n  - M2\n"
+                + "  - <M1>k__BackingField\n  - <M2>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEqualCyclicDiamondLadderIsDeep_CompletesInTime()
+    {
+        Carrier actual = new() { Ladder = Rung.CyclicLadder(LadderDepth) };
+        Carrier expected = new() { Ladder = Rung.CyclicLadder(LadderDepth) };
+
+        Exception? exception = Record.Exception(() =>
+            SmallStack.OnSmallStack(
+                () => Contract.EnsureAssignable(actual, expected),
+                timeoutMilliseconds: LadderTimeoutMilliseconds
+            )
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenListMemberHoldsManyEqualElements_CompletesInTime()
+    {
+        Inventory actual = Inventory.WithEqualElements(ManyElements);
+        Inventory expected = Inventory.WithEqualElements(ManyElements);
+
+        Exception? exception = Record.Exception(() =>
+            SmallStack.OnSmallStack(
+                () => Contract.EnsureAssignable(actual, expected),
+                timeoutMilliseconds: ManyElementsTimeoutMilliseconds
+            )
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOneChangedObjectIsReachedFromTwoMembers_ComparesItOnce()
+    {
+        ReadCounter counter = new();
+        Probe before = new(counter, 1);
+        Probe after = new(counter, 2);
+        Probes actual = new() { A = before, B = before };
+        Probes expected = new() { A = after, B = after };
+
+        Assert.Throws<PostconditionViolationException>(() => Contract.EnsureAssignable(actual, expected));
+
+        // One read of the changed value on each side, although four members (A, B and their backing fields) reach it.
+        Assert.Equal(2, counter.Reads);
+    }
+
     private static object? SemaphoreWaitHandle(SemaphoreSlim semaphore)
     {
         return typeof(SemaphoreSlim)
@@ -1406,5 +1614,243 @@ public class EnsureAssignableRobustnessTests
     private sealed class Label
     {
         public string Text { get; set; } = "";
+    }
+
+    // A diamond ladder of this depth has 2^40 paths: a comparison that walks each path never ends.
+    private const int LadderDepth = 40;
+    private const int LadderTimeoutMilliseconds = 1000;
+
+    private sealed class Leaf
+    {
+        public int V { get; set; }
+    }
+
+    private sealed class Twins
+    {
+        public Leaf? A { get; set; }
+        public Leaf? B { get; set; }
+    }
+
+    private sealed class Carrier
+    {
+        public Leaf? X { get; set; }
+        public Rung? Ladder { get; set; }
+    }
+
+    // Each rung reaches the rung below twice, through L and through R.
+    private sealed class Rung
+    {
+        public Rung? L { get; set; }
+        public Rung? R { get; set; }
+
+        public static Rung AcyclicLadder(int depth)
+        {
+            return Build(new Rung(), depth);
+        }
+
+        // The bottom rung leads back to the top one, so every rung is compared while the top one still is.
+        public static Rung CyclicLadder(int depth)
+        {
+            Rung bottom = new();
+            Rung top = Build(bottom, depth);
+            bottom.L = top;
+            bottom.R = top;
+            return top;
+        }
+
+        private static Rung Build(Rung bottom, int depth)
+        {
+            Rung top = bottom;
+            for (int i = 0; i < depth; i++)
+            {
+                top = new Rung { L = top, R = top };
+            }
+
+            return top;
+        }
+    }
+
+    private const int ManyElements = 100_000;
+    private const int ManyElementsTimeoutMilliseconds = 2000;
+
+    private sealed class Inventory
+    {
+        public List<Elem> Items { get; set; } = [];
+
+        public static Inventory WithEqualElements(int count)
+        {
+            return new Inventory { Items = Enumerable.Range(0, count).Select(i => new Elem(i)).ToList() };
+        }
+    }
+
+    // Shared by the actual and the expected graph, so it compares equal by reference.
+    private sealed class ReadCounter
+    {
+        public int Reads { get; set; }
+    }
+
+    private sealed class Probe(ReadCounter counter, int value)
+    {
+        private readonly ReadCounter _counter = counter;
+        private readonly int _value = value;
+
+        public int V
+        {
+            get
+            {
+                _counter.Reads++;
+                return _value;
+            }
+        }
+    }
+
+    private sealed class Probes
+    {
+        public Probe? A { get; set; }
+        public Probe? B { get; set; }
+    }
+
+    private sealed class Knot
+    {
+        public Knot? A { get; set; }
+        public int B { get; set; }
+    }
+
+    // M1 = P and M2 = Q, where P.A = Q and Q.A = P: comparing P reaches Q, which leads back to P while P is
+    // still being compared; only after that is P's B (the changing value) compared.
+    private sealed class Tangle
+    {
+        public Knot? M1 { get; set; }
+        public Knot? M2 { get; set; }
+
+        public static Tangle Of(int changingValue)
+        {
+            Knot p = new() { B = changingValue };
+            Knot q = new() { A = p };
+            p.A = q;
+            return new Tangle { M1 = p, M2 = q };
+        }
+    }
+
+    private sealed class FuseBlownException() : Exception("The comparison read a fused member too often.");
+
+    // Shared by the actual and the expected graph, so it compares equal by reference. It turns a
+    // comparison that would recurse forever into a distinct failure instead of a crashed test host.
+    private sealed class Fuse
+    {
+        private const int MaxReads = 200;
+        private int _reads;
+
+        public void Read()
+        {
+            if (++_reads > MaxReads)
+            {
+                throw new FuseBlownException();
+            }
+        }
+    }
+
+    private sealed class Link(Fuse fuse)
+    {
+        private readonly Fuse _fuse = fuse;
+        private Link? _next;
+
+        public int Id { get; set; }
+
+        public Link? Next
+        {
+            get
+            {
+                _fuse.Read();
+                return _next;
+            }
+            set => _next = value;
+        }
+
+        public static Link SelfCycle(int id, Fuse fuse)
+        {
+            Link link = new(fuse) { Id = id };
+            link.Next = link;
+            return link;
+        }
+    }
+
+    private sealed class Mirror(Fuse fuse)
+    {
+        private readonly Fuse _fuse = fuse;
+
+        public int Z { get; set; }
+
+        public Mirror Me
+        {
+            get
+            {
+                _fuse.Read();
+                return this;
+            }
+        }
+    }
+
+    private sealed class Ticker
+    {
+        private readonly int _count = 1;
+
+        public Func<int> Tick => Count;
+
+        private int Count() => _count;
+    }
+
+    private interface IChainNode
+    {
+        IChainNode? Next { get; }
+    }
+
+    private sealed class Chain(Fuse fuse) : IChainNode
+    {
+        private readonly Fuse _fuse = fuse;
+        private IChainNode? _next;
+
+        public IChainNode? Next
+        {
+            get
+            {
+                _fuse.Read();
+                return _next;
+            }
+        }
+
+        public static Chain SelfCycle(Fuse fuse)
+        {
+            Chain chain = new(fuse);
+            chain._next = chain;
+            return chain;
+        }
+    }
+
+    private struct Wrap
+    {
+        public Nest? Parent;
+    }
+
+    private sealed class Nest(Fuse fuse)
+    {
+        private readonly Fuse _fuse = fuse;
+        private Wrap _wrap;
+
+        public Wrap W
+        {
+            get
+            {
+                _fuse.Read();
+                return _wrap;
+            }
+        }
+
+        public static Nest CycleThroughWrap(Fuse fuse)
+        {
+            Nest nest = new(fuse);
+            nest._wrap = new Wrap { Parent = nest };
+            return nest;
+        }
     }
 }

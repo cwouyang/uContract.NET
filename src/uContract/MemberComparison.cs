@@ -148,12 +148,27 @@ internal static class MemberComparison
             return CompareValues(actual, expected, actualType, context);
         }
 
-        if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)
+        return CompareReferences(actual, expected, context);
+    }
+
+    // A pair of objects already found equal or different in this call is not walked again, and a pair
+    // reached again while it is being compared (through a cycle) counts as equal; see ComparisonContext.
+    private static bool CompareReferences(object actual, object expected, ComparisonContext context)
+    {
+        ReferencePair pair = new(actual, expected);
+        if (context.TryGetSettled(pair, out bool settledEqual))
         {
-            return CompareSequences(actualEnum, expectedEnum, context);
+            return settledEqual;
         }
 
-        return CompareRecursively(actual, expected, context);
+        ComparisonContext.Frame frame = context.Enter(pair);
+        bool equal =
+            actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum
+                ? CompareSequences(actualEnum, expectedEnum, context)
+                : CompareRecursively(actual, expected, context);
+
+        context.Leave(pair, frame, equal);
+        return equal;
     }
 
     // A delegate is compared by the methods it calls, in order. Its targets are never compared or walked,
