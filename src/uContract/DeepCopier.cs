@@ -64,6 +64,10 @@ internal static class DeepCopier
         }
 
         copy = CloneBitwise(original);
+        // MemberwiseClone registers a clone of a finalizable type for finalization; a copy must never run user code.
+#pragma warning disable CA1816 // The clone is a fresh object that this copier owns; it is not an IDisposable pattern.
+        GC.SuppressFinalize(copy);
+#pragma warning restore CA1816
         copies.Add(original, copy);
         pending.Push(copy);
         return copy;

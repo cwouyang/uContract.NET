@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using uContract.Exceptions;
 
@@ -807,6 +809,60 @@ public class OldDeepCopyTests
         Assert.Equal(original.Value.Value.Entries, copy.Value.Value.Entries);
     }
 
+    [Fact]
+    public void Old_WhenTypeHasFinalizer_NeverRunsTheCopysFinalizer()
+    {
+        FinalizableToken control = new(Guid.NewGuid());
+        FinalizableToken original = new(Guid.NewGuid());
+        DropControl(control.Token);
+        DropCopyOf(original);
+
+        CollectGarbage();
+
+        Assert.Contains(control.Token, FinalizableToken.Finalized);
+        Assert.DoesNotContain(original.Token, FinalizableToken.Finalized);
+        GC.KeepAlive(original);
+    }
+
+    [Fact]
+    public void Old_WhenFinalizableObjectIsNestedInGraph_NeverRunsTheNestedCopysFinalizer()
+    {
+        Guid controlToken = Guid.NewGuid();
+        Holder<FinalizableToken> original = new(new FinalizableToken(Guid.NewGuid()));
+        DropControl(controlToken);
+        DropCopyOf(original);
+
+        CollectGarbage();
+
+        Assert.Contains(controlToken, FinalizableToken.Finalized);
+        Assert.DoesNotContain(original.Value.Token, FinalizableToken.Finalized);
+        GC.KeepAlive(original);
+    }
+
+    [Fact]
+    public void Old_WhenTypeDeclaresStaticReferenceField_LeavesTheStaticUntouched()
+    {
+        object before = StaticOwner.Shared;
+        StaticOwner original = new();
+
+        _ = Contract.Old(() => original);
+
+        Assert.Same(before, StaticOwner.Shared);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void DropControl(Guid token) => _ = new FinalizableToken(token);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void DropCopyOf<T>(T original) => _ = Contract.Old(() => original);
+
+    private static void CollectGarbage()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
+
     private class Ancestor
     {
         private int _secret;
@@ -1170,5 +1226,21 @@ public class OldDeepCopyTests
         public Component Component { get; } = component;
         public CancellationTokenSource Source { get; } = source;
         public FrozenSet<string> Names { get; } = names;
+    }
+
+    private sealed class FinalizableToken(Guid token)
+    {
+        public static readonly ConcurrentQueue<Guid> Finalized = new();
+
+        public Guid Token { get; } = token;
+
+#pragma warning disable MA0055 // The fixture needs a finalizer: it is the behaviour under test.
+        ~FinalizableToken() => Finalized.Enqueue(Token);
+#pragma warning restore MA0055
+    }
+
+    private sealed class StaticOwner
+    {
+        public static readonly object Shared = new();
     }
 }
