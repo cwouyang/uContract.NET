@@ -46,6 +46,11 @@ internal sealed class MemberAccessor
     public Type MemberType { get; }
 
     /// <summary>
+    ///     Gets a value indicating whether the member is a field.
+    /// </summary>
+    public bool IsField => _field is not null;
+
+    /// <summary>
     ///     Gets the value of the member from the specified object.
     /// </summary>
     /// <param name="obj">The object to get the value from</param>

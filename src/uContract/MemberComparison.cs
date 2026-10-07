@@ -120,6 +120,17 @@ internal static class MemberComparison
             return false;
         }
 
+        // FieldInfo.GetValue boxes a pointer-typed field as a Pointer object; it is compared by address.
+        if (actual is Pointer actualPointer)
+        {
+            return PointToSameAddress(actualPointer, (Pointer)expected);
+        }
+
+        if (actualType.IsValueType && actualType == expected.GetType())
+        {
+            return CompareValues(actual, expected, actualType, ref hidden);
+        }
+
         if (memberType.IsValueType || memberType == typeof(string))
         {
             return Equals(actual, expected);
@@ -131,6 +142,38 @@ internal static class MemberComparison
         }
 
         return actualType.IsClass ? CompareRecursively(actual, expected, ref hidden) : Equals(actual, expected);
+    }
+
+    private static unsafe bool PointToSameAddress(Pointer actual, Pointer expected)
+    {
+        return Pointer.Unbox(actual) == Pointer.Unbox(expected);
+    }
+
+    // A value type decides equality first; when it says "unequal", its fields are compared, because
+    // ValueType.Equals compares reference-typed fields by reference.
+    private static bool CompareValues(object actual, object expected, Type type, ref HiddenMembers? hidden)
+    {
+        if (Equals(actual, expected))
+        {
+            return true;
+        }
+
+        List<MemberAccessor> fields = GetOrCacheMetadata(type).Members.Where(m => m.IsField).ToList();
+        if (type.IsPrimitive || type.IsEnum || fields.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (MemberAccessor field in fields)
+        {
+            if (!AreEqual(field.GetValue(actual), field.GetValue(expected), field.MemberType, ref hidden))
+            {
+                hidden?.Prepend("." + SourceName(field.Name));
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool IsSequence(object value)
