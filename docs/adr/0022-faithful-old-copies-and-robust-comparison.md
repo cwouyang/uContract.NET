@@ -397,7 +397,9 @@ explicitly on 2026-10-07.
 - **Native AOT, hidden fields in general.** Base-class auto-properties and hidden collections pass
   silently for some mutations. Partial visibility is not detected; a struct is compared on its
   visible fields only.
-- **Shared types** (B3, D7). State inside them is not snapshotted and compares by reference.
+- **Shared types** (B3, D7). State inside them is not snapshotted and compares by reference. This
+  includes the `Value` of an `AsyncLocal<T>`: a value first set after `Old` passes, because the copy
+  shares the instance that keys the value in the `ExecutionContext`.
 - **Delegates.** Delegates whose `Method` is a shared trampoline compare equal even when their
   behaviour differs: `new D(d)`, `d.Invoke`, and interpreted or Native AOT `Expression.Compile`
   delegates.
