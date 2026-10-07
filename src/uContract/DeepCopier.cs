@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -21,6 +22,8 @@ internal static class DeepCopier
     private const BindingFlags DeclaredInstanceFields =
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
 
+    private static readonly ConcurrentDictionary<Type, bool> HoldsReferencesCache = new();
+
     internal static T Copy<T>(T value)
     {
         if (value is null)
@@ -33,7 +36,14 @@ internal static class DeepCopier
         object copy = CopyOf(value, copies, pending);
         while (pending.TryPop(out object? clone))
         {
-            ReplaceReferenceFields(clone, copies, pending);
+            if (clone is Array array)
+            {
+                ReplaceElements(array, copies, pending);
+            }
+            else
+            {
+                ReplaceReferenceFields(clone, copies, pending);
+            }
         }
 
         return (T)copy;
@@ -76,6 +86,93 @@ internal static class DeepCopier
                 field.SetValue(clone, CopyOf(referenced, copies, pending));
             }
         }
+    }
+
+    // The clone already has the original's runtime type, rank and bounds; only its elements are replaced.
+    private static void ReplaceElements(Array clone, Dictionary<object, object> copies, Stack<object> pending)
+    {
+        Type elementType = clone.GetType().GetElementType()!;
+        if (!HoldsReferences(elementType))
+        {
+            return;
+        }
+
+        int[] indices = new int[clone.Rank];
+        for (int dimension = 0; dimension < clone.Rank; dimension++)
+        {
+            if (clone.GetLength(dimension) == 0)
+            {
+                return;
+            }
+
+            indices[dimension] = clone.GetLowerBound(dimension);
+        }
+
+        do
+        {
+            if (clone.GetValue(indices) is not { } element)
+            {
+                continue;
+            }
+
+            if (elementType.IsValueType)
+            {
+                // The element arrives boxed: replace the references inside the box, then store it back.
+                ReplaceReferenceFields(element, copies, pending);
+                clone.SetValue(element, indices);
+            }
+            else
+            {
+                clone.SetValue(CopyOf(element, copies, pending), indices);
+            }
+        } while (Advance(clone, indices));
+    }
+
+    // Moves the indices to the next element in row-major order; false once past the last one.
+    private static bool Advance(Array array, int[] indices)
+    {
+        for (int dimension = indices.Length - 1; dimension >= 0; dimension--)
+        {
+            if (indices[dimension] < array.GetUpperBound(dimension))
+            {
+                indices[dimension]++;
+                return true;
+            }
+
+            indices[dimension] = array.GetLowerBound(dimension);
+        }
+
+        return false;
+    }
+
+    // Whether a value of this type can refer to an object: a reference type, or a struct with a
+    // reference-typed field at any depth of its struct fields.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (Old/EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a field the trimmer hides from reflection is not seen, so a struct holding references only there stays bitwise: the copy shares what it refers to with the original."
+    )]
+    private static bool HoldsReferences(Type type)
+    {
+        if (!type.IsValueType)
+        {
+            return IsReferenceTyped(type);
+        }
+
+        // A primitive declares a field of its own type (Int32.m_value), so it would never end.
+        if (type.IsPrimitive || type.IsEnum)
+        {
+            return false;
+        }
+
+        return HoldsReferencesCache.GetOrAdd(
+            type,
+            static valueType =>
+                Array.Exists(
+                    valueType.GetFields(DeclaredInstanceFields),
+                    field => field.FieldType != valueType && HoldsReferences(field.FieldType)
+                )
+        );
     }
 
     // Pointer, function-pointer, IntPtr/UIntPtr fields and fixed buffers stay bitwise.

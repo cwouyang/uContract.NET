@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.Serialization;
 using uContract.Exceptions;
 
@@ -501,6 +502,254 @@ public class OldDeepCopyTests
         Assert.Null(exception);
     }
 
+    [Fact]
+    public void Old_WhenObjectRefersToItself_ReproducesTheCycleInTheCopy()
+    {
+        Loop original = new();
+        original.Self = original;
+
+        Loop copy = Contract.Old(() => original);
+
+        Assert.Same(copy, copy.Self);
+        Assert.NotSame(original, copy);
+    }
+
+    [Fact]
+    public void Old_WhenParentAndChildReferToEachOther_ReproducesTheCycleInTheCopy()
+    {
+        Parent original = new();
+        original.Child = new Child { Parent = original };
+
+        Parent copy = Contract.Old(() => original);
+
+        Assert.Same(copy, copy.Child!.Parent);
+        Assert.NotSame(original.Child, copy.Child);
+    }
+
+    [Fact]
+    public void Old_WhenTwoDistinctRecordsAreEqual_KeepsThemDistinct()
+    {
+        Pair<Twin> original = new(new Twin(Seed), new Twin(Seed));
+
+        Pair<Twin> copy = Contract.Old(() => original);
+
+        Assert.NotSame(copy.First, copy.Second);
+    }
+
+    [Fact]
+    public void Old_WhenChainIsVeryDeep_CopiesItOnASmallStack()
+    {
+        Node original = Node.Chain(VeryDeepChainLength);
+        Node? copy = null;
+
+        SmallStack.OnSmallStack(() => copy = Contract.Old(() => original), maxStackSize: SmallStackSize);
+
+        // Walked here, not by Assert.Equal, so that no assertion formats the 50 000-node graph.
+        int mismatches = 0;
+        int visited = 0;
+        for (Node? from = original, to = copy; from is not null; from = from.Next, to = to?.Next)
+        {
+            visited++;
+            if (to is null || ReferenceEquals(from, to) || from.Id != to.Id)
+            {
+                mismatches++;
+            }
+        }
+
+        Assert.Equal(VeryDeepChainLength, visited);
+        Assert.Equal(0, mismatches);
+    }
+
+    [Fact]
+    public void Old_WhenRootIsInItsOwnList_ReproducesTheCycleInTheCopy()
+    {
+        Basket original = new();
+        original.Items.Add(original);
+
+        Basket copy = Contract.Old(() => original);
+
+        Assert.Same(copy, copy.Items[0]);
+        Assert.NotSame(original.Items, copy.Items);
+    }
+
+    [Fact]
+    public void Old_WhenArrayHoldsObjectsNullsAndStrings_CopiesObjectsAndKeepsNullsAndStrings()
+    {
+        Holder<object?[]> original = new([new Address("Main Street"), null, "Alice"]);
+
+        Holder<object?[]> copy = Contract.Old(() => original);
+
+        Address copiedHome = Assert.IsType<Address>(copy.Value[0]);
+        Assert.NotSame(original.Value[0], copiedHome);
+        Assert.Equal("Main Street", copiedHome.Street);
+        Assert.Null(copy.Value[1]);
+        Assert.Same(original.Value[2], copy.Value[2]);
+    }
+
+    [Fact]
+    public void Old_WhenArrayHasNonZeroLowerBounds_KeepsItsShapeAndCopiesItsElements()
+    {
+        int[] lengths = [2, 3];
+        int[] lowerBounds = [1, 5];
+#pragma warning disable IL3050 // Test fixture only: the library itself never creates arrays this way.
+        Array grid = Array.CreateInstance(typeof(Address), lengths, lowerBounds);
+#pragma warning restore IL3050
+        for (int row = 1; row < 3; row++)
+        {
+            for (int column = 5; column < 8; column++)
+            {
+                grid.SetValue(new Address($"{row},{column}"), row, column);
+            }
+        }
+
+        Holder<Array> original = new(grid);
+
+        Holder<Array> copy = Contract.Old(() => original);
+
+        Assert.IsType(grid.GetType(), copy.Value);
+        Assert.Equal(lowerBounds, new[] { copy.Value.GetLowerBound(0), copy.Value.GetLowerBound(1) });
+        Assert.Equal(lengths, new[] { copy.Value.GetLength(0), copy.Value.GetLength(1) });
+        Address copiedCorner = Assert.IsType<Address>(copy.Value.GetValue(2, 7));
+        Assert.NotSame(grid.GetValue(2, 7), copiedCorner);
+        Assert.Equal("2,7", copiedCorner.Street);
+    }
+
+    [Fact]
+    public void Old_WhenArrayIsJagged_CopiesItsInnerArrays()
+    {
+        Holder<Address[][]> original = new([
+            [new Address("a")],
+            [new Address("b"), new Address("c")],
+        ]);
+
+        Holder<Address[][]> copy = Contract.Old(() => original);
+
+        Assert.NotSame(original.Value[1], copy.Value[1]);
+        string[] expectedStreets = ["b", "c"];
+        Assert.Equal(expectedStreets, copy.Value[1].Select(home => home.Street), StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public void Old_WhenArrayMemberHoldsDerivedElementArray_CopiesItAsTheRuntimeArrayType()
+    {
+        Holder<Animal[]> original = new(new Puppy[] { new() });
+
+        Holder<Animal[]> copy = Contract.Old(() => original);
+
+        Puppy[] copiedPuppies = Assert.IsType<Puppy[]>(copy.Value);
+        Assert.NotSame(original.Value[0], copiedPuppies[0]);
+    }
+
+    [Fact]
+    public void Old_WhenArrayHoldsStructsWithReferences_CopiesEachReference()
+    {
+        Holder<Slot[]> original = new([new Slot(new Address("a")), new Slot(new Address("b"))]);
+
+        Holder<Slot[]> copy = Contract.Old(() => original);
+
+        Assert.NotSame(original.Value[0].Home, copy.Value[0].Home);
+        Assert.NotSame(original.Value[1].Home, copy.Value[1].Home);
+        string[] expectedStreets = ["a", "b"];
+        Assert.Equal(expectedStreets, copy.Value.Select(slot => slot.Home.Street), StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public void Old_WhenArrayHoldsOnlyBytes_CopiesItWithoutVisitingItsElements()
+    {
+        Holder<byte[]> original = new(new byte[LargeByteCount]);
+        original.Value[^1] = 1;
+        Stopwatch watch = Stopwatch.StartNew();
+
+        Holder<byte[]> copy = Contract.Old(() => original);
+
+        watch.Stop();
+        Assert.NotSame(original.Value, copy.Value);
+        Assert.Equal(1, copy.Value[^1]);
+        Assert.True(watch.Elapsed < LargeByteCopyBound, $"Copying took {watch.Elapsed.TotalMilliseconds} ms.");
+    }
+
+    [Fact]
+    public void Old_WhenDictionaryHasStringKeys_LooksUpCopiedValues()
+    {
+        Holder<Dictionary<string, Elem>> original = new(
+            new Dictionary<string, Elem>(StringComparer.Ordinal) { ["one"] = new Elem { Value = 1 } }
+        );
+
+        Holder<Dictionary<string, Elem>> copy = Contract.Old(() => original);
+
+        Assert.Equal(1, copy.Value["one"].Value);
+        Assert.NotSame(original.Value["one"], copy.Value["one"]);
+    }
+
+    [Fact]
+    public void Old_WhenHashSetIgnoresCase_FindsAnElementInAnotherCase()
+    {
+        Holder<HashSet<string>> original = new(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a" });
+
+        Holder<HashSet<string>> copy = Contract.Old(() => original);
+
+        Assert.Contains("A", copy.Value);
+    }
+
+    [Fact]
+    public void Old_WhenDictionaryHasRecordKeys_FindsAValueByAnEqualKey()
+    {
+        Holder<Dictionary<RecordKey, Elem>> original = new(
+            new Dictionary<RecordKey, Elem> { [new RecordKey("one")] = new Elem { Value = 1 } }
+        );
+
+        Holder<Dictionary<RecordKey, Elem>> copy = Contract.Old(() => original);
+
+        Assert.Equal(1, copy.Value[new RecordKey("one")].Value);
+    }
+
+    // Accepted limitation: a key without a value GetHashCode keeps its original's identity hash in the
+    // buckets, but the copied key gets a new one, so every lookup misses. Pinned so that a change is noticed.
+    [Fact]
+    public void Old_WhenDictionaryKeyHasIdentityHash_EnumeratesButMissesLookups()
+    {
+        Holder<Dictionary<KeyWithoutOverride, int>> original = new(
+            new Dictionary<KeyWithoutOverride, int> { [new KeyWithoutOverride(1)] = 1, [new KeyWithoutOverride(2)] = 2 }
+        );
+
+        Holder<Dictionary<KeyWithoutOverride, int>> copy = Contract.Old(() => original);
+
+        Assert.Equal([1, 2], copy.Value.Keys.Select(key => key.Id).Order());
+        Assert.False(copy.Value.ContainsKey(copy.Value.Keys.First()));
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenListElementsAreUnchangedAfterOld_DoesNotThrow()
+    {
+        Inventory inventory = new();
+        Inventory oldInventory = Contract.Old(() => inventory);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(inventory, oldInventory));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenFieldOfListElementChangedAfterOld_ListsThatMember()
+    {
+        Inventory inventory = new();
+        Inventory oldInventory = Contract.Old(() => inventory);
+        inventory.Items[0].Value = Seed;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(inventory, oldInventory)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:"
+                + NL
+                + "  - Items"
+                + NL
+                + "  - <Items>k__BackingField",
+            exception.Message.Replace("Postcondition violated: ", "", StringComparison.Ordinal)
+        );
+    }
+
     private class Ancestor
     {
         private int _secret;
@@ -768,6 +1017,84 @@ public class OldDeepCopyTests
     }
 
     private sealed class RecordingStream : MemoryStream;
+
+    private sealed class Loop
+    {
+        public Loop? Self { get; set; }
+    }
+
+    private sealed class Parent
+    {
+        public Child? Child { get; set; }
+    }
+
+    private sealed class Child
+    {
+        public Parent? Parent { get; set; }
+    }
+
+    private sealed record Twin(int Id);
+
+    private sealed class Pair<T>(T first, T second)
+    {
+        public T First { get; } = first;
+        public T Second { get; } = second;
+    }
+
+    // A copy that visited every element would take seconds; a bitwise clone takes milliseconds.
+    private const int LargeByteCount = 50_000_000;
+    private static readonly TimeSpan LargeByteCopyBound = TimeSpan.FromSeconds(1);
+
+    private sealed class Basket
+    {
+        public List<Basket> Items { get; } = [];
+    }
+
+    private readonly struct Slot(Address home)
+    {
+        public Address Home { get; } = home;
+    }
+
+    private sealed class Elem
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed record RecordKey(string Name);
+
+    private sealed class KeyWithoutOverride(int id)
+    {
+        public int Id { get; } = id;
+    }
+
+    private sealed class Inventory
+    {
+        public List<Elem> Items { get; } = [new Elem { Value = 1 }, new Elem { Value = 2 }];
+    }
+
+    // Deep enough to overflow a small stack if the copy recursed once per node.
+    private const int VeryDeepChainLength = 50_000;
+    private const int SmallStackSize = 256 * 1024;
+
+    private sealed class Node
+    {
+        public int Id { get; set; }
+        public Node? Next { get; set; }
+
+        // Built iteratively, so that building it needs no deep stack.
+        public static Node Chain(int length)
+        {
+            Node head = new() { Id = 0 };
+            Node last = head;
+            for (int i = 1; i < length; i++)
+            {
+                last.Next = new Node { Id = i };
+                last = last.Next;
+            }
+
+            return head;
+        }
+    }
 
     private sealed class ResourceBundle(Component component, CancellationTokenSource source, FrozenSet<string> names)
     {
