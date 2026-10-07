@@ -472,9 +472,11 @@ compare".
 
 ## Prior Art
 
-Surveyed: DeepCloner, FastCloner, FastDeepCloner, AnyClone, Burtsev DeepCopy, Baksteen.DeepCopy,
-CloneExtensions, FluentAssertions `BeEquivalentTo`, CompareNETObjects and AssertJ
-`usingRecursiveComparison`.
+Surveyed, each at a pinned commit or tag (links under References): DeepCloner (`da61ac6`),
+FastCloner (`c3fc2eb`, v1.2.6), FastDeepCloner (`5769dbc`), AnyClone (`d40a1bd`), Burtsev DeepCopy
+(`bbe10e6`), Baksteen.DeepCopy (`0471fe3`), CloneExtensions (`4ce9574`), FluentAssertions
+`BeEquivalentTo` (tag `8.11.0`, `9ed9dc0`), CompareNETObjects (`4ecf3dd`, v4.84) and AssertJ
+`usingRecursiveComparison` (tag `assertj-build-3.27.7`).
 
 - **Same as prior art**: a `MemberwiseClone`-based copy without user code (DeepCloner,
   Baksteen.DeepCopy); identity tracking by reference; shared delegates; shared `Task`,
@@ -544,11 +546,18 @@ CloneExtensions, FluentAssertions `BeEquivalentTo`, CompareNETObjects and Assert
 - [`ComparisonContext.cs`](../../src/uContract/ComparisonContext.cs) — the pair memo (R1)
 - [`ReferencePair.cs`](../../src/uContract/ReferencePair.cs) — pairs compared by reference
 - [`tests/uContract.AotSmoke/Program.cs`](../../tests/uContract.AotSmoke/Program.cs) — the smoke checks
-- [DeepCloner](https://github.com/force-net/DeepCloner) and [issue #39 there](https://github.com/force-net/DeepCloner/issues/39)
-- [FastCloner](https://github.com/lofcz/FastCloner)
-- [Compare-Net-Objects](https://github.com/GregFinzer/Compare-Net-Objects)
-- [FluentAssertions](https://github.com/fluentassertions/fluentassertions)
-- [AssertJ Recursive Comparison](https://assertj.github.io/doc/#assertj-core-recursive-comparison)
+- Prior art, pinned:
+  - [DeepCloner @ `da61ac6`](https://github.com/force-net/DeepCloner/blob/da61ac691905bd4bea302f548f42520f670ea667/) (force-net/DeepCloner; `DeepClonerSafeTypes.cs` is in this tree) and [issue #39 there](https://github.com/force-net/DeepCloner/issues/39)
+  - [FastCloner @ `c3fc2eb` (v1.2.6)](https://github.com/lofcz/FastCloner/blob/c3fc2eb89272019dc9e1a3b0896fc7eb9020abd6/)
+  - [FastDeepCloner @ `5769dbc`](https://github.com/AlenToma/FastDeepCloner/blob/5769dbc77b0422d2470a185b6676ac8d1d4a91a9/)
+  - [AnyClone @ `d40a1bd`](https://github.com/replaysMike/AnyClone/blob/d40a1bd1ce26c212ead6836e5d497a4186bcb9e1/AnyClone/AnyClone/)
+  - [Burtsev net-object-deep-copy @ `bbe10e6`](https://github.com/Burtsev-Alexey/net-object-deep-copy/blob/bbe10e6bac16687cb28196f3b45238f1ac7aa072/ObjectExtensions.cs)
+  - [Baksteen.Extensions.DeepCopy @ `0471fe3`](https://github.com/jpmikkers/Baksteen.Extensions.DeepCopy/blob/0471fe3cad55706863461303a1873a29d46723e5/deepcopy/DeepCopyObjectExtensions.cs)
+  - [CloneExtensions @ `4ce9574`](https://github.com/MarcinJuraszek/CloneExtensions/blob/4ce957461dc7a9a9d1e7a3db4dcb4763b468f449/src/CloneExtensions/)
+  - [FluentAssertions tag `8.11.0` (`9ed9dc0`)](https://github.com/fluentassertions/fluentassertions/blob/8.11.0/)
+  - [Compare-Net-Objects @ `4ecf3dd` (v4.84)](https://github.com/GregFinzer/Compare-Net-Objects/blob/4ecf3ddcfd252e276b0b9f59e5a57c1dc5ad74b9/Compare-NET-Objects/)
+  - [AssertJ tag `assertj-build-3.27.7`](https://github.com/assertj/assertj/blob/assertj-build-3.27.7/assertj-core/src/main/java/org/assertj/core/)
+- [AssertJ Recursive Comparison](https://assertj.github.io/doc/#assertj-core-recursive-comparison) (documentation, not pinned)
 - [ADR-0006](0006-serialization-deep-copy.md), [ADR-0007](0007-reflection-field-comparison.md), [ADR-0021](0021-postconditions-under-trimming-and-aot.md)
 
 ---
