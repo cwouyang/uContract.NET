@@ -383,6 +383,67 @@ public class EnsureAssignableRobustnessTests
         Assert.Equal("Fields were modified that are not marked as assignable:\n  - B", exception.Description);
     }
 
+    [Fact]
+    public unsafe void EnsureAssignable_WhenStructPointerFieldsHoldDifferentAddresses_ReportsTheMember()
+    {
+        int first = 1;
+        int second = 1;
+        Bookmark actual = new() { Mark = new Mark { P = &first, L = [1, 2] } };
+        Bookmark expected = new() { Mark = new Mark { P = &second, L = [1, 2] } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Mark\n  - <Mark>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenObjectMemberHoldsBoxedStructsWithChangedListElements_ReportsTheMember()
+    {
+        Box actual = new() { Content = new Bag { L = [1, 2] } };
+        Box expected = new() { Content = new Bag { L = [1, 3] } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Content\n  - <Content>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEnumMemberHoldsEqualBoxedValues_DoesNotThrow()
+    {
+        Dial actual = new() { Setting = Shade.Warm };
+        Dial expected = new() { Setting = Shade.Warm };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEnumMemberHoldsDifferentBoxedValues_ReportsTheMember()
+    {
+        Dial actual = new() { Setting = Shade.Warm };
+        Dial expected = new() { Setting = Shade.Cool };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Setting\n  - <Setting>k__BackingField",
+            exception.Description
+        );
+    }
+
     private interface IAnimal;
 
     private sealed class Elem(int value)
@@ -581,5 +642,10 @@ public class EnsureAssignableRobustnessTests
     private sealed class Buffered
     {
         public RefBuf2 B;
+    }
+
+    private sealed class Dial
+    {
+        public Enum? Setting { get; set; }
     }
 }
