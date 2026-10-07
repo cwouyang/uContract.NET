@@ -104,14 +104,61 @@ internal static class MemberComparison
     // blocked the comparison), not "different". Callers must check it before reporting a difference.
     internal static bool AreEqual(object? actual, object? expected, ComparisonContext context)
     {
-        if (ReferenceEquals(actual, expected))
-        {
-            return true;
-        }
+        Walk? walk = Start(actual, expected, context, out bool equal);
+        return walk is null ? equal : Run(walk, context);
+    }
 
-        if (actual is null || expected is null)
+    // The pairs inside a pair are compared depth-first, in member order, on an explicit stack of walks rather
+    // than by recursion, so a graph of any depth is compared on a thread of any stack size. A difference ends
+    // every enclosing walk, and each of them prepends the segment it was comparing to the path of a blocked
+    // comparison on the way back up.
+    private static bool Run(Walk root, ComparisonContext context)
+    {
+        Stack<Walk> walks = new();
+        walks.Push(root);
+        bool equal = true;
+
+        while (true)
         {
-            return false;
+            Walk walk = walks.Peek();
+            if (equal)
+            {
+                Step step = walk.Next();
+                if (step == Step.Child)
+                {
+                    Walk? child = Start(walk.ChildActual, walk.ChildExpected, context, out equal);
+                    if (child is not null)
+                    {
+                        walks.Push(child);
+                        equal = true;
+                    }
+
+                    continue;
+                }
+
+                equal = step == Step.Equal;
+            }
+            else
+            {
+                context.Hidden?.Prepend(walk.ChildSegment);
+            }
+
+            walks.Pop();
+            walk.End(context, equal);
+            if (walks.Count == 0)
+            {
+                return equal;
+            }
+        }
+    }
+
+    // Decides a pair that needs no walk into it (equal is the outcome), or returns the walk that compares it.
+    private static Walk? Start(object? actual, object? expected, ComparisonContext context, out bool equal)
+    {
+        equal = ReferenceEquals(actual, expected);
+        if (equal || actual is null || expected is null)
+        {
+            return null;
         }
 
         // Values of different runtime types are unequal, and neither is read: the members of one type
@@ -120,24 +167,26 @@ internal static class MemberComparison
         Type expectedType = expected.GetType();
         if (actualType != expectedType && !(IsSequence(actual) && IsSequence(expected)))
         {
-            return false;
+            return null;
         }
 
         // FieldInfo.GetValue boxes a pointer-typed field as a Pointer object, whose Equals compares addresses.
         if (actual is Pointer or string)
         {
-            return Equals(actual, expected);
+            equal = Equals(actual, expected);
+            return null;
         }
 
         if (actual is Delegate actualDelegate && expected is Delegate expectedDelegate)
         {
-            return CompareDelegates(actualDelegate, expectedDelegate);
+            equal = CompareDelegates(actualDelegate, expectedDelegate);
+            return null;
         }
 
         // A shared type (see SharedTypes) is compared by reference, its members never read.
         if (actualType == expectedType && SharedTypes.IsShared(actualType))
         {
-            return false;
+            return null;
         }
 
         // Values of different runtime types reach this point only as two non-string sequences (for example
@@ -145,34 +194,42 @@ internal static class MemberComparison
         // element by element below, not field by field.
         if (actualType.IsValueType && actualType == expectedType)
         {
-            return CompareValues(actual, expected, actualType, context);
+            return StartValues(actual, expected, actualType, out equal);
         }
 
-        return CompareReferences(actual, expected, context);
+        return StartReferences(actual, expected, context, out equal);
     }
 
     // A pair of objects already found equal or different in this call is not walked again, and a pair
     // reached again while it is being compared (through a cycle) counts as equal; see ComparisonContext.
-    // Value types of one runtime type are compared by CompareValues and never reach here, but two value-type
+    // Value types of one runtime type are compared by StartValues and never reach here, but two value-type
     // sequences of different runtime types (for example an ImmutableArray<T> and an ArraySegment<T>) do, as
     // boxes. Such boxes are tracked like any other pair of references, which is sound: a box read from an
     // object- or IEnumerable<T>-typed field is the same reference on every read and holds the same content.
-    private static bool CompareReferences(object actual, object expected, ComparisonContext context)
+    private static Walk? StartReferences(object actual, object expected, ComparisonContext context, out bool equal)
     {
         ReferencePair pair = new(actual, expected);
-        if (context.TryGetSettled(pair, out bool settledEqual))
+        if (context.TryGetSettled(pair, out equal))
         {
-            return settledEqual;
+            return null;
         }
 
         ComparisonContext.Frame frame = context.Enter(pair);
-        bool equal =
+        Walk? walk =
             actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum
-                ? CompareSequences(actualEnum, expectedEnum, context)
-                : CompareRecursively(actual, expected, context);
+                ? StartSequences(actualEnum, expectedEnum)
+                : StartMembers(actual, expected, context);
 
-        context.Leave(pair, frame, equal);
-        return equal;
+        // No walk means the pair was found different (or could not be compared) before any of its contents.
+        if (walk is null)
+        {
+            equal = false;
+            context.Leave(pair, frame, equal);
+            return null;
+        }
+
+        walk.Track(pair, frame);
+        return walk;
     }
 
     // A delegate is compared by the methods it calls, in order. Its targets are never compared or walked,
@@ -217,38 +274,36 @@ internal static class MemberComparison
         }
     }
 
-    private static bool CompareSequences(IEnumerable actual, IEnumerable expected, ComparisonContext context)
+    // Null means the two sequences are different without comparing any element.
+    private static Walk? StartSequences(IEnumerable actual, IEnumerable expected)
     {
         if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
         {
-            return CompareDictionaries(actualDictionary, expectedDictionary, context);
+            return new DictionaryWalk(actualDictionary, expectedDictionary);
         }
 
         // Two sequences of different runtime types: one that cannot be enumerated (a default
         // ImmutableArray<T>) is reported as changed rather than letting its exception escape.
         if (actual.GetType() != expected.GetType())
         {
-            return TryEnumerate(actual, out object?[]? actualItems)
-                && TryEnumerate(expected, out object?[]? expectedItems)
-                && CompareCollections(actualItems, expectedItems, context);
+            return
+                TryEnumerate(actual, out object?[]? actualItems) && TryEnumerate(expected, out object?[]? expectedItems)
+                ? new CollectionWalk(actualItems, expectedItems)
+                : null;
         }
 
-        return CompareCollections(actual, expected, context);
+        return new CollectionWalk(actual.Cast<object?>().ToArray(), expected.Cast<object?>().ToArray());
     }
 
     // A value type decides equality first; when it says "unequal", its elements (for ArraySegment<T> or
     // ImmutableArray<T>) or its fields are compared, because ValueType.Equals calls each field's own
     // Equals, which for most classes (List<T>, arrays) compares by reference.
-    private static bool CompareValues(object actual, object expected, Type type, ComparisonContext context)
+    private static Walk? StartValues(object actual, object expected, Type type, out bool equal)
     {
-        if (Equals(actual, expected))
+        equal = Equals(actual, expected);
+        if (equal || type.IsPrimitive || type.IsEnum)
         {
-            return true;
-        }
-
-        if (type.IsPrimitive || type.IsEnum)
-        {
-            return false;
+            return null;
         }
 
         // ArraySegment<T> and ImmutableArray<T> are compared by what they enumerate: the fields of
@@ -263,28 +318,17 @@ internal static class MemberComparison
             && TryEnumerate(expectedEnum, out object?[]? expectedItems)
         )
         {
-            return CompareCollections(actualItems, expectedItems, context);
+            return new CollectionWalk(actualItems, expectedItems);
         }
 
         // Reflection shows only the first element of an inline array, so it has no fully visible fields.
         if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
         {
-            return false;
-        }
-
-        bool hasFields = false;
-        foreach (MemberAccessor field in GetOrCacheMetadata(type).Members.Where(m => m.IsField))
-        {
-            hasFields = true;
-            if (!AreEqual(field.GetValue(actual), field.GetValue(expected), context))
-            {
-                context.Hidden?.Prepend("." + SourceName(field.Name));
-                return false;
-            }
+            return null;
         }
 
         // A value type without visible fields has only its Equals to decide, and it said "unequal".
-        return hasFields;
+        return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
     }
 
     private static bool IsComparedByElements(Type type)
@@ -317,77 +361,8 @@ internal static class MemberComparison
         return value is IEnumerable and not string;
     }
 
-    internal static bool CompareCollections(IEnumerable actual, IEnumerable expected, ComparisonContext context)
-    {
-        object?[] actualArray = actual.Cast<object?>().ToArray();
-        object?[] expectedArray = expected.Cast<object?>().ToArray();
-
-        if (actualArray.Length != expectedArray.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < actualArray.Length; i++)
-        {
-            object? actualItem = actualArray[i];
-            object? expectedItem = expectedArray[i];
-
-            if (actualItem == null && expectedItem == null)
-            {
-                continue;
-            }
-
-            if (actualItem == null || expectedItem == null)
-            {
-                return false;
-            }
-
-            if (!AreEqual(actualItem, expectedItem, context))
-            {
-                context.Hidden?.Prepend("[]");
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // A dictionary, even one compared with a dictionary of another type, is compared entry by entry, in
-    // enumeration order, by the keys and values its own enumerator reports, not by the KeyValuePair or
-    // DictionaryEntry it yields as a sequence: those differ between dictionary types, and their Equals
-    // calls each value's Equals, which may ignore content that the comparison rules compare.
-    private static bool CompareDictionaries(IDictionary actual, IDictionary expected, ComparisonContext context)
-    {
-        IDictionaryEnumerator actualEntries = actual.GetEnumerator();
-        IDictionaryEnumerator expectedEntries = expected.GetEnumerator();
-
-        while (true)
-        {
-            bool hasActual = actualEntries.MoveNext();
-            bool hasExpected = expectedEntries.MoveNext();
-
-            if (hasActual != hasExpected)
-            {
-                return false;
-            }
-
-            if (!hasActual)
-            {
-                return true;
-            }
-
-            if (
-                !AreEqual(actualEntries.Key, expectedEntries.Key, context)
-                || !AreEqual(actualEntries.Value, expectedEntries.Value, context)
-            )
-            {
-                context.Hidden?.Prepend("[]");
-                return false;
-            }
-        }
-    }
-
-    internal static bool CompareRecursively(object actual, object expected, ComparisonContext context)
+    // Null means the pair could not be compared: its type has no visible members (context.Hidden is set).
+    private static MemberWalk? StartMembers(object actual, object expected, ComparisonContext context)
     {
         Type type = actual.GetType();
         TypeMetadata metadata = GetOrCacheMetadata(type);
@@ -395,22 +370,145 @@ internal static class MemberComparison
         if (MembersAreHidden(type, metadata))
         {
             context.Hidden = new HiddenMembers(type);
-            return false;
+            return null;
         }
 
-        foreach (MemberAccessor member in metadata.Members)
-        {
-            object? actualValue = member.GetValue(actual);
-            object? expectedValue = member.GetValue(expected);
+        return new MemberWalk(metadata.Members, actual, expected, fieldsOnly: false);
+    }
 
-            if (!AreEqual(actualValue, expectedValue, context))
+    private enum Step
+    {
+        // ChildActual and ChildExpected hold the next pair to compare.
+        Child,
+
+        // The walk ended with every pair equal.
+        Equal,
+
+        // The walk ended with a difference found without comparing a pair.
+        Different,
+    }
+
+    // The comparison of one pair's contents, one inner pair at a time. A pair of references being walked is
+    // tracked in the ComparisonContext, and its outcome recorded there when the walk ends.
+    private abstract class Walk
+    {
+        private ReferencePair _pair;
+        private ComparisonContext.Frame _frame;
+        private bool _tracked;
+
+        public object? ChildActual { get; private set; }
+
+        public object? ChildExpected { get; private set; }
+
+        // The path segment of the current child, prepended when the child could not be compared.
+        public abstract string ChildSegment { get; }
+
+        public abstract Step Next();
+
+        public void Track(ReferencePair pair, ComparisonContext.Frame frame)
+        {
+            _pair = pair;
+            _frame = frame;
+            _tracked = true;
+        }
+
+        public void End(ComparisonContext context, bool equal)
+        {
+            if (_tracked)
             {
-                context.Hidden?.Prepend("." + SourceName(member.Name));
-                return false;
+                context.Leave(_pair, _frame, equal);
             }
         }
 
-        return true;
+        protected Step Child(object? actual, object? expected)
+        {
+            ChildActual = actual;
+            ChildExpected = expected;
+            return Step.Child;
+        }
+    }
+
+    // Members in order, reading the actual value before the expected one. A value type is compared by its
+    // fields only, and one without any is different (its Equals said "unequal").
+    private sealed class MemberWalk(List<MemberAccessor> members, object actual, object expected, bool fieldsOnly)
+        : Walk
+    {
+        private int _index = -1;
+        private bool _comparedAny;
+
+        public override string ChildSegment => "." + SourceName(members[_index].Name);
+
+        public override Step Next()
+        {
+            while (++_index < members.Count)
+            {
+                MemberAccessor member = members[_index];
+                if (fieldsOnly && !member.IsField)
+                {
+                    continue;
+                }
+
+                _comparedAny = true;
+                return Child(member.GetValue(actual), member.GetValue(expected));
+            }
+
+            return _comparedAny || !fieldsOnly ? Step.Equal : Step.Different;
+        }
+    }
+
+    private sealed class CollectionWalk(object?[] actual, object?[] expected) : Walk
+    {
+        private int _index = -1;
+
+        public override string ChildSegment => "[]";
+
+        public override Step Next()
+        {
+            if (actual.Length != expected.Length)
+            {
+                return Step.Different;
+            }
+
+            _index++;
+            return _index < actual.Length ? Child(actual[_index], expected[_index]) : Step.Equal;
+        }
+    }
+
+    // A dictionary, even one compared with a dictionary of another type, is compared entry by entry, in
+    // enumeration order, by the keys and values its own enumerator reports, not by the KeyValuePair or
+    // DictionaryEntry it yields as a sequence: those differ between dictionary types, and their Equals
+    // calls each value's Equals, which may ignore content that the comparison rules compare.
+    private sealed class DictionaryWalk(IDictionary actual, IDictionary expected) : Walk
+    {
+        private readonly IDictionaryEnumerator _actualEntries = actual.GetEnumerator();
+        private readonly IDictionaryEnumerator _expectedEntries = expected.GetEnumerator();
+        private bool _keyCompared;
+
+        public override string ChildSegment => "[]";
+
+        public override Step Next()
+        {
+            if (_keyCompared)
+            {
+                _keyCompared = false;
+                return Child(_actualEntries.Value, _expectedEntries.Value);
+            }
+
+            bool hasActual = _actualEntries.MoveNext();
+            bool hasExpected = _expectedEntries.MoveNext();
+            if (hasActual != hasExpected)
+            {
+                return Step.Different;
+            }
+
+            if (!hasActual)
+            {
+                return Step.Equal;
+            }
+
+            _keyCompared = true;
+            return Child(_actualEntries.Key, _expectedEntries.Key);
+        }
     }
 
     // Created only when a comparison is blocked. The path is prepended one segment per level on

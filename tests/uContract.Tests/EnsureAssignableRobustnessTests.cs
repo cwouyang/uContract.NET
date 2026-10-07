@@ -1283,7 +1283,7 @@ public class EnsureAssignableRobustnessTests
         Exception? exception = Record.Exception(() =>
             SmallStack.OnSmallStack(
                 () => Contract.EnsureAssignable(actual, expected),
-                LongChainStackSize,
+                SmallStackSize,
                 LongChainTimeoutMilliseconds
             )
         );
@@ -1300,12 +1300,46 @@ public class EnsureAssignableRobustnessTests
         Exception? exception = Record.Exception(() =>
             SmallStack.OnSmallStack(
                 () => Contract.EnsureAssignable(actual, expected),
-                LongChainStackSize,
+                SmallStackSize,
                 LongChainTimeoutMilliseconds
             )
         );
 
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEqualChainIsVeryDeep_CompletesOnASmallStack()
+    {
+        NodeChain actual = new() { Head = Node.Chain(VeryDeepChainLength) };
+        NodeChain expected = new() { Head = Node.Chain(VeryDeepChainLength) };
+
+        Exception? exception = Record.Exception(() =>
+            SmallStack.OnSmallStack(() => Contract.EnsureAssignable(actual, expected), SmallStackSize)
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenVeryDeepChainDiffersAtItsLastNode_ReportsTheTopLevelMember()
+    {
+        NodeChain actual = new() { Head = Node.Chain(VeryDeepChainLength) };
+        NodeChain expected = new() { Head = Node.Chain(VeryDeepChainLength, lastId: -1) };
+        PostconditionViolationException? exception = null;
+
+        SmallStack.OnSmallStack(
+            () =>
+                exception = Assert.Throws<PostconditionViolationException>(() =>
+                    Contract.EnsureAssignable(actual, expected)
+                ),
+            SmallStackSize
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Head\n  - <Head>k__BackingField",
+            exception!.Description
+        );
     }
 
     [Fact]
@@ -1786,9 +1820,8 @@ public class EnsureAssignableRobustnessTests
     private const int ManyElementsTimeoutMilliseconds = 2000;
 
     // Every node of these chains is compared while a shallower node still is, so bookkeeping that revisits
-    // the nodes found below each node is quadratic. The walk still recurses once per node, hence the stack.
+    // the nodes found below each node is quadratic.
     private const int LongChainLength = 20_000;
-    private const int LongChainStackSize = 256 * 1024 * 1024;
     private const int LongChainTimeoutMilliseconds = 2000;
 
     private sealed class Strand
@@ -1829,6 +1862,36 @@ public class EnsureAssignableRobustnessTests
     private sealed class Strands
     {
         public Strand? Head { get; set; }
+    }
+
+    // Deep enough to overflow a small stack if the walk recursed once per node.
+    private const int VeryDeepChainLength = 50_000;
+    private const int SmallStackSize = 256 * 1024;
+
+    private sealed class Node
+    {
+        public int Id { get; set; }
+        public Node? Next { get; set; }
+
+        // Built iteratively; the last node's Id is lastId.
+        public static Node Chain(int length, int? lastId = null)
+        {
+            Node head = new() { Id = 0 };
+            Node last = head;
+            for (int i = 1; i < length; i++)
+            {
+                last.Next = new Node { Id = i };
+                last = last.Next;
+            }
+
+            last.Id = lastId ?? last.Id;
+            return head;
+        }
+    }
+
+    private sealed class NodeChain
+    {
+        public Node? Head { get; set; }
     }
 
     private sealed class Inventory
