@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -149,9 +150,9 @@ internal static class MemberComparison
         return CompareRecursively(actual, expected, ref hidden);
     }
 
-    // A value type decides equality first; when it says "unequal", its elements (for a sequence) or its
-    // fields are compared, because ValueType.Equals calls each field's own Equals, which for most
-    // classes (List<T>, arrays) compares by reference.
+    // A value type decides equality first; when it says "unequal", its elements (for ArraySegment<T> or
+    // ImmutableArray<T>) or its fields are compared, because ValueType.Equals calls each field's own
+    // Equals, which for most classes (List<T>, arrays) compares by reference.
     private static bool CompareValues(object actual, object expected, Type type, ref HiddenMembers? hidden)
     {
         if (Equals(actual, expected))
@@ -164,11 +165,13 @@ internal static class MemberComparison
             return false;
         }
 
-        // A value-type sequence is compared by what it enumerates: the fields of ArraySegment<T>, for
-        // example, include the whole backing array and the window's offset. A sequence that cannot be
-        // enumerated (a default ImmutableArray<T>) is compared by its fields instead.
+        // ArraySegment<T> and ImmutableArray<T> are compared by what they enumerate: the fields of
+        // ArraySegment<T> include the whole backing array and the window's offset. One that cannot be
+        // enumerated (a default ImmutableArray<T>) is compared by its fields instead. Any other value
+        // type, even an enumerable one, is compared by its fields: they may hold more than it enumerates.
         if (
-            actual is IEnumerable actualEnum
+            IsComparedByElements(type)
+            && actual is IEnumerable actualEnum
             && expected is IEnumerable expectedEnum
             && TryEnumerate(actualEnum, out object?[]? actualItems)
             && TryEnumerate(expectedEnum, out object?[]? expectedItems)
@@ -196,6 +199,17 @@ internal static class MemberComparison
 
         // A value type without visible fields has only its Equals to decide, and it said "unequal".
         return hasFields;
+    }
+
+    private static bool IsComparedByElements(Type type)
+    {
+        if (!type.IsGenericType)
+        {
+            return false;
+        }
+
+        Type definition = type.GetGenericTypeDefinition();
+        return definition == typeof(ArraySegment<>) || definition == typeof(ImmutableArray<>);
     }
 
     private static bool TryEnumerate(IEnumerable sequence, [NotNullWhen(true)] out object?[]? items)

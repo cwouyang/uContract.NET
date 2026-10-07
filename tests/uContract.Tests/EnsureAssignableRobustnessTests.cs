@@ -431,8 +431,10 @@ public class EnsureAssignableRobustnessTests
         Assert.Null(exception);
     }
 
+    // Only ArraySegment<T> and ImmutableArray<T> are compared by their elements; a user-defined inline
+    // array is not, even when it is enumerable, so it follows the inline-array rule above.
     [Fact]
-    public void EnsureAssignable_WhenEnumerableInlineArrayHoldsDistinctListsWithEqualElements_DoesNotThrow()
+    public void EnsureAssignable_WhenEnumerableInlineArrayHoldsDistinctListsWithEqualElements_ReportsTheMember()
     {
         Sequenced actual = new();
         actual.S[0] = [1];
@@ -441,9 +443,11 @@ public class EnsureAssignableRobustnessTests
         expected.S[0] = [1];
         expected.S[1] = [2];
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal("Fields were modified that are not marked as assignable:\n  - S", exception.Description);
     }
 
     [Fact]
@@ -549,6 +553,42 @@ public class EnsureAssignableRobustnessTests
             "Fields were modified that are not marked as assignable:\n  - Bytes\n  - <Bytes>k__BackingField",
             exception.Description
         );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEnumerableStructHoldsDistinctListsWithEqualFields_DoesNotThrow()
+    {
+        Book actual = new()
+        {
+            Page = new Page { Items = [1, 2], Total = 10 },
+        };
+        Book expected = new()
+        {
+            Page = new Page { Items = [1, 2], Total = 10 },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEnumerableStructFieldOutsideItsElementsChanges_ReportsTheMember()
+    {
+        Book actual = new()
+        {
+            Page = new Page { Items = [1, 2], Total = 10 },
+        };
+        Book expected = new()
+        {
+            Page = new Page { Items = [1, 2], Total = 99 },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal("Fields were modified that are not marked as assignable:\n  - Page", exception.Description);
     }
 
     private interface IAnimal;
@@ -785,5 +825,20 @@ public class EnsureAssignableRobustnessTests
     private sealed class Sequenced
     {
         public ListSeq2 S;
+    }
+
+    private struct Page : IEnumerable<int>
+    {
+        public List<int> Items;
+        public int Total;
+
+        public readonly IEnumerator<int> GetEnumerator() => Items.GetEnumerator();
+
+        readonly System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class Book
+    {
+        public Page Page;
     }
 }
