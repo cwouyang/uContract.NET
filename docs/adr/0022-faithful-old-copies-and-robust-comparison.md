@@ -121,7 +121,8 @@ returning `default`, and supplier exceptions propagating unchanged.
 - **B3 — Shared instead of copied.** The copy refers to the original instance when its runtime type
   is one of these:
   - by category: derived from `CriticalFinalizerObject` (`SafeHandle`, `CriticalHandle`); a COM
-    object (`Type.IsCOMObject`) or derived from `ComObject`; in the `System.Collections.Frozen`
+    object (`Type.IsCOMObject`, false under Native AOT and on non-Windows platforms) or derived from
+    `ComObject`; in the `System.Collections.Frozen`
     namespace; a CoreLib comparer (declared in CoreLib and implementing `IEqualityComparer`,
     `IComparer`, `IEqualityComparer<string>` or `IComparer<string>`);
   - by list, the type or a derived type: `string`; `Delegate`; `Type`, `MemberInfo`, `Assembly`,
