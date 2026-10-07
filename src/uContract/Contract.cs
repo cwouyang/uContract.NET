@@ -393,10 +393,15 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "Old<T> uses System.Text.Json serialization for deep copy, which requires unreferenced code."
+        "Old<T> copies T field by field through reflection. The fields of nested types and of runtime types other than T "
+            + "may not be preserved by trimming; such fields are then copied bitwise, so the copy shares them with the original."
     )]
-    [RequiresDynamicCode("Old<T> uses System.Text.Json serialization, which requires dynamic code generation.")]
-    public static T Old<T>(Func<T> supplier)
+    public static T Old<
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields
+        )]
+            T
+    >(Func<T> supplier)
     {
         // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
         ArgumentNullException.ThrowIfNull(supplier);
