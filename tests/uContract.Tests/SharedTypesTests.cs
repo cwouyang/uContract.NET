@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
+using System.Text.RegularExpressions;
 using Microsoft.Win32.SafeHandles;
 
 namespace uContract.Tests;
@@ -43,6 +44,8 @@ public sealed class SharedTypesTests
             { "HttpMessageHandler", () => new HttpClientHandler() },
             { "HttpClient", () => new HttpClient() },
             { "Socket", () => new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) },
+            { "Regex", () => new Regex("^a+$", RegexOptions.None, TimeSpan.FromSeconds(1)) },
+            { "AsyncLocal<T>", () => new AsyncLocal<int>() },
         };
 
     [Theory]
@@ -95,6 +98,16 @@ public sealed class SharedTypesTests
         }
     }
 
+    // System.Threading.Lock exists from .NET 9 only and this suite runs on net8.0, so LockStandIn.cs declares a
+    // type with that full name here. The rule matches the full name, so the stand-in exercises the same check.
+    [Theory]
+    [InlineData(typeof(System.Threading.Lock))]
+    [InlineData(typeof(DerivedLock))]
+    public void IsShared_WhenTypeIsNamedSystemThreadingLockOrDerivesFromIt_ReturnsTrue(Type type)
+    {
+        Assert.True(SharedTypes.IsShared(type));
+    }
+
     [Fact]
     public void IsShared_WhenTypeIsAComImport_ReturnsTrue()
     {
@@ -145,6 +158,8 @@ public sealed class SharedTypesTests
     }
 
     private sealed class RecordingStream : MemoryStream;
+
+    private sealed class DerivedLock : System.Threading.Lock;
 
     private sealed class InvalidCriticalHandle : CriticalHandleZeroOrMinusOneIsInvalid
     {

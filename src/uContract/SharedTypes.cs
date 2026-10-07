@@ -11,6 +11,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices.Marshalling;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -52,6 +53,7 @@ internal static class SharedTypes
         typeof(HttpMessageHandler),
         typeof(HttpClient),
         typeof(Socket),
+        typeof(Regex),
     ];
 
     // A listed open generic type matches every construction of it and every type derived from one.
@@ -61,7 +63,11 @@ internal static class SharedTypes
         typeof(Lazy<>),
         typeof(WeakReference<>),
         typeof(ConditionalWeakTable<,>),
+        typeof(AsyncLocal<>),
     ];
+
+    // A listed type that net8.0 cannot reference, matched by full name; it and every type derived from it.
+    private const string LockFullName = "System.Threading.Lock";
 
     internal static bool IsShared(Type type)
     {
@@ -72,7 +78,8 @@ internal static class SharedTypes
     {
         return IsInSharedCategory(type)
             || Listed.Any(listed => listed.IsAssignableFrom(type))
-            || ListedGenerics.Any(definition => DerivesFromGeneric(type, definition));
+            || ListedGenerics.Any(definition => DerivesFromGeneric(type, definition))
+            || DerivesFromNamed(type, LockFullName);
     }
 
     // Handles (SafeHandle, CriticalHandle), COM objects, frozen collections and CoreLib comparers.
@@ -94,6 +101,19 @@ internal static class SharedTypes
                 || typeof(IEqualityComparer<string>).IsAssignableFrom(type)
                 || typeof(IComparer<string>).IsAssignableFrom(type)
             );
+    }
+
+    private static bool DerivesFromNamed(Type type, string fullName)
+    {
+        for (Type? current = type; current is not null; current = current.BaseType)
+        {
+            if (string.Equals(current.FullName, fullName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool DerivesFromGeneric(Type type, Type genericDefinition)

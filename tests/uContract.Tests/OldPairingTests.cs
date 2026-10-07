@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -733,5 +734,56 @@ public class OldPairingTests
         string[] entries = ViolationsOf(() => Contract.EnsureAssignable(root, old, NoPattern));
 
         Assert.Equal(Entries("Id", "<Id>k__BackingField"), entries);
+    }
+
+    // ---- P14, P15: a Regex and an AsyncLocal field, shared rather than copied ----
+
+    private sealed class EmailValidator
+    {
+        private readonly Regex _address = new("^[^@]+@[^@]+$", RegexOptions.None, TimeSpan.FromSeconds(1));
+
+        public bool Validate(string candidate)
+        {
+            var old = Contract.Old(() => this);
+            bool valid = _address.IsMatch(candidate);
+            Contract.EnsureAssignable(this, old, NoPattern);
+            return valid;
+        }
+    }
+
+    [Fact]
+    public void Pairing_RegexField_WhenOnlyTheRegexIsUsed_DoesNotThrow()
+    {
+        EmailValidator validator = new();
+
+        Exception? exception = Record.Exception(() => validator.Validate("ada@example.com"));
+
+        Assert.Null(exception);
+    }
+
+    private sealed class ScopedCounter
+    {
+        private readonly AsyncLocal<int> _scope = new();
+
+        public AsyncLocal<int> Scope => _scope;
+
+        public void Enter(int scope)
+        {
+            _scope.Value = scope;
+        }
+    }
+
+    [Fact]
+    public void Pairing_AsyncLocalField_WhenNothingChanged_DoesNotThrowAndSharesTheInstance()
+    {
+        const int Scope = 5;
+        ScopedCounter counter = new();
+        counter.Enter(Scope);
+        var old = Contract.Old(() => counter);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(counter, old, NoPattern));
+
+        Assert.Null(exception);
+        Assert.Same(counter.Scope, old.Scope);
     }
 }
