@@ -1111,7 +1111,7 @@ public static class Contract
             object? expectedValue = member.GetValue(expected!);
             MemberComparison.HiddenMembers? hidden = null;
 
-            if (!MemberComparison.AreEqual(actualValue, expectedValue, member.MemberType, ref hidden))
+            if (!MemberComparison.AreEqual(actualValue, expectedValue, ref hidden))
             {
                 if (hidden is not null)
                 {

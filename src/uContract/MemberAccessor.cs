@@ -24,11 +24,9 @@ internal sealed class MemberAccessor
         {
             case PropertyInfo prop:
                 _property = prop;
-                MemberType = prop.PropertyType;
                 break;
             case FieldInfo field:
                 _field = field;
-                MemberType = field.FieldType;
                 break;
             default:
                 throw new ArgumentException("Member must be PropertyInfo or FieldInfo", nameof(member));
@@ -39,11 +37,6 @@ internal sealed class MemberAccessor
     ///     Gets the name of the member.
     /// </summary>
     public string Name { get; }
-
-    /// <summary>
-    ///     Gets the type of the member.
-    /// </summary>
-    public Type MemberType { get; }
 
     /// <summary>
     ///     Gets a value indicating whether the member is a field.

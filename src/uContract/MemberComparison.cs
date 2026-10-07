@@ -100,7 +100,7 @@ internal static class MemberComparison
 
     // A false return with hidden set means "could not compare" (a type with no visible members
     // blocked the comparison), not "different". Callers must check hidden before reporting a difference.
-    internal static bool AreEqual(object? actual, object? expected, Type memberType, ref HiddenMembers? hidden)
+    internal static bool AreEqual(object? actual, object? expected, ref HiddenMembers? hidden)
     {
         if (ReferenceEquals(actual, expected))
         {
@@ -131,7 +131,7 @@ internal static class MemberComparison
             return CompareValues(actual, expected, actualType, ref hidden);
         }
 
-        if (memberType.IsValueType || memberType == typeof(string))
+        if (actual is string)
         {
             return Equals(actual, expected);
         }
@@ -141,7 +141,7 @@ internal static class MemberComparison
             return CompareCollections(actualEnum, expectedEnum, ref hidden);
         }
 
-        return actualType.IsClass ? CompareRecursively(actual, expected, ref hidden) : Equals(actual, expected);
+        return CompareRecursively(actual, expected, ref hidden);
     }
 
     private static unsafe bool PointToSameAddress(Pointer actual, Pointer expected)
@@ -158,22 +158,24 @@ internal static class MemberComparison
             return true;
         }
 
-        List<MemberAccessor> fields = GetOrCacheMetadata(type).Members.Where(m => m.IsField).ToList();
-        if (type.IsPrimitive || type.IsEnum || fields.Count == 0)
+        if (type.IsPrimitive || type.IsEnum)
         {
             return false;
         }
 
-        foreach (MemberAccessor field in fields)
+        bool hasFields = false;
+        foreach (MemberAccessor field in GetOrCacheMetadata(type).Members.Where(m => m.IsField))
         {
-            if (!AreEqual(field.GetValue(actual), field.GetValue(expected), field.MemberType, ref hidden))
+            hasFields = true;
+            if (!AreEqual(field.GetValue(actual), field.GetValue(expected), ref hidden))
             {
                 hidden?.Prepend("." + SourceName(field.Name));
                 return false;
             }
         }
 
-        return true;
+        // A value type without visible fields has only its Equals to decide, and it said "unequal".
+        return hasFields;
     }
 
     private static bool IsSequence(object value)
@@ -206,8 +208,7 @@ internal static class MemberComparison
                 return false;
             }
 
-            Type itemType = actualItem.GetType();
-            if (!AreEqual(actualItem, expectedItem, itemType, ref hidden))
+            if (!AreEqual(actualItem, expectedItem, ref hidden))
             {
                 hidden?.Prepend("[]");
                 return false;
@@ -233,7 +234,7 @@ internal static class MemberComparison
             object? actualValue = member.GetValue(actual);
             object? expectedValue = member.GetValue(expected);
 
-            if (!AreEqual(actualValue, expectedValue, member.MemberType, ref hidden))
+            if (!AreEqual(actualValue, expectedValue, ref hidden))
             {
                 hidden?.Prepend("." + SourceName(member.Name));
                 return false;
