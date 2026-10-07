@@ -160,8 +160,7 @@ internal static class MemberComparison
             return true;
         }
 
-        // Reflection shows only the first element of an inline array, so it has no fully visible fields.
-        if (type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        if (type.IsPrimitive || type.IsEnum)
         {
             return false;
         }
@@ -177,6 +176,12 @@ internal static class MemberComparison
         )
         {
             return CompareCollections(actualItems, expectedItems, ref hidden);
+        }
+
+        // Reflection shows only the first element of an inline array, so it has no fully visible fields.
+        if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        {
+            return false;
         }
 
         bool hasFields = false;

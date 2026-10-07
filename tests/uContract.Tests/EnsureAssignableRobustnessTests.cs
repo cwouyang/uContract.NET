@@ -432,6 +432,21 @@ public class EnsureAssignableRobustnessTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenEnumerableInlineArrayHoldsDistinctListsWithEqualElements_DoesNotThrow()
+    {
+        Sequenced actual = new();
+        actual.S[0] = [1];
+        actual.S[1] = [2];
+        Sequenced expected = new();
+        expected.S[0] = [1];
+        expected.S[1] = [2];
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public unsafe void EnsureAssignable_WhenStructPointerFieldsHoldDifferentAddresses_ReportsTheMember()
     {
         int first = 1;
@@ -755,5 +770,20 @@ public class EnsureAssignableRobustnessTests
     private sealed class Labelled
     {
         public StringBuf2 Labels;
+    }
+
+    [System.Runtime.CompilerServices.InlineArray(2)]
+    private struct ListSeq2 : IEnumerable<List<int>>
+    {
+        private List<int> _element;
+
+        public IEnumerator<List<int>> GetEnumerator() => new List<List<int>> { this[0], this[1] }.GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class Sequenced
+    {
+        public ListSeq2 S;
     }
 }
