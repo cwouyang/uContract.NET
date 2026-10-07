@@ -277,28 +277,14 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_WhenTypeNotSerializable_ThrowsInvalidOperationException()
+    public void Old_WhenTypeHasDelegateMember_ReturnsCopySharingTheDelegate()
     {
         NonSerializableType obj = new();
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => Contract.Old(() => obj));
+        NonSerializableType copy = Contract.Old(() => obj);
 
-        Assert.Contains("cannot be serialized", exception.Message);
-        Assert.IsType<NotSupportedException>(exception.InnerException);
-    }
-
-    [Fact]
-    public void Old_WhenTypeNotSerializable_MessageIsExact()
-    {
-        NonSerializableType obj = new();
-
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => Contract.Old(() => obj));
-
-        Assert.Equal(
-            $"Type {nameof(NonSerializableType)} cannot be serialized for Old<T>(). "
-                + "Ensure the type is JSON-serializable.",
-            exception.Message
-        );
+        Assert.NotSame(obj, copy);
+        Assert.Same(obj.Callback, copy.Callback);
     }
 
     [Fact]
@@ -361,36 +347,23 @@ public class OldTests
     }
 
     [Fact]
-    public void Old_WhenTypeCannotBeDeserialized_ThrowsInvalidOperationException()
+    public void Old_WhenDeclaredTypeIsInterface_ReturnsCopyOfRuntimeType()
     {
         IHasOwner account = new OwnedAccount { Owner = "Alice" };
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            Contract.Old(() => account)
-        );
+        IHasOwner copy = Contract.Old(() => account);
 
-        Assert.Equal(
-            $"Type {nameof(IHasOwner)} cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.",
-            exception.Message
-        );
-        Assert.IsType<NotSupportedException>(exception.InnerException);
+        Assert.IsType<OwnedAccount>(copy);
     }
 
     [Fact]
-    public void Old_WhenPropertyGetterThrowsNotSupportedExceptionDuringCopy_ThrowsInvalidOperationException()
+    public void Old_WhenPropertyGetterThrowsNotSupportedException_ReturnsCopyWithoutRunningGetter()
     {
         UnsupportedLengthGetter source = new();
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            Contract.Old(() => source)
-        );
+        UnsupportedLengthGetter copy = Contract.Old(() => source);
 
-        Assert.Equal(
-            $"Type {nameof(UnsupportedLengthGetter)} cannot be serialized for Old<T>(). "
-                + "Ensure the type is JSON-serializable.",
-            exception.Message
-        );
-        Assert.IsAssignableFrom<NotSupportedException>(exception.InnerException);
+        Assert.NotSame(source, copy);
     }
 }
 

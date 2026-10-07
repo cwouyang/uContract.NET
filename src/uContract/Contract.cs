@@ -355,39 +355,30 @@ public static class Contract
 
     /// <summary>
     ///     Captures the state of an object for use in postcondition validation.
-    ///     Creates a deep copy via JSON serialization.
+    ///     Creates a deep copy field by field, private state included.
     /// </summary>
-    /// <typeparam name="T">The type of object to capture. Must be JSON-serializable.</typeparam>
+    /// <typeparam name="T">The type of object to capture.</typeparam>
     /// <param name="supplier">Lazy-evaluated supplier that provides the object to capture.</param>
     /// <returns>
     ///     A deep copy of the object when postconditions are enabled;
     ///     default value when postconditions are disabled or recursion guard is active.
     /// </returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="supplier" /> is null.</exception>
-    /// <exception cref="InvalidOperationException">
-    ///     Thrown when the type is not JSON-serializable (e.g., delegates, DbContext), or when the supplier
-    ///     returns a non-null value and the application has disabled reflection-based JSON serialization,
-    ///     which is the default in trimmed and Native AOT applications.
-    /// </exception>
     /// <remarks>
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
     ///     The supplier is evaluated lazily to ensure zero overhead when contracts are disabled.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
-    ///     Deep copy is performed via System.Text.Json serialization, which requires the type to be serializable.
+    ///     Each copied object starts as a bitwise clone, so every instance field keeps the original's value,
+    ///     public or not, readonly or not, declared on the type or on a base class. Each reference-typed field
+    ///     visible to reflection is then replaced by the copy of what it refers to. A <see cref="string" />,
+    ///     a delegate and other resource or identity types are shared with the original, not copied.
+    ///     An instance reached more than once is copied once, so cycles are reproduced.
+    ///     No user code runs while copying: no constructor, property accessor, Equals, GetHashCode or
+    ///     serialization callback.
     ///     This method supports both reference types and value types (no generic constraint).
     ///     An exception thrown by the supplier propagates unchanged.
-    ///     Of the exceptions raised while copying, only <see cref="NotSupportedException" /> (or a derived type)
-    ///     is reported as <see cref="InvalidOperationException" />; other exception types from the serializer
-    ///     propagate unchanged, for example a <see cref="JsonException" /> for an object graph deeper than the
-    ///     serializer's maximum depth.
-    ///     In a trimmed or Native AOT application the copy needs reflection-based JSON serialization: set the
-    ///     MSBuild property <c>JsonSerializerIsReflectionEnabledByDefault</c> to <c>true</c> in the application
-    ///     project, and under Native AOT also preserve the copied types, for example with
-    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c>. Otherwise this method
-    ///     throws <see cref="InvalidOperationException" /> with a message that names what to do; setting
-    ///     <c>DBC_POST=off</c> disables all postcondition checks, this method included.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -433,31 +424,40 @@ public static class Contract
                 return default!;
             }
 
-            if (!RuntimeFacts.IsJsonReflectionEnabled)
-            {
-                throw new InvalidOperationException(OldJsonReflectionDisabledMessage);
-            }
-
-            // Deep copy via JSON serialization
-            try
-            {
-                string json = JsonSerializer.Serialize(obj, JsonOptions);
-                return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
-            }
-            catch (NotSupportedException ex)
-            {
-                string message =
-                    $"Type {typeof(T).Name} cannot be serialized for Old<T>(). "
-                    + "Ensure the type is JSON-serializable.";
-                throw new InvalidOperationException(
-                    RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
-                    ex
-                );
-            }
+            return DeepCopier.Copy(obj);
         }
         finally
         {
             Entered.Value = false;
+        }
+    }
+
+    // The former JSON copy of Old<T>: no longer called, kept until a later structural change removes it.
+    [RequiresUnreferencedCode(
+        "Old<T> uses System.Text.Json serialization for deep copy, which requires unreferenced code."
+    )]
+    [RequiresDynamicCode("Old<T> uses System.Text.Json serialization, which requires dynamic code generation.")]
+    private static T CopyViaJson<T>(T obj)
+    {
+        if (!RuntimeFacts.IsJsonReflectionEnabled)
+        {
+            throw new InvalidOperationException(OldJsonReflectionDisabledMessage);
+        }
+
+        // Deep copy via JSON serialization
+        try
+        {
+            string json = JsonSerializer.Serialize(obj, JsonOptions);
+            return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
+        }
+        catch (NotSupportedException ex)
+        {
+            string message =
+                $"Type {typeof(T).Name} cannot be serialized for Old<T>(). " + "Ensure the type is JSON-serializable.";
+            throw new InvalidOperationException(
+                RuntimeFacts.IsDynamicCodeSupported ? message : message + OldNativeAotSerializationHint,
+                ex
+            );
         }
     }
 
