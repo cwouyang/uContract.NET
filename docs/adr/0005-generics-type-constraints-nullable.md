@@ -475,8 +475,9 @@ support both reference and value types.
 [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) replaces the JSON copy with a
 reflection copy.
 
-- The `Old<T>()` listings above, and the statements that System.Text.Json is required for
-  `Old<T>()`, describe the old mechanism. They stay as the historical record.
+- The `Old<T>()` listings above, and the statements above that rely on System.Text.Json (the
+  listing comment under Details, Alternative 2's "Unnecessary limitation" and the ADR-0006 line
+  under Related Decisions), describe the old mechanism. They stay as the historical record.
 - Value types are still supported. A value is copied bitwise, and the reference-typed fields inside
   it are replaced by their copies.
 - `T` of `Old<T>()` now carries `[DynamicallyAccessedMembers(PublicFields | NonPublicFields)]`.

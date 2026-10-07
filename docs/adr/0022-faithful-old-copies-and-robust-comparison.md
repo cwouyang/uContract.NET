@@ -258,6 +258,9 @@ and its source of visibility.
 
 Every prediction of the design held under Native AOT:
 
+- The core copy works: private state is kept (check 22), a private reference is copied when the
+  visibility comes from `T` only (check 23) or through an annotated generic forwarder (check 24), and
+  `Old(() => this)` in a base method keeps the derived runtime type and its field (check 25).
 - A base class's private field is hidden. Its bitwise value is kept and its reference is shared. A
   base auto-property `List<Line>` changed by an indexer set after `Old` **passes silently** (check
   28). With `DynamicDependency(All, typeof(Derived))`, an `Add` is detected (check 29). An indexer
@@ -268,9 +271,14 @@ Every prediction of the design held under Native AOT:
 - A nested unpreserved class keeps its bitwise value and shares its leaf (check 26). With
   `DynamicDependency` it is copied (check 27).
 - `Dictionary` entries are compared through `IDictionaryEnumerator` (R7) (checks 33–35).
+- With `Dictionary<,>.Entry` visible (default build), a field write on a dictionary value after
+  `Old` is detected (check 36). A `string` in an `object` field is shared, not copied (check 41).
 - R3: a changed `DateTime` and a changed `int` are violations (checks 42, 43).
 - R4: the same method on a different target is equal (check 44).
-- R8: an interface-typed member that holds an equal hidden record is equal (checks 13, 53).
+- R8: a hidden record equal to its copy is equal, whether reached through its own type (check 13)
+  or through an interface-typed member (check 53).
+- R8: a hidden class whose `Equals` is reference equality reports "cannot compare", unchanged or
+  changed (checks 10, 11), and so does a hidden list element type (check 14).
 - Arrays, struct arrays and `Nullable<T>[]` are copied (checks 37–39).
 - The `[UnsafeAccessor]` `MemberwiseClone` works, and a dropped copy is not finalized (check 40).
 - The namespace rule for frozen collections works (checks 49, 50).
@@ -335,8 +343,9 @@ because the JSON error came first.
   targets, state inside B3 instances). The CHANGELOG lists each case.
 - ❌ Under Native AOT, hidden fields are copied shallowly, and some changes pass silently (see Known
   Limitations).
-- ❌ Under Native AOT, a changed hidden record reached through the comparison reports "cannot
-  compare" where 2.0.0 reported a violation (D13).
+- ❌ Under Native AOT, an interface-typed member that holds a changed hidden record reports "cannot
+  compare" where 2.0.0 reported a violation (D13). A member declared as the record type already
+  reported "cannot compare" in 2.0.0.
 - ❌ Callers that forward a generic parameter to `Old` get `IL2091`.
 - ❌ Everything reachable is copied, including service graphs. `Old(() => _balance)` is cheaper than
   `Old(() => this)`.
@@ -369,6 +378,10 @@ explicitly on 2026-10-07.
 - **`[InlineArray]` structs and fixed-size buffers** (accepted by the user). Reflection and
   `ValueType.Equals` see only the first element. A change in a later element, with an equal first
   element, passes silently, as in 2.0.0. An inline array whose `Equals` is false is always reported.
+- **Inline arrays of references.** With an `Old` copy, an `[InlineArray]` of reference-type elements
+  is reported on every call, so list it as assignable.
+- **Disposing a copy.** Disposing a copy of a user type that wraps a shared or bitwise-copied
+  resource (`GCHandle`, `IntPtr`, a held `SpinLock`) affects the original.
 - **Native AOT, hidden collection storage.** A collection whose storage is a nested struct or node
   type (`Dictionary<,>.Entry`, `HashSet<T>.Entry`, `ConcurrentDictionary` nodes,
   `LinkedListNode<T>`) needs that type's own fields visible; the annotation on `T` does not reach it.
@@ -547,7 +560,7 @@ FastCloner (`c3fc2eb`, v1.2.6), FastDeepCloner (`5769dbc`), AnyClone (`d40a1bd`)
 - [`ReferencePair.cs`](../../src/uContract/ReferencePair.cs) — pairs compared by reference
 - [`tests/uContract.AotSmoke/Program.cs`](../../tests/uContract.AotSmoke/Program.cs) — the smoke checks
 - Prior art, pinned:
-  - [DeepCloner @ `da61ac6`](https://github.com/force-net/DeepCloner/blob/da61ac691905bd4bea302f548f42520f670ea667/) (force-net/DeepCloner; `DeepClonerSafeTypes.cs` is in this tree) and [issue #39 there](https://github.com/force-net/DeepCloner/issues/39)
+  - [DeepCloner @ `da61ac6`](https://github.com/force-net/DeepCloner/blob/da61ac691905bd4bea302f548f42520f670ea667/) (force-net/DeepCloner; the survey cites `DeepClonerSafeTypes.cs`; its path is not pinned) and [issue #39 there](https://github.com/force-net/DeepCloner/issues/39) (issue; not pinned)
   - [FastCloner @ `c3fc2eb` (v1.2.6)](https://github.com/lofcz/FastCloner/blob/c3fc2eb89272019dc9e1a3b0896fc7eb9020abd6/)
   - [FastDeepCloner @ `5769dbc`](https://github.com/AlenToma/FastDeepCloner/blob/5769dbc77b0422d2470a185b6676ac8d1d4a91a9/)
   - [AnyClone @ `d40a1bd`](https://github.com/replaysMike/AnyClone/blob/d40a1bd1ce26c212ead6836e5d497a4186bcb9e1/AnyClone/AnyClone/)
