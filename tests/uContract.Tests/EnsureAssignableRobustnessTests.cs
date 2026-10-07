@@ -591,6 +591,40 @@ public class EnsureAssignableRobustnessTests
         Assert.Equal("Fields were modified that are not marked as assignable:\n  - Page", exception.Description);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenExpectedSequenceIsDefaultImmutableArrayAndActualIsList_ReportsTheMember()
+    {
+        List<byte> list = [1];
+        Frame actual = new() { Bytes = list };
+        Frame expected = new() { Bytes = default(ImmutableArray<byte>) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Bytes\n  - <Bytes>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenActualSequenceIsDefaultImmutableArrayAndExpectedIsList_ReportsTheMember()
+    {
+        List<byte> list = [1];
+        Frame actual = new() { Bytes = default(ImmutableArray<byte>) };
+        Frame expected = new() { Bytes = list };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Bytes\n  - <Bytes>k__BackingField",
+            exception.Description
+        );
+    }
+
     private interface IAnimal;
 
     private sealed class Elem(int value)
