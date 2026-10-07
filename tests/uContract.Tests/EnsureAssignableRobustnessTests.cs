@@ -466,6 +466,44 @@ public class EnsureAssignableRobustnessTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenArraySegmentsDifferOnlyOutsideTheirWindow_DoesNotThrow()
+    {
+        Frame actual = new() { Bytes = new ArraySegment<byte>([1, 2, 3, 4], 0, 2) };
+        Frame expected = new() { Bytes = new ArraySegment<byte>([1, 2, 9, 9], 0, 2) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenArraySegmentsHoldEqualWindowsAtDifferentOffsets_DoesNotThrow()
+    {
+        Frame actual = new() { Bytes = new ArraySegment<byte>([1, 2, 0, 0], 0, 2) };
+        Frame expected = new() { Bytes = new ArraySegment<byte>([0, 0, 1, 2], 2, 2) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenArraySegmentElementInsideTheWindowChanges_ReportsTheMember()
+    {
+        Frame actual = new() { Bytes = new ArraySegment<byte>([1, 2, 3, 4], 0, 2) };
+        Frame expected = new() { Bytes = new ArraySegment<byte>([1, 7, 3, 4], 0, 2) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Bytes\n  - <Bytes>k__BackingField",
+            exception.Description
+        );
+    }
+
     private interface IAnimal;
 
     private sealed class Elem(int value)
@@ -551,6 +589,11 @@ public class EnsureAssignableRobustnessTests
     private sealed class Window
     {
         public ArraySegment<Elem> Items { get; set; }
+    }
+
+    private sealed class Frame
+    {
+        public IReadOnlyList<byte> Bytes { get; set; } = [];
     }
 
     private readonly record struct Entry(List<int> L);

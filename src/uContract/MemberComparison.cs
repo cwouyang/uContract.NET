@@ -149,7 +149,8 @@ internal static class MemberComparison
         return CompareRecursively(actual, expected, ref hidden);
     }
 
-    // A value type decides equality first; when it says "unequal", its fields are compared, because
+    // A value type decides equality first; when it says "unequal", its elements (for a sequence) or its
+    // fields are compared, because
     // ValueType.Equals calls each field's own Equals, which for most classes (List<T>, arrays) compares
     // by reference.
     private static bool CompareValues(object actual, object expected, Type type, ref HiddenMembers? hidden)
@@ -163,6 +164,13 @@ internal static class MemberComparison
         if (type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
         {
             return false;
+        }
+
+        // A value-type sequence is compared by what it enumerates: the fields of ArraySegment<T>, for
+        // example, include the whole backing array and the window's offset.
+        if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)
+        {
+            return CompareCollections(actualEnum, expectedEnum, ref hidden);
         }
 
         bool hasFields = false;
