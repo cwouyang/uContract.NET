@@ -392,23 +392,6 @@ public class OldTests
         );
         Assert.IsAssignableFrom<NotSupportedException>(exception.InnerException);
     }
-
-    private interface IHasOwner
-    {
-        string Owner { get; }
-    }
-
-    private sealed class OwnedAccount : IHasOwner
-    {
-        public string Owner { get; set; } = "";
-    }
-
-    private sealed class UnsupportedLengthGetter
-    {
-        private readonly string _message = "length is not supported";
-
-        public long Length => throw new NotSupportedException(_message);
-    }
 }
 
 public class EnsureNotNullTests
@@ -1474,13 +1457,6 @@ public class EnsureAssignableTests
         public EmptyType Child { get; set; } = new();
     }
 
-    private sealed class HoldsLock
-    {
-        private readonly object _lock = new();
-
-        public object LockHandle => _lock;
-    }
-
     private sealed class ThrowingGetter
     {
         private readonly string _message = "getter failed";
@@ -1559,7 +1535,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithCustomer first = new() { Customer = new NoVisibleMembers() };
         OrderWithCustomer second = new() { Customer = new NoVisibleMembers() };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Contains(typeof(NoVisibleMembers).ToString(), cannotCompare.Message);
@@ -1578,7 +1554,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         HoldsLock first = new();
         HoldsLock second = new();
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         Assert.Null(exception);
     }
@@ -1589,7 +1565,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         NoVisibleMembers first = new();
         NoVisibleMembers second = new();
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Contains(typeof(NoVisibleMembers).ToString(), cannotCompare.Message);
@@ -1605,7 +1581,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithAddressedCustomer first = new();
         OrderWithAddressedCustomer second = new();
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Contains("'OrderWithAddressedCustomer.Customer.Address'", cannotCompare.Message);
@@ -1618,7 +1594,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithLines first = new() { Lines = [new NoVisibleMembers()] };
         OrderWithLines second = new() { Lines = [new NoVisibleMembers()] };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Contains("'OrderWithLines.Lines[]'", cannotCompare.Message);
@@ -1631,7 +1607,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithLinedCustomer first = new();
         OrderWithLinedCustomer second = new();
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Contains("'OrderWithLinedCustomer.Customer.Lines[]'", cannotCompare.Message);
@@ -1644,7 +1620,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithNonPublicCustomer first = new();
         OrderWithNonPublicCustomer second = new();
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Contains("'OrderWithNonPublicCustomer.Customer.Address'", cannotCompare.Message);
@@ -1658,7 +1634,9 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithCustomer first = new() { Customer = new NoVisibleMembers() };
         OrderWithCustomer second = new() { Customer = new NoVisibleMembers() };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second, "Customer"));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() =>
+            Contract.EnsureAssignable(first, second, "Customer")
+        );
 
         Assert.Null(exception);
     }
@@ -1669,8 +1647,8 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithCustomer first = new() { Customer = new NoVisibleMembers() };
         OrderWithCustomer second = new() { Customer = new NoVisibleMembers() };
 
-        Exception? firstRun = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
-        Exception? secondRun = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? firstRun = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? secondRun = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         Assert.IsType<InvalidOperationException>(firstRun);
         Assert.IsType<InvalidOperationException>(secondRun);
@@ -1682,7 +1660,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithCustomer first = new() { OrderId = 1, Customer = new NoVisibleMembers() };
         OrderWithCustomer second = new() { OrderId = 2, Customer = new NoVisibleMembers() };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         Assert.IsType<InvalidOperationException>(exception);
     }
@@ -1693,7 +1671,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithCustomer actual = new() { Customer = null };
         OrderWithCustomer expected = new() { Customer = new NoVisibleMembers() };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
         Assert.IsType<PostconditionViolationException>(exception);
     }
@@ -1704,7 +1682,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithCustomer actual = new() { Customer = new NoVisibleMembers() };
         OrderWithCustomer expected = new() { Customer = null };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
         Assert.IsType<PostconditionViolationException>(exception);
     }
@@ -1715,7 +1693,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithCustomer first = new() { Customer = null };
         OrderWithCustomer second = new() { Customer = null };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         Assert.Null(exception);
     }
@@ -1727,7 +1705,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithCustomer first = new() { Customer = shared };
         OrderWithCustomer second = new() { Customer = shared };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         Assert.Null(exception);
     }
@@ -1738,7 +1716,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         OrderWithLines first = new() { Lines = [] };
         OrderWithLines second = new() { Lines = [] };
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         Assert.Null(exception);
     }
@@ -1749,22 +1727,9 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         object first = new();
         object second = new();
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         Assert.Null(exception);
-    }
-
-    private static Exception? RecordWithoutDynamicCode(Action act)
-    {
-        try
-        {
-            RuntimeFacts.DynamicCodeSupportedOverride = false;
-            return Record.Exception(act);
-        }
-        finally
-        {
-            RuntimeFacts.DynamicCodeSupportedOverride = null;
-        }
     }
 
     private sealed class NoVisibleMembers;
@@ -1811,13 +1776,6 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         public int OrderId { get; set; }
         public NoVisibleMembers? Customer { get; set; }
     }
-
-    private sealed class HoldsLock
-    {
-        private readonly object _lock = new();
-
-        public object LockHandle => _lock;
-    }
 }
 
 /// <summary>
@@ -1863,7 +1821,7 @@ public sealed class OldWhenRuntimePreventsSerializationTests
     {
         NonSerializableType obj = new();
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.Old(() => obj));
+        Exception? exception = TestRuntime.WithoutDynamicCode((Action)(() => Contract.Old(() => obj)));
 
         InvalidOperationException cannotSerialize = Assert.IsType<InvalidOperationException>(exception);
         Assert.IsType<NotSupportedException>(cannotSerialize.InnerException);
@@ -1908,22 +1866,11 @@ public sealed class OldWhenRuntimePreventsSerializationTests
     {
         NotSupportedException supplierFailure = new("stream is not seekable");
 
-        Exception? exception = RecordWithoutDynamicCode(() => Contract.Old<long>(() => throw supplierFailure));
+        Exception? exception = TestRuntime.WithoutDynamicCode(
+            (Action)(() => Contract.Old<long>(() => throw supplierFailure))
+        );
 
         Assert.Same(supplierFailure, exception);
-    }
-
-    private static Exception? RecordWithoutDynamicCode(Action act)
-    {
-        try
-        {
-            RuntimeFacts.DynamicCodeSupportedOverride = false;
-            return Record.Exception(act);
-        }
-        finally
-        {
-            RuntimeFacts.DynamicCodeSupportedOverride = null;
-        }
     }
 
     private static Exception? RecordWithoutJsonReflection(Action act)
