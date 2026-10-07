@@ -65,6 +65,7 @@ internal static class MemberComparison
         return new InvalidOperationException(
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
                 + "no properties or fields are visible to reflection under Native AOT. "
+                + "The two values differ, but their members cannot be listed. "
                 + $"Ways out: list '{topLevelMember}' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
@@ -215,15 +216,16 @@ internal static class MemberComparison
         }
 
         ComparisonContext.Frame frame = context.Enter(pair);
+        bool equalWithoutWalk = false;
         Walk? walk =
             actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum
                 ? StartSequences(actualEnum, expectedEnum)
-                : StartMembers(actual, expected, context);
+                : StartMembers(actual, expected, context, out equalWithoutWalk);
 
-        // No walk means the pair was found different (or could not be compared) before any of its contents.
+        // No walk means the pair was decided (different, equal by Equals, or not comparable) before any of its contents.
         if (walk is null)
         {
-            equal = false;
+            equal = equalWithoutWalk;
             context.Leave(pair, frame, equal);
             return null;
         }
@@ -361,15 +363,27 @@ internal static class MemberComparison
         return value is IEnumerable and not string;
     }
 
-    // Null means the pair could not be compared: its type has no visible members (context.Hidden is set).
-    private static MemberWalk? StartMembers(object actual, object expected, ComparisonContext context)
+    // Null means the pair needs no member walk. A type with no visible members is left to its own Equals;
+    // when that says "unequal" the pair could not be compared (context.Hidden is set).
+    private static MemberWalk? StartMembers(
+        object actual,
+        object expected,
+        ComparisonContext context,
+        out bool equalWithoutWalk
+    )
     {
         Type type = actual.GetType();
         TypeMetadata metadata = GetOrCacheMetadata(type);
+        equalWithoutWalk = false;
 
         if (MembersAreHidden(type, metadata))
         {
-            context.Hidden = new HiddenMembers(type);
+            equalWithoutWalk = actual.Equals(expected);
+            if (!equalWithoutWalk)
+            {
+                context.Hidden = new HiddenMembers(type);
+            }
+
             return null;
         }
 

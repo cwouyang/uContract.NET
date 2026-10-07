@@ -1549,6 +1549,32 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenMemberlessValuesAreEqualByEquals_DoesNotThrow()
+    {
+        OrderWithMarker first = new() { Marker = new Marker() };
+        OrderWithMarker second = new() { Marker = new Marker() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberlessValuesDifferByEquals_ThrowsWithValuesDifferSentence()
+    {
+        OrderWithMarker first = new() { Marker = new NeverEqualMarker() };
+        OrderWithMarker second = new() { Marker = new NeverEqualMarker() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains(typeof(NeverEqualMarker).ToString(), cannotCompare.Message);
+        Assert.Contains("'OrderWithMarker.Marker'", cannotCompare.Message);
+        Assert.Contains("'Marker' as assignable", cannotCompare.Message);
+        Assert.Contains("The two values differ, but their members cannot be listed.", cannotCompare.Message);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenMemberValueIsPlainObject_DoesNotThrow()
     {
         HoldsLock first = new();
@@ -1627,6 +1653,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
             $"EnsureAssignable cannot compare {typeof(NoVisibleMembers)} "
                 + "(reached through 'OrderWithWrappedLines.Lines[].Inner'): "
                 + "no properties or fields are visible to reflection under Native AOT. "
+                + "The two values differ, but their members cannot be listed. "
                 + "Ways out: list 'Lines' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
@@ -1755,6 +1782,22 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     }
 
     private sealed class NoVisibleMembers;
+
+    private interface IMarker;
+
+    private sealed record Marker : IMarker;
+
+    private sealed class NeverEqualMarker : IMarker
+    {
+        public override bool Equals(object? obj) => false;
+
+        public override int GetHashCode() => 0;
+    }
+
+    private sealed class OrderWithMarker
+    {
+        public IMarker? Marker { get; set; }
+    }
 
     // Non-public auto-properties are reached only through their compiler-generated backing fields.
     private sealed class OrderWithNonPublicCustomer
