@@ -1262,16 +1262,16 @@ public class EnsureAssignableRobustnessTests
     [Fact]
     public void EnsureAssignable_WhenOneChangedObjectIsReachedFromTwoMembers_ComparesItOnce()
     {
-        ReadCounter counter = new();
-        Probe before = new(counter, 1);
-        Probe after = new(counter, 2);
+        ProbeSource source = new();
+        Probe before = source.Create(1);
+        Probe after = source.Create(2);
         Probes actual = new() { A = before, B = before };
         Probes expected = new() { A = after, B = after };
 
         Assert.Throws<PostconditionViolationException>(() => Contract.EnsureAssignable(actual, expected));
 
         // One read of the changed value on each side, although four members (A, B and their backing fields) reach it.
-        Assert.Equal(2, counter.Reads);
+        Assert.Equal(2, source.Reads);
     }
 
     [Fact]
@@ -1763,25 +1763,33 @@ public class EnsureAssignableRobustnessTests
         }
     }
 
-    // Shared by the actual and the expected graph, so it compares equal by reference.
-    private sealed class ReadCounter
+    // Shared by the actual and the expected graph, so it compares equal by reference. It holds each probe's
+    // value, so a probe's only member that differs is V, whatever order the members are compared in.
+    private sealed class ProbeSource
     {
-        public int Reads { get; set; }
+        private readonly Dictionary<Probe, int> _values = [];
+
+        public int Reads { get; private set; }
+
+        public Probe Create(int value)
+        {
+            Probe probe = new(this);
+            _values[probe] = value;
+            return probe;
+        }
+
+        public int Read(Probe probe)
+        {
+            Reads++;
+            return _values[probe];
+        }
     }
 
-    private sealed class Probe(ReadCounter counter, int value)
+    private sealed class Probe(ProbeSource source)
     {
-        private readonly ReadCounter _counter = counter;
-        private readonly int _value = value;
+        private readonly ProbeSource _source = source;
 
-        public int V
-        {
-            get
-            {
-                _counter.Reads++;
-                return _value;
-            }
-        }
+        public int V => _source.Read(this);
     }
 
     private sealed class Probes
