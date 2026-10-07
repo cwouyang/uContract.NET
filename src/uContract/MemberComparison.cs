@@ -154,8 +154,9 @@ internal static class MemberComparison
     // A pair of objects already found equal or different in this call is not walked again, and a pair
     // reached again while it is being compared (through a cycle) counts as equal; see ComparisonContext.
     // Value types of one runtime type are compared by CompareValues and never reach here, but two value-type
-    // sequences of different runtime types (for example an ImmutableArray<T> and an ArraySegment<T>) do and
-    // are tracked as a pair of boxes; a box is new on every read, so such a pair is never reached again.
+    // sequences of different runtime types (for example an ImmutableArray<T> and an ArraySegment<T>) do, as
+    // boxes. Such boxes are tracked like any other pair of references, which is sound: a box read from an
+    // object- or IEnumerable<T>-typed field is the same reference on every read and holds the same content.
     private static bool CompareReferences(object actual, object expected, ComparisonContext context)
     {
         ReferencePair pair = new(actual, expected);
