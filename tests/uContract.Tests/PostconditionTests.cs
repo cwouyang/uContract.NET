@@ -279,9 +279,9 @@ public class OldTests
     [Fact]
     public void Old_WhenTypeHasDelegateMember_ReturnsCopySharingTheDelegate()
     {
-        NonSerializableType obj = new();
+        CallbackHolder obj = new();
 
-        NonSerializableType copy = Contract.Old(() => obj);
+        CallbackHolder copy = Contract.Old(() => obj);
 
         Assert.NotSame(obj, copy);
         Assert.Same(obj.Callback, copy.Callback);

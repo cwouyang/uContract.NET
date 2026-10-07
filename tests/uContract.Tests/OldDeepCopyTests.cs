@@ -19,9 +19,9 @@ public sealed class OldWithoutDynamicCodeTests
     [Fact]
     public void Old_WhenDynamicCodeIsUnsupported_ReturnsACopyOfTheValue()
     {
-        NonSerializableType original = new();
+        CallbackHolder original = new();
 
-        NonSerializableType copy = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => original));
+        CallbackHolder copy = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => original));
 
         Assert.NotSame(original, copy);
         Assert.Same(original.Callback, copy.Callback);
@@ -30,9 +30,9 @@ public sealed class OldWithoutDynamicCodeTests
     [Fact]
     public void Old_WhenDynamicCodeIsUnsupportedAndSupplierReturnsNull_ReturnsDefault()
     {
-        NonSerializableType? original = null;
+        CallbackHolder? original = null;
 
-        NonSerializableType? copy = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => original));
+        CallbackHolder? copy = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => original));
 
         Assert.Null(copy);
     }
@@ -396,9 +396,9 @@ public class OldDeepCopyTests
     [Fact]
     public void Old_WhenFieldHoldsADelegate_SharesItWithTheOriginal()
     {
-        NonSerializableType original = new();
+        CallbackHolder original = new();
 
-        NonSerializableType copy = Contract.Old(() => original);
+        CallbackHolder copy = Contract.Old(() => original);
 
         Assert.Same(original.Callback, copy.Callback);
     }

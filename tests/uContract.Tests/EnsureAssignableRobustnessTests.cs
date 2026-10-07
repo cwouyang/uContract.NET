@@ -955,8 +955,8 @@ public class EnsureAssignableRobustnessTests
     [Fact]
     public void EnsureAssignable_WhenDelegatesCallSameMethodOnTargetsWithDifferentContent_DoesNotThrow()
     {
-        NonSerializableType actual = new() { Callback = new Switch { IsOn = true }.Read };
-        NonSerializableType expected = new() { Callback = new Switch { IsOn = false }.Read };
+        CallbackHolder actual = new() { Callback = new Switch { IsOn = true }.Read };
+        CallbackHolder expected = new() { Callback = new Switch { IsOn = false }.Read };
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
@@ -969,8 +969,8 @@ public class EnsureAssignableRobustnessTests
         Switch light = new() { IsOn = true };
         Func<bool> read = light.Read;
         Func<bool> flip = light.Flip;
-        NonSerializableType actual = new() { Callback = read + flip };
-        NonSerializableType expected = new() { Callback = read + flip };
+        CallbackHolder actual = new() { Callback = read + flip };
+        CallbackHolder expected = new() { Callback = read + flip };
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
@@ -983,8 +983,8 @@ public class EnsureAssignableRobustnessTests
         Switch light = new() { IsOn = true };
         Func<bool> read = light.Read;
         Func<bool> flip = light.Flip;
-        NonSerializableType actual = new() { Callback = read + flip };
-        NonSerializableType expected = new() { Callback = flip };
+        CallbackHolder actual = new() { Callback = read + flip };
+        CallbackHolder expected = new() { Callback = flip };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -999,8 +999,8 @@ public class EnsureAssignableRobustnessTests
     [Fact]
     public void EnsureAssignable_WhenDelegatesAreLambdasWithDifferentBodies_ReportsTheMember()
     {
-        NonSerializableType actual = new() { Callback = () => true };
-        NonSerializableType expected = new() { Callback = () => false };
+        CallbackHolder actual = new() { Callback = () => true };
+        CallbackHolder expected = new() { Callback = () => false };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -1015,8 +1015,8 @@ public class EnsureAssignableRobustnessTests
     [Fact]
     public void EnsureAssignable_WhenDelegateIsComparedWithNull_ReportsTheMember()
     {
-        NonSerializableType actual = new() { Callback = () => true };
-        NonSerializableType expected = new() { Callback = null! };
+        CallbackHolder actual = new() { Callback = () => true };
+        CallbackHolder expected = new() { Callback = null! };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -1034,8 +1034,8 @@ public class EnsureAssignableRobustnessTests
         Switch light = new() { IsOn = true };
         Func<bool> read = light.Read;
         Func<bool> flip = light.Flip;
-        NonSerializableType actual = new() { Callback = read + flip };
-        NonSerializableType expected = new() { Callback = flip + read };
+        CallbackHolder actual = new() { Callback = read + flip };
+        CallbackHolder expected = new() { Callback = flip + read };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -1053,8 +1053,8 @@ public class EnsureAssignableRobustnessTests
         Switch light = new() { IsOn = true };
         Func<bool> read = light.Read;
         Func<bool> flip = light.Flip;
-        NonSerializableType actual = new() { Callback = read + flip };
-        NonSerializableType expected = new() { Callback = read };
+        CallbackHolder actual = new() { Callback = read + flip };
+        CallbackHolder expected = new() { Callback = read };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)

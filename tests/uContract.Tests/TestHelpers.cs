@@ -22,9 +22,10 @@ public struct TestPoint
 }
 
 /// <summary>
-///     Test helper class with non-serializable members for testing serialization error handling.
+///     Test helper class that holds a delegate, for testing how <c>Old</c> copies and
+///     <c>EnsureAssignable</c> compares a delegate member.
 /// </summary>
-public class NonSerializableType
+public class CallbackHolder
 {
     public Func<bool> Callback { get; set; } = () => true;
 }
