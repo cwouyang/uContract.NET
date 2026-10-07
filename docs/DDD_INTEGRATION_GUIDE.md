@@ -619,7 +619,7 @@ public class User  // Entity (has identity)
 public enum UserStatus { Active, Locked, Deactivated }
 ```
 
-In trimmed and Native AOT applications, `Old<T>()` and `EnsureAssignable<T>()` need extra setup; see [Trimming and Native AOT](../README.md#trimming-and-native-aot).
+In trimmed and Native AOT applications, `Old<T>()` and `EnsureAssignable<T>()` have limitations; see [Trimming and Native AOT](../README.md#trimming-and-native-aot).
 
 ---
 
@@ -1000,7 +1000,7 @@ public void ChangeEmail(string newEmail)
 }
 ```
 
-In trimmed and Native AOT applications, `Old<T>()` and `EnsureAssignable<T>()` need extra setup; see [Trimming and Native AOT](../README.md#trimming-and-native-aot).
+In trimmed and Native AOT applications, `Old<T>()` and `EnsureAssignable<T>()` have limitations; see [Trimming and Native AOT](../README.md#trimming-and-native-aot).
 
 ---
 

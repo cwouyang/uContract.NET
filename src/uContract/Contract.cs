@@ -355,7 +355,21 @@ public static class Contract
     ///     No user code runs while copying: no constructor, property accessor, Equals, GetHashCode or
     ///     serialization callback.
     ///     This method supports both reference types and value types (no generic constraint).
-    ///     An exception thrown by the supplier propagates unchanged.
+    ///     An exception thrown by the supplier propagates unchanged. The copy itself throws nothing of its own.
+    ///     Instances of types that wrap an operating system handle, a timer, a callback list or a lazily run factory
+    ///     (for example any <see cref="System.IO.Stream" />, <c>Task</c>, <c>Lazy&lt;T&gt;</c>) and the default
+    ///     comparers of the base class library are shared, so state inside them is not snapshotted.
+    ///     The copy is a read-only snapshot: delegates are shared, so raising an event on the copy notifies the
+    ///     original's subscribers. Everything reachable is copied, so <c>Old(() =&gt; _balance)</c> is cheaper than
+    ///     <c>Old(() =&gt; this)</c>.
+    ///     Native AOT and trimming: a field that the trimmer removed from reflection keeps its bitwise value, so
+    ///     the object it refers to is shared with the original. The fields declared on <typeparamref name="T" />
+    ///     are preserved. To preserve other types, put
+    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on <c>Main</c> or on any method
+    ///     that runs, where <c>X</c> is the type. Neither <c>JsonSerializerIsReflectionEnabledByDefault</c> nor
+    ///     dynamic code is needed. A caller that forwards its own generic parameter to this method gets warning
+    ///     IL2091 unless it carries <c>[RequiresUnreferencedCode]</c> or the same
+    ///     <c>[DynamicallyAccessedMembers]</c> annotation on that parameter.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -952,8 +966,10 @@ public static class Contract
     ///     Thrown when fields not marked as assignable have been modified
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    ///     Thrown under Native AOT when <typeparamref name="T" />, or the runtime type of a nested member or
-    ///     collection element that has to be compared, has no properties or fields visible to reflection.
+    ///     Thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to
+    ///     reflection, or when the runtime type of a nested member or collection element that has to be compared
+    ///     has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c> override this
+    ///     only means they are different instances).
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method
     ///     visible through the compared type: a write-only property, or one whose getter was removed by trimming.
@@ -964,11 +980,22 @@ public static class Contract
     ///     reported by this rule.
     /// </exception>
     /// <remarks>
-    ///     This method uses reflection to compare, recursively, the public instance properties (indexers excluded)
+    ///     This method uses reflection to compare the public instance properties (indexers excluded)
     ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
-    ///     base class are not compared.
-    ///     Under Native AOT, a type whose members were not preserved cannot be compared; the method then throws
-    ///     <see cref="InvalidOperationException" /> rather than report that nothing changed.
+    ///     base class are not compared. The walk goes deeper into nested objects and collection elements
+    ///     without recursion, so cycles and deep graphs are safe.
+    ///     Every comparison decides on the runtime types of the two values. Values of different runtime types are
+    ///     unequal, except two sequences, which are compared by element. Value types are equal when their
+    ///     <c>Equals</c> says so, and are otherwise compared by their fields. Dictionaries are compared entry by
+    ///     entry in enumeration order. Delegates are equal when their methods match; their targets are not
+    ///     compared. Shared instances (see <see cref="Old{T}" />) are compared by reference.
+    ///     Under Native AOT, a nested class whose members were not preserved is compared by its own
+    ///     <c>Equals</c>: equal when it returns true. When it returns false, the method throws
+    ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose
+    ///     <c>Equals</c> ignores state (for example entity equality by ID) therefore hides a change in such a
+    ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
+    ///     When <typeparamref name="T" /> itself has no visible members, the method throws without asking
+    ///     <c>Equals</c>.
     ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;

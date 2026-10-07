@@ -209,7 +209,7 @@ public class Counter
 
 ### Capturing Complex Objects
 
-Using `Old<T>()` with objects (deep copy via JSON serialization).
+Using `Old<T>()` with objects (deep copy field by field, private state included).
 
 ```csharp
 using uContract;
@@ -260,7 +260,7 @@ public class ShoppingCart
 public record CartItem(string ProductName, decimal Price, int Quantity);
 ```
 
-In trimmed and Native AOT applications, `Old<T>()` needs extra setup; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot).
+In trimmed and Native AOT applications, `Old<T>()` shares the objects behind fields that the trimmer removed from reflection; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot).
 
 ### Field Assignment Validation
 
@@ -336,6 +336,8 @@ public class User
 ```
 
 In trimmed and Native AOT applications, `EnsureAssignable<T>()` can throw `InvalidOperationException` for nested types; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot).
+
+> **Note**: When postconditions are off (`DBC_POST=off` or `DBC=off`), `Old<T>()` returns `default`, and `EnsureAssignable<T>()` still validates its arguments before it reads the configuration. So the `Old` + `EnsureAssignable` pair above throws `ArgumentNullException` in that setup. This is tracked in [issue #47](https://github.com/cwouyang/uContract.NET/issues/47).
 
 **Using Regex Patterns:**
 
