@@ -18,10 +18,13 @@ internal sealed class ComparisonContext
     private readonly HashSet<ReferencePair> _equal = [];
     private readonly HashSet<ReferencePair> _different = [];
 
-    // Pairs found equal while relying on in-progress pairs, with the shallowest depth relied on, in the
-    // order they were found. Each becomes equal or is discarded when the pair it relies on ends.
-    private readonly Dictionary<ReferencePair, int> _provisional = [];
-    private readonly List<ReferencePair> _provisionalOrder = [];
+    // Pairs found equal while relying on in-progress pairs, each in the group of the shallowest pair it
+    // relies on. A group is settled once, when its pair ends: all its pairs become equal, are discarded, or
+    // are handed over whole to the group of the pair it relied on.
+    private readonly Dictionary<ReferencePair, ProvisionalGroup> _provisional = [];
+
+    // The group of each in-progress depth, created when a pair first relies on that depth.
+    private readonly List<ProvisionalGroup?> _groupsByDepth = [];
 
     // The shallowest in-progress pair the current comparison has relied on.
     private int _reliedOn = Permanent;
@@ -52,9 +55,15 @@ internal sealed class ComparisonContext
             return true;
         }
 
-        if (_inProgress.TryGetValue(pair, out int depth) || _provisional.TryGetValue(pair, out depth))
+        if (_inProgress.TryGetValue(pair, out int depth))
         {
             _reliedOn = Math.Min(_reliedOn, depth);
+            return true;
+        }
+
+        if (_provisional.TryGetValue(pair, out ProvisionalGroup? group))
+        {
+            _reliedOn = Math.Min(_reliedOn, group.Current().Depth);
             return true;
         }
 
@@ -66,8 +75,13 @@ internal sealed class ComparisonContext
     /// </summary>
     public Frame Enter(ReferencePair pair)
     {
-        Frame frame = new(_inProgress.Count, _reliedOn, _provisionalOrder.Count);
+        Frame frame = new(_inProgress.Count, _reliedOn);
         _inProgress[pair] = frame.Depth;
+        while (_groupsByDepth.Count <= frame.Depth)
+        {
+            _groupsByDepth.Add(null);
+        }
+
         _reliedOn = Permanent;
         return frame;
     }
@@ -79,63 +93,135 @@ internal sealed class ComparisonContext
     public void Leave(ReferencePair pair, Frame frame, bool equal)
     {
         _inProgress.Remove(pair);
+        ProvisionalGroup? relyingOnThis = _groupsByDepth[frame.Depth];
+        _groupsByDepth[frame.Depth] = null;
 
         // Relying only on this pair itself, or on pairs entered below it, is relying on nothing still open.
         bool reliedOnlyOnItself = _reliedOn >= frame.Depth;
-        SettleProvisional(frame, equal, reliedOnlyOnItself);
-        if (equal && reliedOnlyOnItself)
+        if (!equal)
         {
+            // Every enclosing pair ends different too (a difference ends each walk it is found in), so the
+            // pairs relying on those are discarded as each of them ends.
+            Discard(relyingOnThis);
+            if (Hidden is null)
+            {
+                _different.Add(pair);
+            }
+        }
+        else if (reliedOnlyOnItself)
+        {
+            Commit(relyingOnThis);
             _equal.Add(pair);
         }
-        else if (equal)
+        else
         {
-            _provisional[pair] = _reliedOn;
-            _provisionalOrder.Add(pair);
-        }
-        else if (Hidden is null)
-        {
-            _different.Add(pair);
+            ProvisionalGroup reliedOn = GroupOf(_reliedOn);
+            reliedOn.Absorb(relyingOnThis);
+            reliedOn.Add(pair);
+            _provisional[pair] = reliedOn;
         }
 
         _reliedOn = reliedOnlyOnItself ? frame.ReliedOnBefore : Math.Min(frame.ReliedOnBefore, _reliedOn);
     }
 
-    // Settles the provisionally equal pairs found while the frame's pair was compared that rely on it:
-    // they become equal when it ends equal relying on nothing still open, are discarded when it ends
-    // different (or could not be compared), and otherwise now rely on what it relies on.
-    private void SettleProvisional(Frame frame, bool equal, bool reliedOnlyOnItself)
+    private ProvisionalGroup GroupOf(int depth)
     {
-        List<ReferencePair> stillProvisional = [];
-        for (int i = frame.ProvisionalStart; i < _provisionalOrder.Count; i++)
-        {
-            ReferencePair found = _provisionalOrder[i];
-            if (_provisional[found] < frame.Depth)
-            {
-                stillProvisional.Add(found);
-            }
-            else if (!equal || reliedOnlyOnItself)
-            {
-                _provisional.Remove(found);
-                if (equal)
-                {
-                    _equal.Add(found);
-                }
-            }
-            else
-            {
-                _provisional[found] = _reliedOn;
-                stillProvisional.Add(found);
-            }
-        }
+        return _groupsByDepth[depth] ??= new ProvisionalGroup(depth);
+    }
 
-        _provisionalOrder.RemoveRange(frame.ProvisionalStart, _provisionalOrder.Count - frame.ProvisionalStart);
-        _provisionalOrder.AddRange(stillProvisional);
+    private void Commit(ProvisionalGroup? group)
+    {
+        for (PairNode? node = group?.First; node is not null; node = node.Next)
+        {
+            _provisional.Remove(node.Pair);
+            _equal.Add(node.Pair);
+        }
+    }
+
+    private void Discard(ProvisionalGroup? group)
+    {
+        for (PairNode? node = group?.First; node is not null; node = node.Next)
+        {
+            _provisional.Remove(node.Pair);
+        }
     }
 
     /// <summary>
-    ///     A pair's place in the walk: its depth, what the enclosing comparison relied on before it, and
-    ///     where the provisionally equal pairs found while comparing it start.
+    ///     A pair's place in the walk: its depth, and what the enclosing comparison relied on before it.
     /// </summary>
     [StructLayout(LayoutKind.Auto)]
-    internal readonly record struct Frame(int Depth, int ReliedOnBefore, int ProvisionalStart);
+    internal readonly record struct Frame(int Depth, int ReliedOnBefore);
+
+    // The provisionally equal pairs relying on one in-progress depth, as a linked list, so that handing a
+    // whole group to another takes constant time. A group handed over forwards to the group it joined.
+    private sealed class ProvisionalGroup(int depth)
+    {
+        private ProvisionalGroup? _joined;
+
+        public int Depth { get; } = depth;
+
+        public PairNode? First { get; private set; }
+
+        private PairNode? Last { get; set; }
+
+        public void Add(ReferencePair pair)
+        {
+            PairNode node = new(pair);
+            Append(node, node);
+        }
+
+        public void Absorb(ProvisionalGroup? other)
+        {
+            if (other is null)
+            {
+                return;
+            }
+
+            other._joined = this;
+            if (other.First is not null)
+            {
+                Append(other.First, other.Last!);
+            }
+        }
+
+        // The group a pair added to this one now belongs to, shortening the forwarding chain on the way.
+        public ProvisionalGroup Current()
+        {
+            ProvisionalGroup current = this;
+            while (current._joined is not null)
+            {
+                current = current._joined;
+            }
+
+            for (ProvisionalGroup group = this; group._joined is not null; )
+            {
+                ProvisionalGroup next = group._joined;
+                group._joined = current;
+                group = next;
+            }
+
+            return current;
+        }
+
+        private void Append(PairNode first, PairNode last)
+        {
+            if (Last is null)
+            {
+                First = first;
+            }
+            else
+            {
+                Last.Next = first;
+            }
+
+            Last = last;
+        }
+    }
+
+    private sealed class PairNode(ReferencePair pair)
+    {
+        public ReferencePair Pair { get; } = pair;
+
+        public PairNode? Next { get; set; }
+    }
 }

@@ -1274,6 +1274,40 @@ public class EnsureAssignableRobustnessTests
         Assert.Equal(2, counter.Reads);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenEqualLongRingIsCompared_CompletesInTime()
+    {
+        Strands actual = new() { Head = Strand.Ring(LongChainLength) };
+        Strands expected = new() { Head = Strand.Ring(LongChainLength) };
+
+        Exception? exception = Record.Exception(() =>
+            SmallStack.OnSmallStack(
+                () => Contract.EnsureAssignable(actual, expected),
+                LongChainStackSize,
+                LongChainTimeoutMilliseconds
+            )
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEqualLongDoublyLinkedListIsCompared_CompletesInTime()
+    {
+        Strands actual = new() { Head = Strand.DoublyLinkedList(LongChainLength) };
+        Strands expected = new() { Head = Strand.DoublyLinkedList(LongChainLength) };
+
+        Exception? exception = Record.Exception(() =>
+            SmallStack.OnSmallStack(
+                () => Contract.EnsureAssignable(actual, expected),
+                LongChainStackSize,
+                LongChainTimeoutMilliseconds
+            )
+        );
+
+        Assert.Null(exception);
+    }
+
     private static object? SemaphoreWaitHandle(SemaphoreSlim semaphore)
     {
         return typeof(SemaphoreSlim)
@@ -1672,6 +1706,52 @@ public class EnsureAssignableRobustnessTests
 
     private const int ManyElements = 100_000;
     private const int ManyElementsTimeoutMilliseconds = 2000;
+
+    // Every node of these chains is compared while a shallower node still is, so bookkeeping that revisits
+    // the nodes found below each node is quadratic. The walk still recurses once per node, hence the stack.
+    private const int LongChainLength = 20_000;
+    private const int LongChainStackSize = 256 * 1024 * 1024;
+    private const int LongChainTimeoutMilliseconds = 2000;
+
+    private sealed class Strand
+    {
+        public Strand? Next { get; set; }
+        public Strand? Prev { get; set; }
+
+        // The last node leads back to the first.
+        public static Strand Ring(int length)
+        {
+            Strand head = new();
+            Strand last = head;
+            for (int i = 1; i < length; i++)
+            {
+                last.Next = new Strand();
+                last = last.Next;
+            }
+
+            last.Next = head;
+            return head;
+        }
+
+        // Each node leads back to the one before it.
+        public static Strand DoublyLinkedList(int length)
+        {
+            Strand head = new();
+            Strand last = head;
+            for (int i = 1; i < length; i++)
+            {
+                last.Next = new Strand { Prev = last };
+                last = last.Next;
+            }
+
+            return head;
+        }
+    }
+
+    private sealed class Strands
+    {
+        public Strand? Head { get; set; }
+    }
 
     private sealed class Inventory
     {
