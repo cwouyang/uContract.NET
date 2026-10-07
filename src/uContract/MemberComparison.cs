@@ -112,6 +112,14 @@ internal static class MemberComparison
             return false;
         }
 
+        // Values of different runtime types are unequal, and neither is read: the members of one type
+        // cannot be read from the other. Two sequences are still compared element by element.
+        Type actualType = actual.GetType();
+        if (actualType != expected.GetType() && !(IsSequence(actual) && IsSequence(expected)))
+        {
+            return false;
+        }
+
         if (memberType.IsValueType || memberType == typeof(string))
         {
             return Equals(actual, expected);
@@ -122,7 +130,12 @@ internal static class MemberComparison
             return CompareCollections(actualEnum, expectedEnum, ref hidden);
         }
 
-        return memberType.IsClass ? CompareRecursively(actual, expected, ref hidden) : Equals(actual, expected);
+        return actualType.IsClass ? CompareRecursively(actual, expected, ref hidden) : Equals(actual, expected);
+    }
+
+    private static bool IsSequence(object value)
+    {
+        return value is IEnumerable and not string;
     }
 
     internal static bool CompareCollections(IEnumerable actual, IEnumerable expected, ref HiddenMembers? hidden)
