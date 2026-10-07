@@ -167,10 +167,16 @@ internal static class MemberComparison
         }
 
         // A value-type sequence is compared by what it enumerates: the fields of ArraySegment<T>, for
-        // example, include the whole backing array and the window's offset.
-        if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)
+        // example, include the whole backing array and the window's offset. A sequence that cannot be
+        // enumerated (a default ImmutableArray<T>) is compared by its fields instead.
+        if (
+            actual is IEnumerable actualEnum
+            && expected is IEnumerable expectedEnum
+            && TryEnumerate(actualEnum, out object?[]? actualItems)
+            && TryEnumerate(expectedEnum, out object?[]? expectedItems)
+        )
         {
-            return CompareCollections(actualEnum, expectedEnum, ref hidden);
+            return CompareCollections(actualItems, expectedItems, ref hidden);
         }
 
         bool hasFields = false;
@@ -186,6 +192,20 @@ internal static class MemberComparison
 
         // A value type without visible fields has only its Equals to decide, and it said "unequal".
         return hasFields;
+    }
+
+    private static bool TryEnumerate(IEnumerable sequence, [NotNullWhen(true)] out object?[]? items)
+    {
+        try
+        {
+            items = sequence.Cast<object?>().ToArray();
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            items = null;
+            return false;
+        }
     }
 
     private static bool IsSequence(object value)

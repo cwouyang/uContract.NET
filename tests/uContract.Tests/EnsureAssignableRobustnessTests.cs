@@ -174,6 +174,38 @@ public class EnsureAssignableRobustnessTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenActualImmutableArrayIsDefaultAndExpectedIsInitialised_ReportsTheMember()
+    {
+        Shelf actual = new() { Items = default };
+        Shelf expected = new() { Items = ImmutableArray.Create(new Elem(1)) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Items\n  - <Items>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenActualImmutableArrayIsInitialisedAndExpectedIsDefault_ReportsTheMember()
+    {
+        Shelf actual = new() { Items = ImmutableArray.Create(new Elem(1)) };
+        Shelf expected = new() { Items = default };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Items\n  - <Items>k__BackingField",
+            exception.Description
+        );
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenArraySegmentMemberHoldsEqualElementsInDistinctArrays_DoesNotThrow()
     {
         Window actual = new() { Items = new ArraySegment<Elem>([new Elem(1), new Elem(2)]) };
