@@ -1360,6 +1360,23 @@ public class EnsureAssignableRobustnessTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenListEntersAnEqualRingAtEveryNode_CompletesInTime()
+    {
+        RingIndex actual = new() { Nodes = RingNode.Ring(IndexedRingLength) };
+        RingIndex expected = new() { Nodes = RingNode.Ring(IndexedRingLength) };
+
+        Exception? exception = Record.Exception(() =>
+            SmallStack.OnSmallStack(
+                () => Contract.EnsureAssignable(actual, expected),
+                SmallStackSize,
+                IndexedRingTimeoutMilliseconds
+            )
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenObjectReliesOnAChangedObjectOnlyThroughADeeperOne_ReportsBothMembers()
     {
         Duo<Cell> actual = Cell.ThreeCycle(changingValue: 1);
@@ -1944,6 +1961,35 @@ public class EnsureAssignableRobustnessTests
     private sealed class FarChain
     {
         public FarNode? Head { get; set; }
+    }
+
+    // The ring is entered from every list element: walking it again from each one, rather than remembering
+    // the pairs settled equal by the first walk, is quadratic (9 s already at 5 000 nodes, against 16 ms).
+    private const int IndexedRingLength = 5000;
+    private const int IndexedRingTimeoutMilliseconds = 3000;
+
+    private sealed class RingNode
+    {
+        public RingNode? Next { get; set; }
+        public RingNode? Prev { get; set; }
+
+        // Every node of a doubly linked ring, in ring order.
+        public static List<RingNode> Ring(int length)
+        {
+            List<RingNode> nodes = Enumerable.Range(0, length).Select(_ => new RingNode()).ToList();
+            for (int i = 0; i < length; i++)
+            {
+                nodes[i].Next = nodes[(i + 1) % length];
+                nodes[i].Prev = nodes[(i + length - 1) % length];
+            }
+
+            return nodes;
+        }
+    }
+
+    private sealed class RingIndex
+    {
+        public List<RingNode> Nodes { get; set; } = [];
     }
 
     private sealed class Inventory
