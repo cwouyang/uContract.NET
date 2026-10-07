@@ -1099,6 +1099,7 @@ public static class Contract
         }
 
         List<string> differences = [];
+        ComparisonContext context = new();
 
         foreach (MemberAccessor member in metadata.Members)
         {
@@ -1109,13 +1110,16 @@ public static class Contract
 
             object? actualValue = member.GetValue(actual!);
             object? expectedValue = member.GetValue(expected!);
-            MemberComparison.HiddenMembers? hidden = null;
 
-            if (!MemberComparison.AreEqual(actualValue, expectedValue, ref hidden))
+            if (!MemberComparison.AreEqual(actualValue, expectedValue, context))
             {
-                if (hidden is not null)
+                if (context.Hidden is not null)
                 {
-                    throw MemberComparison.CannotCompareNested(type, MemberComparison.SourceName(member.Name), hidden);
+                    throw MemberComparison.CannotCompareNested(
+                        type,
+                        MemberComparison.SourceName(member.Name),
+                        context.Hidden
+                    );
                 }
 
                 differences.Add(member.Name);

@@ -100,9 +100,9 @@ internal static class MemberComparison
         return patterns.Any(pattern => Regex.IsMatch(fieldName, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
     }
 
-    // A false return with hidden set means "could not compare" (a type with no visible members
-    // blocked the comparison), not "different". Callers must check hidden before reporting a difference.
-    internal static bool AreEqual(object? actual, object? expected, ref HiddenMembers? hidden)
+    // A false return with context.Hidden set means "could not compare" (a type with no visible members
+    // blocked the comparison), not "different". Callers must check it before reporting a difference.
+    internal static bool AreEqual(object? actual, object? expected, ComparisonContext context)
     {
         if (ReferenceEquals(actual, expected))
         {
@@ -145,15 +145,15 @@ internal static class MemberComparison
         // element by element below, not field by field.
         if (actualType.IsValueType && actualType == expectedType)
         {
-            return CompareValues(actual, expected, actualType, ref hidden);
+            return CompareValues(actual, expected, actualType, context);
         }
 
         if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)
         {
-            return CompareSequences(actualEnum, expectedEnum, ref hidden);
+            return CompareSequences(actualEnum, expectedEnum, context);
         }
 
-        return CompareRecursively(actual, expected, ref hidden);
+        return CompareRecursively(actual, expected, context);
     }
 
     // A delegate is compared by the methods it calls, in order. Its targets are never compared or walked,
@@ -198,11 +198,11 @@ internal static class MemberComparison
         }
     }
 
-    private static bool CompareSequences(IEnumerable actual, IEnumerable expected, ref HiddenMembers? hidden)
+    private static bool CompareSequences(IEnumerable actual, IEnumerable expected, ComparisonContext context)
     {
         if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
         {
-            return CompareDictionaries(actualDictionary, expectedDictionary, ref hidden);
+            return CompareDictionaries(actualDictionary, expectedDictionary, context);
         }
 
         // Two sequences of different runtime types: one that cannot be enumerated (a default
@@ -211,16 +211,16 @@ internal static class MemberComparison
         {
             return TryEnumerate(actual, out object?[]? actualItems)
                 && TryEnumerate(expected, out object?[]? expectedItems)
-                && CompareCollections(actualItems, expectedItems, ref hidden);
+                && CompareCollections(actualItems, expectedItems, context);
         }
 
-        return CompareCollections(actual, expected, ref hidden);
+        return CompareCollections(actual, expected, context);
     }
 
     // A value type decides equality first; when it says "unequal", its elements (for ArraySegment<T> or
     // ImmutableArray<T>) or its fields are compared, because ValueType.Equals calls each field's own
     // Equals, which for most classes (List<T>, arrays) compares by reference.
-    private static bool CompareValues(object actual, object expected, Type type, ref HiddenMembers? hidden)
+    private static bool CompareValues(object actual, object expected, Type type, ComparisonContext context)
     {
         if (Equals(actual, expected))
         {
@@ -244,7 +244,7 @@ internal static class MemberComparison
             && TryEnumerate(expectedEnum, out object?[]? expectedItems)
         )
         {
-            return CompareCollections(actualItems, expectedItems, ref hidden);
+            return CompareCollections(actualItems, expectedItems, context);
         }
 
         // Reflection shows only the first element of an inline array, so it has no fully visible fields.
@@ -257,9 +257,9 @@ internal static class MemberComparison
         foreach (MemberAccessor field in GetOrCacheMetadata(type).Members.Where(m => m.IsField))
         {
             hasFields = true;
-            if (!AreEqual(field.GetValue(actual), field.GetValue(expected), ref hidden))
+            if (!AreEqual(field.GetValue(actual), field.GetValue(expected), context))
             {
-                hidden?.Prepend("." + SourceName(field.Name));
+                context.Hidden?.Prepend("." + SourceName(field.Name));
                 return false;
             }
         }
@@ -298,7 +298,7 @@ internal static class MemberComparison
         return value is IEnumerable and not string;
     }
 
-    internal static bool CompareCollections(IEnumerable actual, IEnumerable expected, ref HiddenMembers? hidden)
+    internal static bool CompareCollections(IEnumerable actual, IEnumerable expected, ComparisonContext context)
     {
         object?[] actualArray = actual.Cast<object?>().ToArray();
         object?[] expectedArray = expected.Cast<object?>().ToArray();
@@ -323,9 +323,9 @@ internal static class MemberComparison
                 return false;
             }
 
-            if (!AreEqual(actualItem, expectedItem, ref hidden))
+            if (!AreEqual(actualItem, expectedItem, context))
             {
-                hidden?.Prepend("[]");
+                context.Hidden?.Prepend("[]");
                 return false;
             }
         }
@@ -337,7 +337,7 @@ internal static class MemberComparison
     // enumeration order, by the keys and values its own enumerator reports, not by the KeyValuePair or
     // DictionaryEntry it yields as a sequence: those differ between dictionary types, and their Equals
     // calls each value's Equals, which may ignore content that the comparison rules compare.
-    private static bool CompareDictionaries(IDictionary actual, IDictionary expected, ref HiddenMembers? hidden)
+    private static bool CompareDictionaries(IDictionary actual, IDictionary expected, ComparisonContext context)
     {
         IDictionaryEnumerator actualEntries = actual.GetEnumerator();
         IDictionaryEnumerator expectedEntries = expected.GetEnumerator();
@@ -358,24 +358,24 @@ internal static class MemberComparison
             }
 
             if (
-                !AreEqual(actualEntries.Key, expectedEntries.Key, ref hidden)
-                || !AreEqual(actualEntries.Value, expectedEntries.Value, ref hidden)
+                !AreEqual(actualEntries.Key, expectedEntries.Key, context)
+                || !AreEqual(actualEntries.Value, expectedEntries.Value, context)
             )
             {
-                hidden?.Prepend("[]");
+                context.Hidden?.Prepend("[]");
                 return false;
             }
         }
     }
 
-    internal static bool CompareRecursively(object actual, object expected, ref HiddenMembers? hidden)
+    internal static bool CompareRecursively(object actual, object expected, ComparisonContext context)
     {
         Type type = actual.GetType();
         TypeMetadata metadata = GetOrCacheMetadata(type);
 
         if (MembersAreHidden(type, metadata))
         {
-            hidden = new HiddenMembers(type);
+            context.Hidden = new HiddenMembers(type);
             return false;
         }
 
@@ -384,9 +384,9 @@ internal static class MemberComparison
             object? actualValue = member.GetValue(actual);
             object? expectedValue = member.GetValue(expected);
 
-            if (!AreEqual(actualValue, expectedValue, ref hidden))
+            if (!AreEqual(actualValue, expectedValue, context))
             {
-                hidden?.Prepend("." + SourceName(member.Name));
+                context.Hidden?.Prepend("." + SourceName(member.Name));
                 return false;
             }
         }
