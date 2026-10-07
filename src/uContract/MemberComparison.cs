@@ -145,24 +145,29 @@ internal static class MemberComparison
 
         if (actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum)
         {
-            if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
-            {
-                return CompareDictionaries(actualDictionary, expectedDictionary, ref hidden);
-            }
-
-            // Two sequences of different runtime types: one that cannot be enumerated (a default
-            // ImmutableArray<T>) is reported as changed rather than letting its exception escape.
-            if (actualType != expectedType)
-            {
-                return TryEnumerate(actualEnum, out object?[]? actualItems)
-                    && TryEnumerate(expectedEnum, out object?[]? expectedItems)
-                    && CompareCollections(actualItems, expectedItems, ref hidden);
-            }
-
-            return CompareCollections(actualEnum, expectedEnum, ref hidden);
+            return CompareSequences(actualEnum, expectedEnum, ref hidden);
         }
 
         return CompareRecursively(actual, expected, ref hidden);
+    }
+
+    private static bool CompareSequences(IEnumerable actual, IEnumerable expected, ref HiddenMembers? hidden)
+    {
+        if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
+        {
+            return CompareDictionaries(actualDictionary, expectedDictionary, ref hidden);
+        }
+
+        // Two sequences of different runtime types: one that cannot be enumerated (a default
+        // ImmutableArray<T>) is reported as changed rather than letting its exception escape.
+        if (actual.GetType() != expected.GetType())
+        {
+            return TryEnumerate(actual, out object?[]? actualItems)
+                && TryEnumerate(expected, out object?[]? expectedItems)
+                && CompareCollections(actualItems, expectedItems, ref hidden);
+        }
+
+        return CompareCollections(actual, expected, ref hidden);
     }
 
     // A value type decides equality first; when it says "unequal", its elements (for ArraySegment<T> or
