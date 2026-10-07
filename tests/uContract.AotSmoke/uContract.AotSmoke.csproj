@@ -8,6 +8,8 @@
     <IsPackable>false</IsPackable>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- The pointer-field checks declare an int* field. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- IL2026: the program deliberately calls the helpers annotated with RequiresUnreferencedCode; that is what it tests. No public API requires dynamic code, so IL3050 is not suppressed. -->
     <!-- MA0048: the fixture types and the program share one file; a single-file test program does not need one file per type. -->
     <!-- MA0008: the struct fixture is a plain data holder; layout and equality are irrelevant here. -->
@@ -18,6 +20,11 @@
   <PropertyGroup Condition="'$(UContractPackageVersion)' != ''">
     <!-- IL3050: the published 2.0.0 package's Old still carries RequiresDynamicCode; package mode compares against it. -->
     <NoWarn>$(NoWarn);IL3050</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(AotSmokeHiddenDictionaryEntry)' == 'true'">
+    <!-- Builds the variant in which no check preserves Dictionary<,>, so Dictionary<,>.Entry stays hidden. -->
+    <DefineConstants>$(DefineConstants);HIDDEN_DICTIONARY_ENTRY</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(UContractPackageVersion)' == ''">

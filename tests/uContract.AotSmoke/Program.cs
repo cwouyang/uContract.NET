@@ -1,5 +1,7 @@
+using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using uContract.Exceptions;
 
@@ -108,6 +110,286 @@ internal sealed class PreservedOuter
     public PreservedInner Inner { get; set; } = new();
 }
 
+// ---- Old fixtures (issue #45). Each check that uses them names its mutation and its source of visibility. ----
+
+// Visible as the T of Old only.
+internal sealed class VaultCode(int code, string label)
+{
+    private readonly int _code = code;
+    private readonly string _label = label;
+
+    public string Describe() => $"code={_code}|label={_label}";
+}
+
+// Never the T of any call; only reached through the private field of an Old-only T.
+internal sealed class TallyCounter
+{
+    public int Value;
+}
+
+// Visible as the T of Old only: its private reference field is rooted by Old's [DynamicallyAccessedMembers].
+internal sealed class OldOnlyTally
+{
+    private readonly TallyCounter _counter = new() { Value = 1 };
+
+    public int Count => _counter.Value;
+
+    public void Bump() => _counter.Value++;
+}
+
+// Visible only as the T of an annotated generic forwarder of Old.
+internal sealed class ForwardedTally
+{
+    private readonly TallyCounter _counter = new() { Value = 1 };
+
+    public int Count => _counter.Value;
+
+    public void Bump() => _counter.Value++;
+}
+
+// Old is called with T = SnapshotShape; the runtime type is SnapshotCircle, whose fields are not preserved.
+internal class SnapshotShape
+{
+    public SnapshotShape Snapshot() => Contract.Old(() => this);
+}
+
+internal sealed class SnapshotCircle : SnapshotShape
+{
+    public int Radius;
+}
+
+// Hidden: never a T, never preserved.
+internal sealed class HiddenLeaf
+{
+    public int Value;
+}
+
+// Hidden: never a T, never preserved; reached through a visible field of HiddenNestOuter.
+internal sealed class HiddenNestInner
+{
+    public int Value;
+    public HiddenLeaf Leaf = new();
+}
+
+internal sealed class HiddenNestOuter
+{
+    public HiddenNestInner Inner = new();
+}
+
+internal sealed class PreservedLeaf
+{
+    public int Value;
+}
+
+// Preserved with DynamicDependency(All) by its check.
+internal sealed class PreservedNestInner
+{
+    public int Value;
+    public PreservedLeaf Leaf = new();
+}
+
+internal sealed class PreservedNestOuter
+{
+    public PreservedNestInner Inner = new();
+}
+
+// Base-class auto-property: its backing field is private to the base and not preserved.
+internal sealed record HiddenLine(string Sku);
+
+internal class HiddenLinesBase
+{
+    public List<HiddenLine> Lines { get; set; } = [];
+}
+
+internal sealed class HiddenLinesDerived : HiddenLinesBase;
+
+// The same shape on a separate hierarchy, preserved with DynamicDependency(All, typeof(PreservedLinesDerived)).
+internal sealed record PreservedLine(string Sku);
+
+internal class PreservedLinesBase
+{
+    public List<PreservedLine> Lines { get; set; } = [];
+}
+
+internal sealed class PreservedLinesDerived : PreservedLinesBase;
+
+// SortedList<,> is used nowhere else: its definition is hidden.
+internal sealed class ScoreBoard
+{
+    public SortedList<string, int> Scores = new(StringComparer.Ordinal) { ["a"] = 1 };
+}
+
+internal sealed class StockSheet
+{
+    public Dictionary<string, int> Stock { get; set; } = [];
+}
+
+internal sealed class PreservedStockSheet
+{
+    public Dictionary<string, int> Stock { get; set; } = [];
+}
+
+// Preserved with DynamicDependency(All) so that a change to it is reported, not "cannot compare".
+internal sealed class CatalogItem
+{
+    public int Price;
+}
+
+internal sealed class Catalog
+{
+    public Dictionary<string, CatalogItem> Items = new(StringComparer.Ordinal);
+}
+
+// Preserved with DynamicDependency(All).
+internal struct TagSet
+{
+    public List<string> Tags;
+}
+
+internal sealed class TagShelf
+{
+    public TagSet[] Sets = [];
+}
+
+// Preserved with DynamicDependency(All): a readonly field inside a struct field.
+internal readonly struct ReadonlyTagBox(List<string> tags)
+{
+    public readonly List<string> Tags = tags;
+}
+
+internal struct OuterTagBox
+{
+    public ReadonlyTagBox Inner;
+}
+
+internal sealed class TagCabinet
+{
+    public OuterTagBox Box;
+}
+
+// Preserved with DynamicDependency(All), and Nullable<LabelSet> as well.
+internal struct LabelSet
+{
+    public List<string> Labels;
+}
+
+internal sealed class LabelRack
+{
+    public LabelSet?[] Slots = [];
+}
+
+internal sealed class FinalizableFixture
+{
+    private static int s_finalized;
+
+    public static int Finalized => Volatile.Read(ref s_finalized);
+
+    public int Id;
+
+#pragma warning disable MA0055 // The fixture must be finalizable: the check proves that Old's copies are never finalized.
+    ~FinalizableFixture()
+    {
+        Interlocked.Increment(ref s_finalized);
+    }
+#pragma warning restore MA0055
+}
+
+internal sealed class PayloadHolder
+{
+    public object Payload = "";
+}
+
+internal sealed class Appointment
+{
+    public DateTime At { get; set; }
+    public int Room { get; set; }
+}
+
+internal sealed class Greeter(string name)
+{
+    public string Greet() => "hi " + name;
+}
+
+internal sealed class GreetingHook
+{
+    public Func<string>? Hook { get; set; }
+}
+
+internal sealed class CompareHook
+{
+    public Func<int, int, int>? Hook { get; set; }
+}
+
+// The base auto-property's backing field is private to the base and not preserved.
+internal class TaggedBase
+{
+    public ImmutableArray<string> Tags { get; set; } = [];
+}
+
+internal sealed class TaggedDerived : TaggedBase;
+
+internal sealed class FrozenHolder
+{
+    public FrozenSet<string> Codes = FrozenSet<string>.Empty;
+}
+
+internal sealed unsafe class PointerHolder
+{
+    public int* Address;
+}
+
+// Hidden: never a T, never preserved. Reached through an interface-typed member.
+internal interface IShippingLabel;
+
+internal sealed record ShippingLabel(string Text) : IShippingLabel;
+
+internal sealed class Parcel
+{
+    public IShippingLabel? Label { get; set; }
+}
+
+// The User class of docs/examples/USAGE_EXAMPLES.md (Field Assignment Validation), reduced to ChangeEmail
+// and a ChangeEmailAndName that changes a member that is not assignable.
+internal sealed class User(string email, string name)
+{
+    private string _email = email;
+    private string _name = name;
+    private DateTime _lastModified = DateTime.UtcNow;
+    private readonly DateTime _createdAt = DateTime.UtcNow;
+
+    // Neither changes in ChangeEmail; both are compared as public properties.
+    public string Name => _name;
+
+    public DateTime CreatedAt => _createdAt;
+
+    public void ChangeEmail(string newEmail)
+    {
+        var oldState = Contract.Old(() => this);
+
+        _email = newEmail;
+        _lastModified = DateTime.UtcNow;
+
+        Contract.EnsureAssignable(this, oldState, nameof(_email), nameof(_lastModified));
+    }
+
+    public void ChangeEmailAndName(string newEmail, string newName)
+    {
+        var oldState = Contract.Old(() => this);
+
+        _email = newEmail;
+        _name = newName;
+        _lastModified = DateTime.UtcNow;
+
+        Contract.EnsureAssignable(this, oldState, nameof(_email), nameof(_lastModified));
+    }
+}
+
+internal sealed class RingNode
+{
+    public int Value;
+    public RingNode? Next;
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -131,10 +413,10 @@ internal sealed record Check(int Id, string Name, Func<object?> Run, Expect Enab
 public static class Program
 {
     private const string NestedTypeName = "uContract.AotSmoke.CustomerInfo";
-    private const string AddressTypeName = "uContract.AotSmoke.AddressRecord";
     private const string LineTypeName = "uContract.AotSmoke.LineElement";
+    private const string PreservedLineTypeName = "uContract.AotSmoke.PreservedLine";
 
-    private static readonly string[] s_oldHelperText = ["Old<T>()", "DBC_POST=off"];
+    private static readonly string[] s_frozenCodes = ["a", "b"];
 
     public static int Main(string[] args)
     {
@@ -260,7 +542,6 @@ public static class Program
 
     private static IEnumerable<Check> BuildChecks()
     {
-        Expect old = Expect.Throws<InvalidOperationException>(s_oldHelperText);
         Expect customerThrows = Expect.Throws<InvalidOperationException>(
             NestedText(NestedTypeName, "OrderHolder.Customer", "Customer")
         );
@@ -273,14 +554,17 @@ public static class Program
             Expect.Throws<PreconditionViolationException>(),
             Expect.Throws<PreconditionViolationException>()
         );
-        yield return new Check(2, "Old int", static () => Contract.Old(static () => 42), old, Expect.DefaultValue);
+        // Old int: no mutation; visibility: T (int).
         yield return new Check(
-            3,
-            "Old list",
-            static () => Contract.Old(static () => new List<string> { "a" }),
-            old,
-            Expect.DefaultValue
+            2,
+            "Old int",
+            static () => Contract.Old(static () => 42),
+            Expect.Value("42"),
+            Expect.Value("default")
         );
+
+        // Old list: no mutation; visibility: T (List<string>), which makes List<> visible to every check.
+        yield return new Check(3, "Old list", OldList, Expect.Value("a|sameInstance=False"), Expect.Value("default"));
         yield return new Check(
             4,
             "Flat unchanged",
@@ -415,7 +699,8 @@ public static class Program
                         new AddressHolder { Address = new AddressRecord("x") }
                     )
                 ),
-            Expect.Throws<InvalidOperationException>(NestedText(AddressTypeName, "AddressHolder.Address", "Address")),
+            // R8: AddressRecord has no visible members, and its Equals says the two records are equal.
+            Expect.Ok,
             Expect.Ok
         );
         yield return new Check(
@@ -478,6 +763,680 @@ public static class Program
             post,
             Expect.Ok
         );
+
+        // ---- Old and EnsureAssignable under Native AOT (issue #45, spec section 5). ----
+        // Each check names its mutation and its source of visibility. "Off" is the DBC_POST=off column: Old
+        // returns default there, so a check that passes Old's result to EnsureAssignable gets its
+        // ArgumentNullException (issue #47).
+        Expect offPair = Expect.Throws<ArgumentNullException>();
+        Expect offDefault = Expect.Value("default");
+
+        // Mutation: none. Visibility: T. Private fields of T keep their values.
+        yield return new Check(
+            22,
+            "Old private-field type",
+            static () => Contract.Old(static () => new VaultCode(7, "x"))?.Describe(),
+            Expect.Value("code=7|label=x"),
+            offDefault
+        );
+
+        // Mutation: field write in the object a private field of T refers to. Visibility: T only, through
+        // Old's [DynamicallyAccessedMembers]: the private field is visited, so the counter is copied.
+        yield return new Check(
+            23,
+            "Old-only T private reference",
+            OldOnlyPrivateReference,
+            Expect.Value("copy=1|original=2"),
+            offDefault
+        );
+
+        // The same through a generic forwarder annotated with Old's [DynamicallyAccessedMembers].
+        yield return new Check(
+            24,
+            "Annotated forwarder private reference",
+            ForwardedPrivateReference,
+            Expect.Value("copy=1|original=2"),
+            offDefault
+        );
+
+        // Mutation: none. Visibility: T = SnapshotShape (a base-class method calls Old(() => this)); the
+        // runtime type SnapshotCircle is kept and its field keeps its value bitwise.
+        yield return new Check(
+            25,
+            "Base-method runtime type",
+            BaseMethodRuntimeType,
+            Expect.Value("derived=True|radius=5"),
+            offDefault
+        );
+
+        // Mutation: field writes on the nested object and on the object it refers to. Visibility: T's field
+        // Inner only; HiddenNestInner's fields are hidden, so its copy keeps Value bitwise and shares Leaf.
+        yield return new Check(
+            26,
+            "Nested unpreserved class",
+            NestedUnpreserved,
+            Expect.Value("inner=3|leaf=9"),
+            offDefault
+        );
+
+        // The same with the nested type preserved by DynamicDependency(All): Leaf is copied too.
+        yield return new Check(
+            27,
+            "Nested preserved class",
+            NestedPreserved,
+            Expect.Value("inner=3|leaf=4"),
+            offDefault
+        );
+
+        // Mutation: indexer set on a List held by a base-class auto-property. Visibility: none for the
+        // base's private backing field, so the copy shares the List: the change passes silently.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(
+            28,
+            "Base auto-property hidden list indexer set",
+            HiddenBaseListIndexerSet,
+            Expect.Ok,
+            offPair
+        );
+
+        // Mutation: Add. Visibility: DynamicDependency(All, typeof(PreservedLinesDerived)) covers the base's
+        // backing field, and List<> is visible (check 3): the copy has its own List, so the count shows it.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(29, "Preserved base auto-property list Add", PreservedBaseListAdd, post, offPair);
+
+        // Mutation: indexer set. The List is copied, but its PreservedLine elements have no visible members
+        // and their Equals says unequal: the comparison reports that it cannot compare them.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(
+            30,
+            "Preserved base auto-property list indexer set",
+            PreservedBaseListIndexerSet,
+            Expect.Throws<InvalidOperationException>(
+                NestedText(PreservedLineTypeName, "PreservedLinesDerived.Lines[]", "Lines")
+            ),
+            offPair
+        );
+
+        // Mutation: indexer set. Visibility: none for SortedList<,>: the copy shares its arrays, so the
+        // change passes silently.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(31, "Hidden SortedList indexer set", HiddenSortedListIndexerSet, Expect.Ok, offPair);
+
+        // Mutation: Add beyond the copy's count. The copy's stale count shows it.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(32, "Hidden SortedList Add", HiddenSortedListAdd, post, offPair);
+
+        // Mutation: none (two separate graphs). Entries are compared through IDictionaryEnumerator (R7).
+        yield return new Check(
+            33,
+            "Nested Dictionary unchanged",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new StockSheet { Stock = new(StringComparer.Ordinal) { ["a"] = 1 } },
+                        new StockSheet { Stock = new(StringComparer.Ordinal) { ["a"] = 1 } }
+                    )
+                ),
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: a different value for the same key.
+        yield return new Check(
+            34,
+            "Nested Dictionary value changed",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new StockSheet { Stock = new(StringComparer.Ordinal) { ["a"] = 2 } },
+                        new StockSheet { Stock = new(StringComparer.Ordinal) { ["a"] = 1 } }
+                    )
+                ),
+            post,
+            Expect.Ok
+        );
+
+#if !HIDDEN_DICTIONARY_ENTRY // -p:AotSmokeHiddenDictionaryEntry=true builds the variant in which Dictionary<,>.Entry is hidden.
+        // Mutation: none. Visibility: DynamicDependency(All) on Dictionary<string, int>; entries are still
+        // compared through IDictionaryEnumerator (R7), so no KeyValuePair fields are needed.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(35, "Preserved Dictionary unchanged", PreservedDictionaryUnchanged, Expect.Ok, offPair);
+
+        // Mutation: field write on a dictionary value. Visibility: DynamicDependency(All) on
+        // Dictionary<string, CatalogItem> makes Dictionary<,>.Entry visible, so the values are copied.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(
+            36,
+            "Dictionary value field write, Entry visible",
+            CatalogValueChangedEntryVisible,
+            post,
+            offPair
+        );
+#else
+        // The same with Dictionary<,>.Entry hidden (this build preserves no Dictionary): the copy shares
+        // the values, so the change passes silently.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(
+            36,
+            "Dictionary value field write, Entry hidden",
+            CatalogValueChangedEntryHidden,
+            Expect.Ok,
+            offPair
+        );
+#endif
+
+        // Mutation: Add on a List inside a struct array element (Array.GetValue/SetValue). Visibility:
+        // DynamicDependency(All) on TagSet.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(37, "Struct array element List Add", StructArrayListAdd, post, offPair);
+
+        // Mutation: Add on a List in a readonly field of a struct nested in a struct field. Visibility:
+        // DynamicDependency(All) on both structs.
+        yield return new Check(
+            38,
+            "Nested readonly struct field",
+            NestedReadonlyStructField,
+            Expect.Value("copy=a"),
+            offDefault
+        );
+
+        // Mutation: Add on a List inside a Nullable<LabelSet>[] element (Array.GetValue/SetValue on a
+        // Nullable array). Visibility: DynamicDependency(All) on LabelSet and on LabelSet?.
+        yield return new Check(
+            39,
+            "Nullable struct array element",
+            NullableStructArray,
+            Expect.Value("copy=null|a"),
+            offDefault
+        );
+
+        // Mutation: none; the copy is dropped and collected. Visibility: T. The queue stays empty.
+        yield return new Check(
+            40,
+            "Finalizable copy not finalized",
+            FinalizableCopyNotFinalized,
+            Expect.Value("finalized=0"),
+            Expect.Value("finalized=0")
+        );
+
+        // Mutation: none. Visibility: T. A string in an object field is shared, not copied.
+        yield return new Check(
+            41,
+            "String in object field same",
+            static () =>
+            {
+                PayloadHolder original = new() { Payload = new string('p', 3) };
+                PayloadHolder? copy = Contract.Old(() => original);
+                return copy is null ? null : $"same={ReferenceEquals(copy.Payload, original.Payload)}";
+            },
+            Expect.Value("same=True"),
+            offDefault
+        );
+
+        // Mutation: a different DateTime (hidden fields). R3: Equals decides; no visible field makes it unequal.
+        yield return new Check(
+            42,
+            "R3 DateTime changed",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new Appointment { At = new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc), Room = 1 },
+                        new Appointment { At = new DateTime(2026, 10, 7, 0, 0, 0, DateTimeKind.Utc), Room = 1 }
+                    )
+                ),
+            post,
+            Expect.Ok
+        );
+
+        // Mutation: a different int.
+        yield return new Check(
+            43,
+            "R3 int changed",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new Appointment { At = new DateTime(2026, 10, 7, 0, 0, 0, DateTimeKind.Utc), Room = 2 },
+                        new Appointment { At = new DateTime(2026, 10, 7, 0, 0, 0, DateTimeKind.Utc), Room = 1 }
+                    )
+                ),
+            post,
+            Expect.Ok
+        );
+
+        // Mutation: the delegate's target replaced by another instance. R4: same method, different target.
+        yield return new Check(
+            44,
+            "R4 same method different target",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new GreetingHook { Hook = new Greeter("a").Greet },
+                        new GreetingHook { Hook = new Greeter("b").Greet }
+                    )
+                ),
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: the delegate replaced by an equal one (same target, same CoreLib-internal override,
+        // ComparisonComparer<int>.Compare). Visibility: none; Native AOT still reads Method for this delegate,
+        // and Delegate.Equals decides first. The null-Method / NotSupportedException branch is not reachable
+        // with this fixture under Native AOT; unit tests cover it.
+        yield return new Check(
+            45,
+            "Delegate Equals fast path (CoreLib override, Method readable)",
+            DelegateEqualsFastPath,
+            Expect.Value("method=readable|ensure=passed"),
+            Expect.Value("method=readable|ensure=passed")
+        );
+
+        // Mutation: the target replaced by another instance of the same CoreLib-internal type (R4: same
+        // method, different target). Visibility: none; Native AOT reads Method, so the methods are compared.
+        // The null-Method / NotSupportedException branch is not reachable with this fixture under Native AOT;
+        // unit tests cover it.
+        yield return new Check(
+            46,
+            "Delegate same method, different target (CoreLib override)",
+            DelegateSameMethodDifferentTarget,
+            Expect.Value("method=readable|ensure=passed"),
+            Expect.Value("method=readable|ensure=passed")
+        );
+
+        // Mutation: none. Visibility: none for the base's ImmutableArray backing field (bitwise, shared);
+        // the inherited public property is visible through T.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(
+            47,
+            "Hidden ImmutableArray backing field unchanged",
+            HiddenImmutableArrayUnchanged,
+            Expect.Ok,
+            offPair
+        );
+
+        // Mutation: field write through the property setter (different content).
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(
+            48,
+            "Hidden ImmutableArray backing field replaced",
+            HiddenImmutableArrayReplaced,
+            post,
+            offPair
+        );
+
+        // Mutation: none. Visibility: T. A System.Collections.Frozen set is shared by Old (namespace rule).
+        yield return new Check(
+            49,
+            "Frozen set shared by Old",
+            FrozenSharedByOld,
+            Expect.Value("same=True"),
+            offDefault
+        );
+
+        // Mutation: none (two equal frozen sets). Compared by reference: different instances are unequal.
+        yield return new Check(
+            50,
+            "Frozen set compared by reference",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new FrozenHolder { Codes = s_frozenCodes.ToFrozenSet(StringComparer.Ordinal) },
+                        new FrozenHolder { Codes = s_frozenCodes.ToFrozenSet(StringComparer.Ordinal) }
+                    )
+                ),
+            post,
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T; FieldInfo.GetValue boxes the pointer field as a Pointer.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(51, "Pointer field unchanged", PointerUnchanged, Expect.Ok, offPair);
+
+        // Mutation: field write (another address).
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(52, "Pointer field changed", PointerChanged, post, offPair);
+
+        // Mutation: none (two equal records). R8: the interface member holds a hidden record whose Equals
+        // says equal.
+        yield return new Check(
+            53,
+            "R8 interface member equal hidden record",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new Parcel { Label = new ShippingLabel("x") },
+                        new Parcel { Label = new ShippingLabel("x") }
+                    )
+                ),
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: field writes on assignable members only. Visibility: T (User) for Old and EnsureAssignable.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(
+            54,
+            "User.ChangeEmail pairing",
+            static () => NoResult(static () => new User("ada@example.com", "Ada").ChangeEmail("ada@byron.example")),
+            Expect.Ok,
+            offPair
+        );
+
+        // Mutation: field write on _name, which is not assignable.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(
+            55,
+            "User.ChangeEmailAndName pairing",
+            static () =>
+                NoResult(static () =>
+                    new User("ada@example.com", "Ada").ChangeEmailAndName("ada@byron.example", "Ada Byron")
+                ),
+            post,
+            offPair
+        );
+
+        // Mutation: none. Visibility: T (RingNode). A cycle is copied and compared.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(56, "Cyclic pairing unchanged", CyclicUnchanged, Expect.Ok, offPair);
+
+        // Mutation: field write on the second node of the cycle.
+        // ArgumentNullException with DBC_POST=off: issue #47
+        yield return new Check(57, "Cyclic pairing changed", CyclicChanged, post, offPair);
+    }
+
+    private static string? OldList()
+    {
+        List<string> original = ["a"];
+        List<string>? copy = Contract.Old(() => original);
+        return copy is null ? null : string.Join('|', copy) + $"|sameInstance={ReferenceEquals(copy, original)}";
+    }
+
+    private static string? OldOnlyPrivateReference()
+    {
+        OldOnlyTally original = new();
+        OldOnlyTally? copy = Contract.Old(() => original);
+        original.Bump();
+        return copy is null ? null : $"copy={copy.Count}|original={original.Count}";
+    }
+
+    private static T OldThrough<
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields
+        )]
+            T
+    >(Func<T> supplier) => Contract.Old(supplier);
+
+    private static string? ForwardedPrivateReference()
+    {
+        ForwardedTally original = new();
+        ForwardedTally? copy = OldThrough(() => original);
+        original.Bump();
+        return copy is null ? null : $"copy={copy.Count}|original={original.Count}";
+    }
+
+    private static string? BaseMethodRuntimeType()
+    {
+        SnapshotShape? copy = new SnapshotCircle { Radius = 5 }.Snapshot();
+        return copy is null ? null : $"derived={copy is SnapshotCircle}|radius={(copy as SnapshotCircle)?.Radius}";
+    }
+
+    private static string? NestedUnpreserved()
+    {
+        HiddenNestOuter original = new()
+        {
+            Inner = new HiddenNestInner
+            {
+                Value = 3,
+                Leaf = new HiddenLeaf { Value = 4 },
+            },
+        };
+        HiddenNestOuter? copy = Contract.Old(() => original);
+        original.Inner.Value = 8;
+        original.Inner.Leaf.Value = 9;
+        return copy is null ? null : $"inner={copy.Inner.Value}|leaf={copy.Inner.Leaf.Value}";
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(PreservedNestInner))]
+    private static string? NestedPreserved()
+    {
+        PreservedNestOuter original = new()
+        {
+            Inner = new PreservedNestInner
+            {
+                Value = 3,
+                Leaf = new PreservedLeaf { Value = 4 },
+            },
+        };
+        PreservedNestOuter? copy = Contract.Old(() => original);
+        original.Inner.Value = 8;
+        original.Inner.Leaf.Value = 9;
+        return copy is null ? null : $"inner={copy.Inner.Value}|leaf={copy.Inner.Leaf.Value}";
+    }
+
+    private static object? HiddenBaseListIndexerSet()
+    {
+        HiddenLinesDerived original = new() { Lines = [new HiddenLine("a")] };
+        HiddenLinesDerived copy = Contract.Old(() => original);
+        original.Lines[0] = new HiddenLine("z");
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(PreservedLinesDerived))]
+    private static object? PreservedBaseListAdd()
+    {
+        PreservedLinesDerived original = new() { Lines = [new PreservedLine("a")] };
+        PreservedLinesDerived copy = Contract.Old(() => original);
+        original.Lines.Add(new PreservedLine("b"));
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(PreservedLinesDerived))]
+    private static object? PreservedBaseListIndexerSet()
+    {
+        PreservedLinesDerived original = new() { Lines = [new PreservedLine("a")] };
+        PreservedLinesDerived copy = Contract.Old(() => original);
+        original.Lines[0] = new PreservedLine("z");
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? HiddenSortedListIndexerSet()
+    {
+        ScoreBoard original = new();
+        ScoreBoard copy = Contract.Old(() => original);
+        original.Scores["a"] = 2;
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? HiddenSortedListAdd()
+    {
+        ScoreBoard original = new();
+        ScoreBoard copy = Contract.Old(() => original);
+        original.Scores.Add("b", 2);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+#if !HIDDEN_DICTIONARY_ENTRY
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Dictionary<string, int>))]
+    private static object? PreservedDictionaryUnchanged()
+    {
+        PreservedStockSheet original = new() { Stock = new(StringComparer.Ordinal) { ["a"] = 1 } };
+        PreservedStockSheet copy = Contract.Old(() => original);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Dictionary<string, CatalogItem>))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(CatalogItem))]
+    private static object? CatalogValueChangedEntryVisible() => CatalogValueChanged();
+#else
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(CatalogItem))]
+    private static object? CatalogValueChangedEntryHidden() => CatalogValueChanged();
+#endif
+
+    private static object? CatalogValueChanged()
+    {
+        Catalog original = new();
+        original.Items.Add("a", new CatalogItem { Price = 1 });
+        Catalog copy = Contract.Old(() => original);
+        original.Items["a"].Price = 2;
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(TagSet))]
+    private static object? StructArrayListAdd()
+    {
+        TagShelf original = new() { Sets = [new TagSet { Tags = ["a"] }] };
+        TagShelf copy = Contract.Old(() => original);
+        original.Sets[0].Tags.Add("b");
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(OuterTagBox))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(ReadonlyTagBox))]
+    private static string? NestedReadonlyStructField()
+    {
+        TagCabinet original = new() { Box = new OuterTagBox { Inner = new ReadonlyTagBox(["a"]) } };
+        TagCabinet? copy = Contract.Old(() => original);
+        original.Box.Inner.Tags.Add("b");
+        return copy is null ? null : "copy=" + string.Join(',', copy.Box.Inner.Tags);
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(LabelSet))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(LabelSet?))]
+    private static string? NullableStructArray()
+    {
+        LabelRack original = new() { Slots = [null, new LabelSet { Labels = ["a"] }] };
+        LabelRack? copy = Contract.Old(() => original);
+        original.Slots[1]!.Value.Labels.Add("b");
+        return copy is null
+            ? null
+            : "copy="
+                + string.Join(
+                    '|',
+                    copy.Slots.Select(static slot => slot is { } set ? string.Join(',', set.Labels) : "null")
+                );
+    }
+
+    private static string? FinalizableCopyNotFinalized()
+    {
+        FinalizableFixture original = new() { Id = 1 };
+        CopyAndDrop(original);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        string result = $"finalized={FinalizableFixture.Finalized}";
+        GC.KeepAlive(original);
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void CopyAndDrop(FinalizableFixture original)
+    {
+        _ = Contract.Old(() => original);
+    }
+
+    private static string MethodProbe(Delegate hook)
+    {
+        try
+        {
+            return (MethodInfo?)hook.Method is null ? "null" : "readable";
+        }
+        catch (NotSupportedException)
+        {
+            return "throws";
+        }
+    }
+
+    private static string EnsureOutcome(Action ensure)
+    {
+        try
+        {
+            ensure();
+            return "passed";
+        }
+        catch (PostconditionViolationException)
+        {
+            return "violation";
+        }
+    }
+
+    private static string? DelegateEqualsFastPath()
+    {
+        Comparer<int> comparer = Comparer<int>.Create(static (x, y) => x.CompareTo(y));
+        Func<int, int, int> actual = comparer.Compare;
+        Func<int, int, int> expected = comparer.Compare;
+        string ensure = EnsureOutcome(() =>
+            Contract.EnsureAssignable(new CompareHook { Hook = actual }, new CompareHook { Hook = expected })
+        );
+        return $"method={MethodProbe(actual)}|ensure={ensure}";
+    }
+
+    private static string? DelegateSameMethodDifferentTarget()
+    {
+        Func<int, int, int> actual = Comparer<int>.Create(static (x, y) => x.CompareTo(y)).Compare;
+        Func<int, int, int> expected = Comparer<int>.Create(static (x, y) => x.CompareTo(y)).Compare;
+        string ensure = EnsureOutcome(() =>
+            Contract.EnsureAssignable(new CompareHook { Hook = actual }, new CompareHook { Hook = expected })
+        );
+        return $"method={MethodProbe(actual)}|ensure={ensure}";
+    }
+
+    private static object? HiddenImmutableArrayUnchanged()
+    {
+        TaggedDerived original = new() { Tags = ["a"] };
+        TaggedDerived copy = Contract.Old(() => original);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? HiddenImmutableArrayReplaced()
+    {
+        TaggedDerived original = new() { Tags = ["a"] };
+        TaggedDerived copy = Contract.Old(() => original);
+        original.Tags = ["z"];
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static string? FrozenSharedByOld()
+    {
+        FrozenHolder original = new() { Codes = s_frozenCodes.ToFrozenSet(StringComparer.Ordinal) };
+        FrozenHolder? copy = Contract.Old(() => original);
+        return copy is null ? null : $"same={ReferenceEquals(copy.Codes, original.Codes)}";
+    }
+
+    private static unsafe object? PointerUnchanged()
+    {
+        PointerHolder original = new() { Address = (int*)16 };
+        PointerHolder copy = Contract.Old(() => original);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static unsafe object? PointerChanged()
+    {
+        PointerHolder original = new() { Address = (int*)16 };
+        PointerHolder copy = Contract.Old(() => original);
+        original.Address = (int*)32;
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static RingNode NewRing()
+    {
+        RingNode first = new() { Value = 1 };
+        RingNode second = new() { Value = 2, Next = first };
+        first.Next = second;
+        return first;
+    }
+
+    private static object? CyclicUnchanged()
+    {
+        RingNode original = NewRing();
+        RingNode copy = Contract.Old(() => original);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? CyclicChanged()
+    {
+        RingNode original = NewRing();
+        RingNode copy = Contract.Old(() => original);
+        original.Next!.Value = 9;
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
     }
 
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(PreservedInner))]
