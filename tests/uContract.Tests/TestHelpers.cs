@@ -124,7 +124,11 @@ public static class SmallStack
                 }
             },
             maxStackSize
-        );
+        )
+        {
+            // A hung action must not keep the test host alive.
+            IsBackground = true,
+        };
 
         thread.Start();
         if (!thread.Join(timeoutMilliseconds))
