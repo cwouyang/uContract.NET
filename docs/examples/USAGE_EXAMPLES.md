@@ -363,7 +363,7 @@ public class Profile
 `null` is compared as a value: a nickname that stays `null`, or keeps its value, passes; one that changes to another value, or goes from `null` to a value or back, is a violation. Things to know:
 
 - A `string`, a delegate and a nullable value type (`int?`, `DateTime?`) are compared as a whole: a `string` with `Equals`, a delegate by its methods, a nullable value type with `Equals` and then by its fields. Assignable patterns do not apply to them or to a `null` on one side.
-- A pattern cannot name a field of a nullable struct. To compare it by its members, test both values for `null` and pass the values without `?`. Do not pass `.Value`: it throws when there is no value, and `Old<T>()` returns a value without one when postconditions are off.
+- A pattern cannot name a field of a nullable struct. To compare it by its members, test both values for `null` and pass the unwrapped values. Do not pass `.Value`: it throws when there is no value, and `Old<T>()` returns a value without one when postconditions are off. For a `Money? _price` member with a `Currency` property, and `var oldPrice = Contract.Old(() => _price);`:
 
   ```csharp
   if (_price is { } now && oldPrice is { } before)
@@ -372,7 +372,7 @@ public class Profile
       Contract.EnsureAssignable(_price, oldPrice);
   ```
 
-- This holds only when the member has that type. For a member typed as `object`, as an interface or as a base class, take the pair on the owning object (`Old(() => this)`).
+- A `string`, a delegate or a nullable value type is compared as a whole only when the member is declared as that type. For a member typed as `object`, as an interface or as a base class, take the pair on the owning object (`Old(() => this)`).
 - Do not use the pair on a member of a resource type that `Old<T>()` shares, such as a `Stream` or a `Task`: `Old<T>()` returns the same instance, and the comparison reads its properties ([#40](https://github.com/cwouyang/uContract.NET/issues/40), [#54](https://github.com/cwouyang/uContract.NET/issues/54)).
 - Take the `Old` snapshot outside any other contract's condition. Inside one, `Old<T>()` returns `default`, and a later comparison reports a violation that did not happen, or misses one.
 
