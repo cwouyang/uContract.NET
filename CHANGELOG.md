@@ -17,12 +17,21 @@ of a `JsonElement`, and a lazily evaluated sequence is cloned as an iterator ins
 materialized (capture it with `.ToList()`). `EnsureAssignable<T>()` now reports some differences it
 missed and no longer reports some it raised wrongly; each case is listed under Changed. Code that
 catches the `InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or
-the `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. Code that
-tests the `Old` result for `null`, or catches `ArgumentNullException`, around the `Old` +
-`EnsureAssignable` pair for the case that postconditions are off can drop that test or handler when
-the captured value is never `null` (for example `Old(() => this)`). Keep it for a member that can be
-`null`: a comparison still rejects a `null` top-level value (#52). For trimmed and Native AOT
-applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) in the README.
+the `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. A `null`
+test or an `ArgumentNullException` handler around the `Old` + `EnsureAssignable` pair is no longer
+needed for the case that postconditions are off. Removing a `null` test changes the result for a
+member that can be `null`: going from `null` to a value, or back, is now a violation that the
+assignable patterns cannot excuse, so keep the test where that change is allowed. Code that caught
+`ArgumentNullException` or `ArgumentException` from `EnsureAssignable<T>()` for a `null` value gets
+`PostconditionViolationException` for one `null` and nothing for two. For a `string`, a delegate or
+a nullable value type as `T`, a pattern no longer allows a change, so do not call the method for a
+value that may change; a test that matched "Fields were modified" for such a `T` sees another
+message; a `string` is compared by ordinal `Equals`, so a change of letter case is a violation; a
+delegate's target is no longer compared. An `Old` result taken while another contract check is
+running gave `ArgumentNullException` in 2.x; it now gives a violation that did not happen, or none.
+`EnsureImmutableCollection<T>()` is no longer a `null` guard with postconditions off. For trimmed
+and Native AOT applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) in the
+README.
 
 ### Changed
 
@@ -56,19 +65,20 @@ applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) i
   `JsonException` for a graph deeper than 64 levels, and it no longer translates a
   `NotSupportedException` from a getter or converter. It throws nothing of its own while copying;
   an exception from the supplier or from the runtime propagates. (ADR-0022)
-- **BREAKING**: `EnsureAssignable<T>()` reports more. Distinct instances of shared types are now
-  different, frozen collections (`System.Collections.Frozen`) included: two equal frozen sets that are
-  different instances are a violation. Other shared instances (see `Old<T>()` above) are compared by
-  reference; a `string` is compared with `Equals` and a delegate by its methods. Members whose
-  runtime types differ are unequal; the runtime type decides, not the declared type. Base and
-  derived instances are unequal. A `string` and a `char[]` are unequal. A user-defined struct that
-  implements `IEnumerable`, held in an interface-typed or `object` member, is compared by its
-  fields, so state besides its elements is reported. A change outside the window of a `Memory<T>` or
-  `ReadOnlyMemory<T>` is reported. A dictionary value whose `Equals` ignores the changed content is
-  reported, because values are compared by their members. A member whose declared type is an
-  interface is walked into the members of its runtime type, and their getters run. A getter that
-  throws on a class reached through a struct field propagates. When the two sides of a member have different runtime
-  types, a violation is reported where 2.0.0 threw `ArgumentException` or `TargetException`. (ADR-0022)
+- **BREAKING**: `EnsureAssignable<T>()` reports more. For members and elements that the comparison
+  reaches: distinct instances of shared types are now different, frozen collections
+  (`System.Collections.Frozen`) included: two equal frozen sets that are different instances are a
+  violation. Other shared instances (see `Old<T>()` above) are compared by reference; a `string` is
+  compared with `Equals` and a delegate by its methods. Members whose runtime types differ are
+  unequal; the runtime type decides, not the declared type. Base and derived instances are unequal.
+  A `string` and a `char[]` are unequal. A user-defined struct that implements `IEnumerable`, held
+  in an interface-typed or `object` member, is compared by its fields, so state besides its elements
+  is reported. A change outside the window of a `Memory<T>` or `ReadOnlyMemory<T>` is reported. A
+  dictionary value whose `Equals` ignores the changed content is reported, because values are
+  compared by their members. A member whose declared type is an interface is walked into the members
+  of its runtime type, and their getters run. A getter that throws on a class reached through a
+  struct field propagates. When the two sides of a member have different runtime types, a violation
+  is reported where 2.0.0 threw `ArgumentException` or `TargetException`. (ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` reports less. A back-reference to the compared object (for
   example `Order.Lines[i].Order`) is no longer a difference of the member that holds it; 2.0.0
   overflowed the stack or reported it. A cycle whose shape changed but whose values unroll
@@ -87,6 +97,36 @@ applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) i
   `Equals`, so a change to it passes silently, where a JIT build reports a violation and 2.0.0
   reported "cannot compare". Preserve the type with `DynamicDependency` to compare it member by
   member. (ADR-0022)
+- **BREAKING**: `EnsureAssignable<T>()` no longer throws `ArgumentNullException` for a `null`
+  `actual` or `expected`. This is an exception to "parameter validation always runs". With
+  postconditions off, or in a call made while another contract check is running, it returns without
+  comparing. `Old<T>()` returns `default` in both cases, so the documented `Old` +
+  `EnsureAssignable` pair threw there in 2.x for a reference type or a nullable value type; it now
+  does nothing. When the method compares, `null` is a value: two `null`s are equal, one `null` is a
+  `PostconditionViolationException` that the assignable patterns do not excuse and for which they
+  are not examined. A `null` pattern array still throws in every call, and the exception names
+  `assignableFieldPatterns` also when `actual` or `expected` is `null`. An `Old` result taken while
+  another contract check is running is `default` and cannot be told from a real `null`: compared
+  later, it gives a violation that did not happen, or misses one. (#47, #52; ADR-0012)
+- **BREAKING**: `EnsureAssignable<T>()` compares the two values as a whole when `T` is a `string`, a
+  delegate type or a nullable value type: a `string` with an ordinal `Equals`, a delegate by its
+  methods, a nullable value type with `Equals` and then by its fields. Before, the members of `T`
+  were compared. For a `string` those were its length and first character, so two different strings
+  could pass. For a delegate they included its target, compared by its members: now targets and
+  closure state are not compared, so the same method on another object passes, and every entry of a
+  multicast delegate counts. A nullable value type with a value on both sides could not be compared.
+  The assignable patterns do not apply to these types and are not examined. A nullable value type
+  can be compared less strictly than the same type without `?` (`DateTime.Equals` ignores `Kind`).
+  Under Native AOT the fields of its underlying type may not be preserved: for a nullable struct
+  that holds a reference, the comparison can then report a difference for an unchanged value or,
+  with an `Old` snapshot, miss a change inside the object it refers to. This holds only when `T`
+  itself is such a type: `T` = `object` still compares nothing beyond `null`, a base class compares
+  the members it declares or inherits, an interface only its own properties, and a shared type other
+  than `string` or a delegate is still compared member by member (#40). (#52; ADR-0022)
+- **BREAKING**: `EnsureImmutableCollection<T>()` returns a `null` `collection` instead of throwing
+  `ArgumentNullException` when it does not check it: with postconditions off, or in a call made
+  while another contract check is running. This is a second exception to "parameter validation
+  always runs". Code that relied on the method as a `null` guard must add its own. (#52; ADR-0012)
 - Known limitation: a property that returns a new instance of its own type on every read (for
   example `DirectoryInfo.Root`) now makes the comparison grow without bound, where 2.0.0 overflowed
   the stack. Fields-only comparison ([#46](https://github.com/cwouyang/uContract.NET/issues/46))
@@ -106,13 +146,6 @@ applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) i
 - `EnsureAssignable<T>()` no longer reports false violations for unchanged dictionaries, structs
   that hold a reference, interface-typed members, and objects that hold a `Regex` (also after it is
   used), an `AsyncLocal<T>` or a `System.Threading.Lock` (ADR-0022).
-- `EnsureAssignable<T>()` no longer throws `ArgumentNullException` for a `null` `actual` or
-  `expected` when it does not compare them: with postconditions off, or in a call made while another
-  contract check is running. `Old<T>()` returns `default` in both cases, so the documented `Old` +
-  `EnsureAssignable` pair threw there for a reference type or a nullable value type; it now does
-  nothing. This is an exception to "parameter validation always runs". A `null` pattern array still
-  throws in every call. When no comparison runs and `actual` or `expected` is `null` too, the
-  exception now names `assignableFieldPatterns` (#47; ADR-0012).
 
 ### Removed
 
