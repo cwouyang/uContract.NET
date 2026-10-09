@@ -1221,6 +1221,87 @@ public class EnsureAssignableTests
     }
 
     [Fact]
+    public void EnsureAssignable_InsideAnotherContractsCondition_AcceptsTheNullThatOldReturns()
+    {
+        TestPerson person = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        bool oldIsNull = false;
+        bool reachedEnd = false;
+        bool nestedRan = false;
+
+        Contract.Ensure(
+            "Outer contract",
+            () =>
+            {
+                TestPerson? old = Contract.Old(() => person);
+                oldIsNull = old is null;
+                Contract.EnsureAssignable(person, old, "Name");
+                Contract.Ensure(
+                    "Nested contract",
+                    () =>
+                    {
+                        nestedRan = true;
+                        return true;
+                    }
+                );
+                reachedEnd = true;
+                return true;
+            }
+        );
+
+        Assert.True(oldIsNull);
+        Assert.True(reachedEnd);
+        // The recursion guard is still set after the inner call, so the nested condition did not run.
+        Assert.False(nestedRan);
+    }
+
+    [Fact]
+    public void EnsureAssignable_InsideAnotherContractsCondition_AcceptsNullActual()
+    {
+        TestPerson person = new();
+        TestPerson? actual = null;
+        bool reachedEnd = false;
+
+        Contract.Ensure(
+            "Outer contract",
+            () =>
+            {
+                Contract.EnsureAssignable(actual, person, "Name");
+                reachedEnd = true;
+                return true;
+            }
+        );
+
+        Assert.True(reachedEnd);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EnsureAssignable_InsideAnotherContractsCondition_StillRejectsNullPatterns(bool actualIsNull)
+    {
+        TestPerson? actual = actualIsNull ? null : new TestPerson();
+        TestPerson? expected = null;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Ensure(
+                "Outer contract",
+                () =>
+                {
+                    Contract.EnsureAssignable(actual, expected, null!);
+                    return true;
+                }
+            )
+        );
+
+        Assert.Equal("assignableFieldPatterns", exception.ParamName);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenTypeHasNoMembers_DoesNotThrow()
     {
         EmptyType first = new();

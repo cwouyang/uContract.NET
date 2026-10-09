@@ -766,9 +766,8 @@ public static class Program
 
         // ---- Old and EnsureAssignable under Native AOT (issue #45, spec section 5). ----
         // Each check names its mutation and its source of visibility. "Off" is the DBC_POST=off column: Old
-        // returns default there, so a check that passes Old's result to EnsureAssignable gets its
-        // ArgumentNullException (issue #47).
-        Expect offPair = Expect.Throws<ArgumentNullException>();
+        // returns default there, and EnsureAssignable returns without comparing and without checking its
+        // compared values, so a check that passes Old's result to EnsureAssignable does nothing (issue #47).
         Expect offDefault = Expect.Value("default");
 
         // Mutation: none. Visibility: T. Private fields of T keep their values.
@@ -830,23 +829,20 @@ public static class Program
 
         // Mutation: indexer set on a List held by a base-class auto-property. Visibility: none for the
         // base's private backing field, so the copy shares the List: the change passes silently.
-        // ArgumentNullException with DBC_POST=off: issue #47
         yield return new Check(
             28,
             "Base auto-property hidden list indexer set",
             HiddenBaseListIndexerSet,
             Expect.Ok,
-            offPair
+            Expect.Ok
         );
 
         // Mutation: Add. Visibility: DynamicDependency(All, typeof(PreservedLinesDerived)) covers the base's
         // backing field, and List<> is visible (check 3): the copy has its own List, so the count shows it.
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(29, "Preserved base auto-property list Add", PreservedBaseListAdd, post, offPair);
+        yield return new Check(29, "Preserved base auto-property list Add", PreservedBaseListAdd, post, Expect.Ok);
 
         // Mutation: indexer set. The List is copied, but its PreservedLine elements have no visible members
         // and their Equals says unequal: the comparison reports that it cannot compare them.
-        // ArgumentNullException with DBC_POST=off: issue #47
         yield return new Check(
             30,
             "Preserved base auto-property list indexer set",
@@ -854,17 +850,15 @@ public static class Program
             Expect.Throws<InvalidOperationException>(
                 NestedText(PreservedLineTypeName, "PreservedLinesDerived.Lines[]", "Lines")
             ),
-            offPair
+            Expect.Ok
         );
 
         // Mutation: indexer set. Visibility: none for SortedList<,>: the copy shares its arrays, so the
         // change passes silently.
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(31, "Hidden SortedList indexer set", HiddenSortedListIndexerSet, Expect.Ok, offPair);
+        yield return new Check(31, "Hidden SortedList indexer set", HiddenSortedListIndexerSet, Expect.Ok, Expect.Ok);
 
         // Mutation: Add beyond the copy's count. The copy's stale count shows it.
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(32, "Hidden SortedList Add", HiddenSortedListAdd, post, offPair);
+        yield return new Check(32, "Hidden SortedList Add", HiddenSortedListAdd, post, Expect.Ok);
 
         // Mutation: none (two separate graphs). Entries are compared through IDictionaryEnumerator (R7).
         yield return new Check(
@@ -899,36 +893,38 @@ public static class Program
 #if !HIDDEN_DICTIONARY_ENTRY // -p:AotSmokeHiddenDictionaryEntry=true builds the variant in which Dictionary<,>.Entry is hidden.
         // Mutation: none. Visibility: DynamicDependency(All) on Dictionary<string, int>; entries are still
         // compared through IDictionaryEnumerator (R7), so no KeyValuePair fields are needed.
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(35, "Preserved Dictionary unchanged", PreservedDictionaryUnchanged, Expect.Ok, offPair);
+        yield return new Check(
+            35,
+            "Preserved Dictionary unchanged",
+            PreservedDictionaryUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
 
         // Mutation: field write on a dictionary value. Visibility: DynamicDependency(All) on
         // Dictionary<string, CatalogItem> makes Dictionary<,>.Entry visible, so the values are copied.
-        // ArgumentNullException with DBC_POST=off: issue #47
         yield return new Check(
             36,
             "Dictionary value field write, Entry visible",
             CatalogValueChangedEntryVisible,
             post,
-            offPair
+            Expect.Ok
         );
 #else
         // The same with Dictionary<,>.Entry hidden (this build preserves no Dictionary): the copy shares
         // the values, so the change passes silently.
-        // ArgumentNullException with DBC_POST=off: issue #47
         yield return new Check(
             36,
             "Dictionary value field write, Entry hidden",
             CatalogValueChangedEntryHidden,
             Expect.Ok,
-            offPair
+            Expect.Ok
         );
 #endif
 
         // Mutation: Add on a List inside a struct array element (Array.GetValue/SetValue). Visibility:
         // DynamicDependency(All) on TagSet.
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(37, "Struct array element List Add", StructArrayListAdd, post, offPair);
+        yield return new Check(37, "Struct array element List Add", StructArrayListAdd, post, Expect.Ok);
 
         // Mutation: Add on a List in a readonly field of a struct nested in a struct field. Visibility:
         // DynamicDependency(All) on both structs.
@@ -1044,23 +1040,21 @@ public static class Program
 
         // Mutation: none. Visibility: none for the base's ImmutableArray backing field (bitwise, shared);
         // the inherited public property is visible through T.
-        // ArgumentNullException with DBC_POST=off: issue #47
         yield return new Check(
             47,
             "Hidden ImmutableArray backing field unchanged",
             HiddenImmutableArrayUnchanged,
             Expect.Ok,
-            offPair
+            Expect.Ok
         );
 
         // Mutation: field write through the property setter (different content).
-        // ArgumentNullException with DBC_POST=off: issue #47
         yield return new Check(
             48,
             "Hidden ImmutableArray backing field replaced",
             HiddenImmutableArrayReplaced,
             post,
-            offPair
+            Expect.Ok
         );
 
         // Mutation: none. Visibility: T. A System.Collections.Frozen set is shared by Old (namespace rule).
@@ -1088,12 +1082,10 @@ public static class Program
         );
 
         // Mutation: none. Visibility: T; FieldInfo.GetValue boxes the pointer field as a Pointer.
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(51, "Pointer field unchanged", PointerUnchanged, Expect.Ok, offPair);
+        yield return new Check(51, "Pointer field unchanged", PointerUnchanged, Expect.Ok, Expect.Ok);
 
         // Mutation: field write (another address).
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(52, "Pointer field changed", PointerChanged, post, offPair);
+        yield return new Check(52, "Pointer field changed", PointerChanged, post, Expect.Ok);
 
         // Mutation: none (two equal records). R8: the interface member holds a hidden record whose Equals
         // says equal.
@@ -1112,17 +1104,15 @@ public static class Program
         );
 
         // Mutation: field writes on assignable members only. Visibility: T (User) for Old and EnsureAssignable.
-        // ArgumentNullException with DBC_POST=off: issue #47
         yield return new Check(
             54,
             "User.ChangeEmail pairing",
             static () => NoResult(static () => new User("ada@example.com", "Ada").ChangeEmail("ada@byron.example")),
             Expect.Ok,
-            offPair
+            Expect.Ok
         );
 
         // Mutation: field write on _name, which is not assignable.
-        // ArgumentNullException with DBC_POST=off: issue #47
         yield return new Check(
             55,
             "User.ChangeEmailAndName pairing",
@@ -1131,16 +1121,73 @@ public static class Program
                     new User("ada@example.com", "Ada").ChangeEmailAndName("ada@byron.example", "Ada Byron")
                 ),
             post,
-            offPair
+            Expect.Ok
         );
 
         // Mutation: none. Visibility: T (RingNode). A cycle is copied and compared.
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(56, "Cyclic pairing unchanged", CyclicUnchanged, Expect.Ok, offPair);
+        yield return new Check(56, "Cyclic pairing unchanged", CyclicUnchanged, Expect.Ok, Expect.Ok);
 
         // Mutation: field write on the second node of the cycle.
-        // ArgumentNullException with DBC_POST=off: issue #47
-        yield return new Check(57, "Cyclic pairing changed", CyclicChanged, post, offPair);
+        yield return new Check(57, "Cyclic pairing changed", CyclicChanged, post, Expect.Ok);
+
+        // ---- EnsureAssignable argument checks (issue #47). Each returns the ParamName of the
+        // ArgumentNullException, or "none". FlatType is already the T of checks 4 to 6. ----
+
+        // Compared values are checked only when the method compares them.
+        yield return new Check(
+            58,
+            "EnsureAssignable null expected",
+            static () =>
+                NullArgumentOf(static () => Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!)),
+            Expect.Value("expected"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            59,
+            "EnsureAssignable null actual",
+            static () =>
+                NullArgumentOf(static () => Contract.EnsureAssignable(null!, new FlatType { Name = "a", Count = 1 })),
+            Expect.Value("actual"),
+            Expect.Value("none")
+        );
+
+        // The pattern array is checked in every call. Passes before and after issue #47: a pin.
+        yield return new Check(
+            60,
+            "EnsureAssignable null patterns",
+            static () =>
+                NullArgumentOf(static () =>
+                    Contract.EnsureAssignable(
+                        new FlatType { Name = "a", Count = 1 },
+                        new FlatType { Name = "a", Count = 1 },
+                        null!
+                    )
+                ),
+            Expect.Value("assignableFieldPatterns"),
+            Expect.Value("assignableFieldPatterns")
+        );
+
+        // With a null compared value too: a call that compares names the value, any other call the patterns.
+        yield return new Check(
+            61,
+            "EnsureAssignable null expected and patterns",
+            static () =>
+                NullArgumentOf(static () =>
+                    Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!, null!)
+                ),
+            Expect.Value("expected"),
+            Expect.Value("assignableFieldPatterns")
+        );
+
+        // The pairing in a call made while another contract check is running: Old returns default there,
+        // with postconditions on or off. "skipped" would mean that preconditions are off in the environment.
+        yield return new Check(
+            62,
+            "User.ChangeEmail pairing inside Require",
+            GuardedUserPairing,
+            Expect.Value("ran"),
+            Expect.Value("ran")
+        );
     }
 
     private static string? OldList()
@@ -1356,6 +1403,34 @@ public static class Program
         {
             return "violation";
         }
+    }
+
+    private static string NullArgumentOf(Action ensure)
+    {
+        try
+        {
+            ensure();
+            return "none";
+        }
+        catch (ArgumentNullException ex)
+        {
+            return ex.ParamName ?? "unnamed";
+        }
+    }
+
+    private static string GuardedUserPairing()
+    {
+        bool ran = false;
+        Contract.Require(
+            "smoke",
+            () =>
+            {
+                new User("ada@example.com", "Ada").ChangeEmail("ada@byron.example");
+                ran = true;
+                return true;
+            }
+        );
+        return ran ? "ran" : "skipped";
     }
 
     private static string? DelegateEqualsFastPath()
