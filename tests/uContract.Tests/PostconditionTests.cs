@@ -1302,6 +1302,49 @@ public class EnsureAssignableTests
     }
 
     [Fact]
+    public void EnsureAssignable_InsideAnotherContractsCondition_DoesNotCompare()
+    {
+        TestPerson original = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson changed = new()
+        {
+            Name = "Alice",
+            Age = 31,
+            Email = "alice@example.com",
+        };
+        bool reachedEnd = false;
+        bool nestedRan = false;
+        // The same pair is a violation when the method does compare.
+        Assert.Throws<PostconditionViolationException>(() => Contract.EnsureAssignable(changed, original, "Name"));
+
+        Contract.Ensure(
+            "Outer contract",
+            () =>
+            {
+                Contract.EnsureAssignable(changed, original, "Name");
+                Contract.Ensure(
+                    "Nested contract",
+                    () =>
+                    {
+                        nestedRan = true;
+                        return true;
+                    }
+                );
+                reachedEnd = true;
+                return true;
+            }
+        );
+
+        Assert.True(reachedEnd);
+        // The recursion guard is still set after the inner call, so the nested condition did not run.
+        Assert.False(nestedRan);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenTypeHasNoMembers_DoesNotThrow()
     {
         EmptyType first = new();

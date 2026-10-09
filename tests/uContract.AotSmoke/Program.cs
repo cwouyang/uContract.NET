@@ -1130,7 +1130,7 @@ public static class Program
         // Mutation: field write on the second node of the cycle.
         yield return new Check(57, "Cyclic pairing changed", CyclicChanged, post, Expect.Ok);
 
-        // ---- EnsureAssignable argument checks (issue #47). Each returns the ParamName of the
+        // ---- EnsureAssignable argument checks (issue #47). Checks 58 to 61 return the ParamName of the
         // ArgumentNullException, or "none". FlatType is already the T of checks 4 to 6. ----
 
         // Compared values are checked only when the method compares them.
@@ -1180,7 +1180,8 @@ public static class Program
         );
 
         // The pairing in a call made while another contract check is running: Old returns default there,
-        // with postconditions on or off. "skipped" would mean that preconditions are off in the environment.
+        // with postconditions on or off. "skipped" would mean that preconditions are off in the environment;
+        // "guard-cleared" would mean that the pairing cleared the recursion guard that Require had set.
         yield return new Check(
             62,
             "User.ChangeEmail pairing inside Require",
@@ -1421,16 +1422,27 @@ public static class Program
     private static string GuardedUserPairing()
     {
         bool ran = false;
+        bool nestedRan = false;
         Contract.Require(
             "smoke",
             () =>
             {
                 new User("ada@example.com", "Ada").ChangeEmail("ada@byron.example");
+                Contract.Require(
+                    "smoke nested",
+                    () =>
+                    {
+                        nestedRan = true;
+                        return true;
+                    }
+                );
                 ran = true;
                 return true;
             }
         );
-        return ran ? "ran" : "skipped";
+        return nestedRan ? "guard-cleared"
+            : ran ? "ran"
+            : "skipped";
     }
 
     private static string? DelegateEqualsFastPath()
