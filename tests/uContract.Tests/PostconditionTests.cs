@@ -1197,7 +1197,6 @@ public class EnsureAssignableTests
         Assert.Equal(ActualIsNull, exception.Description);
     }
 
-    // N1
     [Fact]
     public void EnsureAssignable_WhenBothAreNull_DoesNotThrowAndLeavesTheGuardClear()
     {
@@ -1218,7 +1217,6 @@ public class EnsureAssignableTests
         Assert.True(laterRan);
     }
 
-    // N2
     [Fact]
     public void EnsureAssignable_WhenBothAreNullableWithoutValue_DoesNotThrow()
     {
@@ -1227,7 +1225,6 @@ public class EnsureAssignableTests
         Assert.Null(exception);
     }
 
-    // N3
     [Fact]
     public void EnsureAssignable_WhenExpectedIsNullableWithoutValue_ThrowsPostconditionViolation()
     {
@@ -1238,7 +1235,6 @@ public class EnsureAssignableTests
         Assert.Equal(ExpectedIsNull, exception.Description);
     }
 
-    // N4 (pattern ".*") and N14 (pattern "[", an invalid regular expression that must not be examined)
     [Theory]
     [InlineData(true, ".*", ActualIsNull)]
     [InlineData(false, ".*", ExpectedIsNull)]
@@ -1259,7 +1255,6 @@ public class EnsureAssignableTests
         Assert.Equal(expectedDescription, exception.Description);
     }
 
-    // N5
     [Fact]
     public void EnsureAssignable_WithOldOfANullMemberThatStaysNull_DoesNotThrow()
     {
@@ -1273,7 +1268,6 @@ public class EnsureAssignableTests
         Assert.Null(exception);
     }
 
-    // N6
     [Fact]
     public void EnsureAssignable_WithOldOfANullMemberThatIsSet_ThrowsPostconditionViolation()
     {
@@ -1288,7 +1282,6 @@ public class EnsureAssignableTests
         Assert.Equal(ExpectedIsNull, exception.Description);
     }
 
-    // N7
     [Fact]
     public void EnsureAssignable_WithOldOfAMemberThatBecomesNull_ThrowsPostconditionViolation()
     {
@@ -1303,7 +1296,6 @@ public class EnsureAssignableTests
         Assert.Equal(ActualIsNull, exception.Description);
     }
 
-    // N10
     [Fact]
     public void EnsureAssignable_AfterAViolationForOneNull_LeavesTheGuardClear()
     {
@@ -1324,7 +1316,6 @@ public class EnsureAssignableTests
         Assert.True(laterRan);
     }
 
-    // N11
     [Fact]
     public void EnsureAssignable_WithAnOldResultTakenInsideACondition_ReportsThatExpectedIsNull()
     {
@@ -1351,7 +1342,6 @@ public class EnsureAssignableTests
         Assert.Equal(ExpectedIsNull, exception.Description);
     }
 
-    // N13
     [Fact]
     public void EnsureAssignable_WithAnOldResultTakenInsideAConditionAndNullActual_DoesNotThrow()
     {
@@ -2133,7 +2123,6 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         Assert.Null(exception);
     }
 
-    // N8
     [Fact]
     public void EnsureAssignable_WhenBothAreNullAndTheTypeHasNoVisibleMembers_DoesNotThrow()
     {
@@ -2145,7 +2134,6 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         Assert.Null(exception);
     }
 
-    // N9
     [Fact]
     public void EnsureAssignable_WhenOneIsNullAndTheTypeHasNoVisibleMembers_ThrowsPostconditionViolation()
     {
@@ -2157,7 +2145,6 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         Assert.IsType<PostconditionViolationException>(exception);
     }
 
-    // N12: a pin. It passes before and after the change.
     [Fact]
     public void EnsureAssignable_WhenBothAreTheSameInstanceWithNoVisibleMembers_StillThrowsInvalidOperation()
     {

@@ -968,10 +968,10 @@ public static class Contract
     ///     no value).
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    ///     Thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to
-    ///     reflection and neither <paramref name="actual" /> nor <paramref name="expected" /> is null, or when the runtime type of a nested member or collection element that has to be compared
-    ///     has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c> override this
-    ///     only means they are different instances).
+    ///     Thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to reflection and
+    ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, or when the runtime type of a
+    ///     nested member or collection element that has to be compared has none and its <c>Equals</c> reports the two
+    ///     values unequal (without an <c>Equals</c> override this only means they are different instances).
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method
     ///     visible through the compared type: a write-only property, or one whose getter was removed by trimming.
