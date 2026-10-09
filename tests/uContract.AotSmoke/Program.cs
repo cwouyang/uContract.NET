@@ -61,6 +61,21 @@ internal sealed record AddressRecord(string Street);
 // Has no members at all. As T of EnsureAssignable it is "not visible" under Native AOT.
 internal sealed class Marker;
 
+internal struct ListHolder
+{
+    public List<int> Items;
+}
+
+internal sealed class Runner
+{
+    public int Runs { get; private set; }
+
+    public void Run()
+    {
+        Runs++;
+    }
+}
+
 internal sealed class AddressHolder
 {
     public AddressRecord Address { get; set; } = new("");
@@ -1204,6 +1219,69 @@ public static class Program
             Expect.Value("none")
         );
 
+        // ---- T is a string, a delegate type or a nullable value type: the two values are compared as a
+        // whole, without the members of T (issue #52). ----
+        yield return new Check(
+            65,
+            "EnsureAssignable strings that differ",
+            static () => CallOutcomeOf(static () => Contract.EnsureAssignable("abc", "abd")),
+            Expect.Value("violation"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            66,
+            "EnsureAssignable equal int?",
+            static () => CallOutcomeOf(static () => Contract.EnsureAssignable<int?>(1, 1)),
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            67,
+            "EnsureAssignable different DateTime?",
+            static () =>
+                CallOutcomeOf(static () =>
+                    Contract.EnsureAssignable<DateTime?>(
+                        new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc),
+                        new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc)
+                    )
+                ),
+            Expect.Value("violation"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            68,
+            "EnsureAssignable equal DateTime?",
+            static () =>
+                CallOutcomeOf(static () =>
+                    Contract.EnsureAssignable<DateTime?>(
+                        new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc),
+                        new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc)
+                    )
+                ),
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // "same-instance" would mean that the two delegates are one reference and the check proves nothing.
+        yield return new Check(
+            69,
+            "EnsureAssignable delegates for one method",
+            SameMethodDelegates,
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // Checks 70 and 72 record what Native AOT does with a nullable struct that holds a reference when the
+        // fields of the struct are not visible: Equals says "unequal" for two lists with equal content, and
+        // Old cannot copy what it cannot see. Under the JIT the results are "none" and "violation".
+        yield return new Check(
+            70,
+            "EnsureAssignable ListHolder? with equal lists",
+            NullableStructsWithEqualLists,
+            Expect.Value("violation"),
+            Expect.Value("none")
+        );
+
         // The null rule comes before the rule "no members visible": Marker has none, and two Markers that
         // are not null throw InvalidOperationException under Native AOT.
         yield return new Check(
@@ -1211,6 +1289,13 @@ public static class Program
             "EnsureAssignable one null, T without members",
             static () => CallOutcomeOf(static () => Contract.EnsureAssignable(new Marker(), null!)),
             Expect.Value("violation"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            72,
+            "Old and EnsureAssignable on a ListHolder? changed in place",
+            NullableStructChangedInPlace,
+            Expect.Value("none"),
             Expect.Value("none")
         );
     }
@@ -1446,6 +1531,32 @@ public static class Program
         {
             return ex.ParamName ?? "unnamed";
         }
+    }
+
+    private static string SameMethodDelegates()
+    {
+        Runner runner = new();
+        Action first = runner.Run;
+        Action second = runner.Run;
+        return ReferenceEquals(first, second)
+            ? "same-instance"
+            : CallOutcomeOf(() => Contract.EnsureAssignable(first, second));
+    }
+
+    private static string NullableStructsWithEqualLists()
+    {
+        ListHolder? first = new ListHolder { Items = [1] };
+        ListHolder? second = new ListHolder { Items = [1] };
+        return CallOutcomeOf(() => Contract.EnsureAssignable(first, second));
+    }
+
+    private static string NullableStructChangedInPlace()
+    {
+        List<int> items = [1];
+        ListHolder? holder = new ListHolder { Items = items };
+        ListHolder? old = Contract.Old(() => holder);
+        items.Add(2);
+        return CallOutcomeOf(() => Contract.EnsureAssignable(holder, old));
     }
 
     private static string GuardedUserPairing()
