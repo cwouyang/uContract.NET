@@ -998,8 +998,9 @@ public static class Contract
     ///     base class are not compared. The walk goes deeper into nested objects and collection elements
     ///     without recursion, so cycles and deep graphs are safe.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of
-    ///     different runtime types are unequal, except two sequences, which are compared by element. A member or element of a value type, and a
-    ///     nullable value type as <typeparamref name="T" />, is equal when its <c>Equals</c> says so, and is
+    ///     different runtime types are unequal, except two sequences, which are compared by element. A member or
+    ///     element of a value type, and a nullable value type as <typeparamref name="T" />, is equal when its
+    ///     <c>Equals</c> says so, and is
     ///     otherwise compared by its fields; a value type without <c>?</c> as <typeparamref name="T" /> is compared
     ///     by its members. Dictionaries are compared entry by
     ///     entry in enumeration order. Delegates are equal when their methods match; their targets are not
