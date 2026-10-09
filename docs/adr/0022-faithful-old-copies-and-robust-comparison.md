@@ -915,6 +915,11 @@ step already written (the RED run), and after:
 | A `string`, a delegate type or a nullable value type as a whole | 625 | 19 / 606 | 625 of 625 pass |
 | `EnsureImmutableCollection<T>()` | 627 | 2 / 625 | 627 of 627 pass |
 
+Two more cases were added after the last review, and both passed on their first run: two strings
+that differ only in letter case are a violation, and a nullable value type without a value still
+throws `ArgumentNullException` from `EnsureImmutableCollection<T>()` when the method checks the
+collection. The suite then has 629 tests.
+
 - 20 failures were predicted for the second step. 19 were observed, in two runs. The test of
   a nullable struct whose `Equals` throws passed before the change. Before the change, the member
   walk over the nullable type read the properties `HasValue` and `Value` from the boxed value. That
@@ -1016,8 +1021,6 @@ other checks. So no fixture that must stay hidden becomes visible to reflection.
 
 - A call of `EnsureImmutableCollection<T>()` with postconditions off and made while another
   contract check is running.
-- That a nullable value type without a value still throws `ArgumentNullException` from
-  `EnsureImmutableCollection<T>()` when the method checks the collection.
 - That the `null` rule and the comparison as a whole read no metadata of `T`. The cache is private.
   A `string`, a delegate type and a nullable value type always have visible members, so an
   implementation that still ran the rule "no members visible" for them would give the same results.
