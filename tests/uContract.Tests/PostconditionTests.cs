@@ -1128,29 +1128,31 @@ public class EnsureAssignableTests
     }
 
     [Fact]
-    public void EnsureAssignable_ThrowsArgumentNullException_WhenActualIsNull()
+    public void EnsureAssignable_WhenOnlyActualIsNull_ThrowsPostconditionViolation()
     {
         TestPerson? actual = null;
         TestPerson expected = new();
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected, "Name")
         );
 
-        Assert.Equal("actual", exception.ParamName);
+        Assert.Equal(ActualIsNull, exception.Description);
+        Assert.Equal("Postcondition violated: " + ActualIsNull, exception.Message);
     }
 
     [Fact]
-    public void EnsureAssignable_ThrowsArgumentNullException_WhenExpectedIsNull()
+    public void EnsureAssignable_WhenOnlyExpectedIsNull_ThrowsPostconditionViolation()
     {
         TestPerson actual = new();
         TestPerson? expected = null;
 
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected, "Name")
         );
 
-        Assert.Equal("expected", exception.ParamName);
+        Assert.Equal(ExpectedIsNull, exception.Description);
+        Assert.Equal("Postcondition violated: " + ExpectedIsNull, exception.Message);
     }
 
     [Fact]
@@ -1167,37 +1169,212 @@ public class EnsureAssignableTests
     }
 
     [Theory]
-    [InlineData(true, true, false, "actual")]
-    [InlineData(false, true, true, "expected")]
-    [InlineData(true, false, true, "actual")]
-    [InlineData(true, true, true, "actual")]
-    public void EnsureAssignable_WhenSeveralArgumentsAreNull_NamesTheFirst(
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void EnsureAssignable_WhenPatternsAndAComparedValueAreNull_NamesThePatterns(
         bool actualIsNull,
-        bool expectedIsNull,
-        bool patternsIsNull,
-        string expectedParamName
+        bool expectedIsNull
     )
     {
         TestPerson? actual = actualIsNull ? null : new TestPerson();
         TestPerson? expected = expectedIsNull ? null : new TestPerson();
-        string[] names = ["Name"];
-        string[] patterns = patternsIsNull ? null! : names;
 
         ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
-            Contract.EnsureAssignable(actual, expected, patterns)
+            Contract.EnsureAssignable(actual, expected, null!)
         );
 
-        Assert.Equal(expectedParamName, exception.ParamName);
+        Assert.Equal("assignableFieldPatterns", exception.ParamName);
     }
 
     [Fact]
-    public void EnsureAssignable_ThrowsArgumentNullException_WhenActualIsNullableWithoutValue()
+    public void EnsureAssignable_WhenActualIsNullableWithoutValue_ThrowsPostconditionViolation()
     {
-        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable<int?>(null, 1)
         );
 
-        Assert.Equal("actual", exception.ParamName);
+        Assert.Equal(ActualIsNull, exception.Description);
+    }
+
+    // N1
+    [Fact]
+    public void EnsureAssignable_WhenBothAreNull_DoesNotThrowAndLeavesTheGuardClear()
+    {
+        TestPerson? actual = null;
+        TestPerson? expected = null;
+        bool laterRan = false;
+
+        Contract.EnsureAssignable(actual, expected, "Name");
+        Contract.Ensure(
+            "Later contract",
+            () =>
+            {
+                laterRan = true;
+                return true;
+            }
+        );
+
+        Assert.True(laterRan);
+    }
+
+    // N2
+    [Fact]
+    public void EnsureAssignable_WhenBothAreNullableWithoutValue_DoesNotThrow()
+    {
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable<int?>(null, null));
+
+        Assert.Null(exception);
+    }
+
+    // N3
+    [Fact]
+    public void EnsureAssignable_WhenExpectedIsNullableWithoutValue_ThrowsPostconditionViolation()
+    {
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable<int?>(1, null)
+        );
+
+        Assert.Equal(ExpectedIsNull, exception.Description);
+    }
+
+    // N4 (pattern ".*") and N14 (pattern "[", an invalid regular expression that must not be examined)
+    [Theory]
+    [InlineData(true, ".*", ActualIsNull)]
+    [InlineData(false, ".*", ExpectedIsNull)]
+    [InlineData(true, "[", ActualIsNull)]
+    public void EnsureAssignable_WhenOneSideIsNull_PatternsNeitherExcuseItNorAreExamined(
+        bool actualIsNull,
+        string pattern,
+        string expectedDescription
+    )
+    {
+        TestPerson? actual = actualIsNull ? null : new TestPerson();
+        TestPerson? expected = actualIsNull ? new TestPerson() : null;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, pattern)
+        );
+
+        Assert.Equal(expectedDescription, exception.Description);
+    }
+
+    // N5
+    [Fact]
+    public void EnsureAssignable_WithOldOfANullMemberThatStaysNull_DoesNotThrow()
+    {
+        AddressBook book = new();
+
+        TestPerson? old = Contract.Old(() => book.Contact);
+        bool oldIsNull = old is null;
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(book.Contact, old));
+
+        Assert.True(oldIsNull);
+        Assert.Null(exception);
+    }
+
+    // N6
+    [Fact]
+    public void EnsureAssignable_WithOldOfANullMemberThatIsSet_ThrowsPostconditionViolation()
+    {
+        AddressBook book = new();
+
+        TestPerson? old = Contract.Old(() => book.Contact);
+        book.Contact = new TestPerson();
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(book.Contact, old)
+        );
+
+        Assert.Equal(ExpectedIsNull, exception.Description);
+    }
+
+    // N7
+    [Fact]
+    public void EnsureAssignable_WithOldOfAMemberThatBecomesNull_ThrowsPostconditionViolation()
+    {
+        AddressBook book = new() { Contact = new TestPerson() };
+
+        TestPerson? old = Contract.Old(() => book.Contact);
+        book.Contact = null;
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(book.Contact, old)
+        );
+
+        Assert.Equal(ActualIsNull, exception.Description);
+    }
+
+    // N10
+    [Fact]
+    public void EnsureAssignable_AfterAViolationForOneNull_LeavesTheGuardClear()
+    {
+        TestPerson? actual = null;
+        TestPerson expected = new();
+        bool laterRan = false;
+
+        Assert.Throws<PostconditionViolationException>(() => Contract.EnsureAssignable(actual, expected));
+        Contract.Ensure(
+            "Later contract",
+            () =>
+            {
+                laterRan = true;
+                return true;
+            }
+        );
+
+        Assert.True(laterRan);
+    }
+
+    // N11
+    [Fact]
+    public void EnsureAssignable_WithAnOldResultTakenInsideACondition_ReportsThatExpectedIsNull()
+    {
+        TestPerson person = new();
+        TestPerson? old = new();
+        bool conditionRan = false;
+
+        Contract.Require(
+            "Outer contract",
+            () =>
+            {
+                old = Contract.Old(() => person);
+                conditionRan = true;
+                return true;
+            }
+        );
+        Assert.True(conditionRan);
+        Assert.Null(old);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(person, old)
+        );
+
+        Assert.Equal(ExpectedIsNull, exception.Description);
+    }
+
+    // N13
+    [Fact]
+    public void EnsureAssignable_WithAnOldResultTakenInsideAConditionAndNullActual_DoesNotThrow()
+    {
+        TestPerson person = new();
+        TestPerson? actual = null;
+        TestPerson? old = new();
+        bool conditionRan = false;
+
+        Contract.Require(
+            "Outer contract",
+            () =>
+            {
+                old = Contract.Old(() => person);
+                conditionRan = true;
+                return true;
+            }
+        );
+        Assert.True(conditionRan);
+        Assert.Null(old);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, old));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -1551,6 +1728,19 @@ public class EnsureAssignableTests
             "Postcondition violated: Fields were modified that are not marked as assignable:\n  - Name\n  - <Name>k__BackingField",
             exception.Message
         );
+    }
+
+    private const string ExpectedIsNull =
+        "expected is null and actual is not. If expected came from Contract.Old, null can also mean that no "
+        + "snapshot was taken: Old returns default while another contract check is running.";
+
+    private const string ActualIsNull = "actual is null and expected is not.";
+
+    private sealed class AddressBook
+    {
+        public TestPerson? Contact { get; set; }
+
+        public string? Label { get; set; }
     }
 
     private sealed class TestPerson
@@ -1941,6 +2131,41 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(first, second));
 
         Assert.Null(exception);
+    }
+
+    // N8
+    [Fact]
+    public void EnsureAssignable_WhenBothAreNullAndTheTypeHasNoVisibleMembers_DoesNotThrow()
+    {
+        NoVisibleMembers? actual = null;
+        NoVisibleMembers? expected = null;
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // N9
+    [Fact]
+    public void EnsureAssignable_WhenOneIsNullAndTheTypeHasNoVisibleMembers_ThrowsPostconditionViolation()
+    {
+        NoVisibleMembers actual = new();
+        NoVisibleMembers? expected = null;
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.IsType<PostconditionViolationException>(exception);
+    }
+
+    // N12: a pin. It passes before and after the change.
+    [Fact]
+    public void EnsureAssignable_WhenBothAreTheSameInstanceWithNoVisibleMembers_StillThrowsInvalidOperation()
+    {
+        NoVisibleMembers same = new();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(same, same));
+
+        Assert.IsType<InvalidOperationException>(exception);
     }
 
     private sealed class NoVisibleMembers;

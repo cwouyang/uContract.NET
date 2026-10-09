@@ -58,6 +58,9 @@ internal sealed class OrderHolder
 
 internal sealed record AddressRecord(string Street);
 
+// Has no members at all. As T of EnsureAssignable it is "not visible" under Native AOT.
+internal sealed class Marker;
+
 internal sealed class AddressHolder
 {
     public AddressRecord Address { get; set; } = new("");
@@ -1130,16 +1133,17 @@ public static class Program
         // Mutation: field write on the second node of the cycle.
         yield return new Check(57, "Cyclic pairing changed", CyclicChanged, post, Expect.Ok);
 
-        // ---- EnsureAssignable argument checks (issue #47). Checks 58 to 61 return the ParamName of the
-        // ArgumentNullException, or "none". FlatType is already the T of checks 4 to 6. ----
+        // ---- EnsureAssignable and its arguments (issues #47 and #52). Each check returns "none", "violation",
+        // or the ParamName of an ArgumentNullException. FlatType is already the T of checks 4 to 6. ----
 
-        // Compared values are checked only when the method compares them.
+        // A null compared value is compared as a value: one null is a violation. With DBC_POST=off the
+        // method returns without comparing.
         yield return new Check(
             58,
             "EnsureAssignable null expected",
             static () =>
                 CallOutcomeOf(static () => Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!)),
-            Expect.Value("expected"),
+            Expect.Value("violation"),
             Expect.Value("none")
         );
         yield return new Check(
@@ -1147,7 +1151,7 @@ public static class Program
             "EnsureAssignable null actual",
             static () =>
                 CallOutcomeOf(static () => Contract.EnsureAssignable(null!, new FlatType { Name = "a", Count = 1 })),
-            Expect.Value("actual"),
+            Expect.Value("violation"),
             Expect.Value("none")
         );
 
@@ -1167,7 +1171,7 @@ public static class Program
             Expect.Value("assignableFieldPatterns")
         );
 
-        // With a null compared value too: a call that compares names the value, any other call the patterns.
+        // With a null compared value too, the exception names the pattern array in every call.
         yield return new Check(
             61,
             "EnsureAssignable null expected and patterns",
@@ -1175,7 +1179,7 @@ public static class Program
                 CallOutcomeOf(static () =>
                     Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!, null!)
                 ),
-            Expect.Value("expected"),
+            Expect.Value("assignableFieldPatterns"),
             Expect.Value("assignableFieldPatterns")
         );
 
@@ -1189,6 +1193,25 @@ public static class Program
             GuardedUserPairing,
             Expect.Value("ran"),
             Expect.Value("ran")
+        );
+
+        // Two nulls are equal.
+        yield return new Check(
+            63,
+            "EnsureAssignable both null",
+            static () => CallOutcomeOf(static () => Contract.EnsureAssignable<FlatType>(null!, null!)),
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // The null rule comes before the rule "no members visible": Marker has none, and two Markers that
+        // are not null throw InvalidOperationException under Native AOT.
+        yield return new Check(
+            71,
+            "EnsureAssignable one null, T without members",
+            static () => CallOutcomeOf(static () => Contract.EnsureAssignable(new Marker(), null!)),
+            Expect.Value("violation"),
+            Expect.Value("none")
         );
     }
 
@@ -1407,12 +1430,17 @@ public static class Program
         }
     }
 
+    // "none", "violation", or the ParamName of an ArgumentNullException. Any other exception fails the check.
     private static string CallOutcomeOf(Action call)
     {
         try
         {
             call();
             return "none";
+        }
+        catch (PostconditionViolationException)
+        {
+            return "violation";
         }
         catch (ArgumentNullException ex)
         {
