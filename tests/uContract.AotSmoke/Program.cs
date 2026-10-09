@@ -58,6 +58,24 @@ internal sealed class OrderHolder
 
 internal sealed record AddressRecord(string Street);
 
+// Has no members at all. As T of EnsureAssignable it is "not visible" under Native AOT.
+internal sealed class Marker;
+
+internal struct ListHolder
+{
+    public List<int> Items;
+}
+
+internal sealed class Runner
+{
+    public int Runs { get; private set; }
+
+    public void Run()
+    {
+        Runs++;
+    }
+}
+
 internal sealed class AddressHolder
 {
     public AddressRecord Address { get; set; } = new("");
@@ -1130,24 +1148,25 @@ public static class Program
         // Mutation: field write on the second node of the cycle.
         yield return new Check(57, "Cyclic pairing changed", CyclicChanged, post, Expect.Ok);
 
-        // ---- EnsureAssignable argument checks (issue #47). Checks 58 to 61 return the ParamName of the
-        // ArgumentNullException, or "none". FlatType is already the T of checks 4 to 6. ----
+        // ---- EnsureAssignable and its arguments (issues #47 and #52). Each check returns "none", "violation",
+        // or the ParamName of an ArgumentNullException. FlatType is already the T of checks 4 to 6. ----
 
-        // Compared values are checked only when the method compares them.
+        // A null compared value is compared as a value: one null is a violation. With DBC_POST=off the
+        // method returns without comparing.
         yield return new Check(
             58,
             "EnsureAssignable null expected",
             static () =>
-                NullArgumentOf(static () => Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!)),
-            Expect.Value("expected"),
+                CallOutcomeOf(static () => Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!)),
+            Expect.Value("violation"),
             Expect.Value("none")
         );
         yield return new Check(
             59,
             "EnsureAssignable null actual",
             static () =>
-                NullArgumentOf(static () => Contract.EnsureAssignable(null!, new FlatType { Name = "a", Count = 1 })),
-            Expect.Value("actual"),
+                CallOutcomeOf(static () => Contract.EnsureAssignable(null!, new FlatType { Name = "a", Count = 1 })),
+            Expect.Value("violation"),
             Expect.Value("none")
         );
 
@@ -1156,7 +1175,7 @@ public static class Program
             60,
             "EnsureAssignable null patterns",
             static () =>
-                NullArgumentOf(static () =>
+                CallOutcomeOf(static () =>
                     Contract.EnsureAssignable(
                         new FlatType { Name = "a", Count = 1 },
                         new FlatType { Name = "a", Count = 1 },
@@ -1167,15 +1186,15 @@ public static class Program
             Expect.Value("assignableFieldPatterns")
         );
 
-        // With a null compared value too: a call that compares names the value, any other call the patterns.
+        // With a null compared value too, the exception names the pattern array in every call.
         yield return new Check(
             61,
             "EnsureAssignable null expected and patterns",
             static () =>
-                NullArgumentOf(static () =>
+                CallOutcomeOf(static () =>
                     Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!, null!)
                 ),
-            Expect.Value("expected"),
+            Expect.Value("assignableFieldPatterns"),
             Expect.Value("assignableFieldPatterns")
         );
 
@@ -1189,6 +1208,106 @@ public static class Program
             GuardedUserPairing,
             Expect.Value("ran"),
             Expect.Value("ran")
+        );
+
+        // Two nulls are equal.
+        yield return new Check(
+            63,
+            "EnsureAssignable both null",
+            static () => CallOutcomeOf(static () => Contract.EnsureAssignable<FlatType>(null!, null!)),
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // EnsureImmutableCollection checks its collection for null only when it checks the collection.
+        yield return new Check(
+            64,
+            "EnsureImmutableCollection null collection",
+            static () => CallOutcomeOf(static () => Contract.EnsureImmutableCollection<ImmutableList<string>>(null!)),
+            Expect.Value("collection"),
+            Expect.Value("none")
+        );
+
+        // ---- T is a string, a delegate type or a nullable value type: the two values are compared as a
+        // whole, without the members of T (issue #52). ----
+        yield return new Check(
+            65,
+            "EnsureAssignable strings that differ",
+            static () => CallOutcomeOf(static () => Contract.EnsureAssignable("abc", "abd")),
+            Expect.Value("violation"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            66,
+            "EnsureAssignable equal int?",
+            static () => CallOutcomeOf(static () => Contract.EnsureAssignable<int?>(1, 1)),
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            67,
+            "EnsureAssignable different DateTime?",
+            static () =>
+                CallOutcomeOf(static () =>
+                    Contract.EnsureAssignable<DateTime?>(
+                        new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc),
+                        new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc)
+                    )
+                ),
+            Expect.Value("violation"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            68,
+            "EnsureAssignable equal DateTime?",
+            static () =>
+                CallOutcomeOf(static () =>
+                    Contract.EnsureAssignable<DateTime?>(
+                        new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc),
+                        new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc)
+                    )
+                ),
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // "same-instance" would mean that the two delegates are one reference and the check proves nothing.
+        yield return new Check(
+            69,
+            "EnsureAssignable delegates for one method",
+            SameMethodDelegates,
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // Checks 70 and 72 record what Native AOT does with a nullable struct that holds a reference. No
+        // attribute preserves ListHolder, and the annotation on T names the fields of Nullable<ListHolder>
+        // only. Measured: its field is visible to reflection in this program all the same, so the results are
+        // those of the JIT. If it were hidden, Equals would say "unequal" for two lists with equal content
+        // (check 70: "violation"), and Old could not copy what it cannot see (check 72: "none").
+        yield return new Check(
+            70,
+            "EnsureAssignable ListHolder? with equal lists",
+            NullableStructsWithEqualLists,
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // The null rule comes before the rule "no members visible": Marker has none, and two Markers that
+        // are not null throw InvalidOperationException under Native AOT.
+        yield return new Check(
+            71,
+            "EnsureAssignable one null, T without members",
+            static () => CallOutcomeOf(static () => Contract.EnsureAssignable(new Marker(), null!)),
+            Expect.Value("violation"),
+            Expect.Value("none")
+        );
+        yield return new Check(
+            72,
+            "Old and EnsureAssignable on a ListHolder? changed in place",
+            NullableStructChangedInPlace,
+            Expect.Value("violation"),
+            Expect.Value("none")
         );
     }
 
@@ -1407,17 +1526,48 @@ public static class Program
         }
     }
 
-    private static string NullArgumentOf(Action ensure)
+    // "none", "violation", or the ParamName of an ArgumentNullException. Any other exception fails the check.
+    private static string CallOutcomeOf(Action call)
     {
         try
         {
-            ensure();
+            call();
             return "none";
+        }
+        catch (PostconditionViolationException)
+        {
+            return "violation";
         }
         catch (ArgumentNullException ex)
         {
             return ex.ParamName ?? "unnamed";
         }
+    }
+
+    private static string SameMethodDelegates()
+    {
+        Runner runner = new();
+        Action first = runner.Run;
+        Action second = runner.Run;
+        return ReferenceEquals(first, second)
+            ? "same-instance"
+            : CallOutcomeOf(() => Contract.EnsureAssignable(first, second));
+    }
+
+    private static string NullableStructsWithEqualLists()
+    {
+        ListHolder? first = new ListHolder { Items = [1] };
+        ListHolder? second = new ListHolder { Items = [1] };
+        return CallOutcomeOf(() => Contract.EnsureAssignable(first, second));
+    }
+
+    private static string NullableStructChangedInPlace()
+    {
+        List<int> items = [1];
+        ListHolder? holder = new ListHolder { Items = items };
+        ListHolder? old = Contract.Old(() => holder);
+        items.Add(2);
+        return CallOutcomeOf(() => Contract.EnsureAssignable(holder, old));
     }
 
     private static string GuardedUserPairing()

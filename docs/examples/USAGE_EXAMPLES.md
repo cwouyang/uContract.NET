@@ -339,6 +339,43 @@ In trimmed and Native AOT applications, `EnsureAssignable<T>()` can throw `Inval
 
 > **Note**: When postconditions are off (`DBC_POST=off`, or `DBC=off` with `DBC_POST` unset), `Old<T>()` returns `default` and `EnsureAssignable<T>()` returns without comparing, so the `Old` + `EnsureAssignable` pair above does nothing. The same holds, with postconditions on, when a method that uses the pair (such as `ChangeEmail` above) is called from inside another contract's condition. It also holds in work started from inside such a condition (a task or a continuation), even after the condition has returned.
 
+**A member that can be `null`:**
+
+```csharp
+public class Profile
+{
+    private string? _nickname;
+
+    public void Rename(string firstName)
+    {
+        var oldNickname = Contract.Old(() => _nickname);
+
+        FirstName = firstName;
+
+        // The nickname must not change: null stays null, a value stays the same value.
+        Contract.EnsureAssignable(_nickname, oldNickname);
+    }
+
+    public string FirstName { get; private set; } = "";
+}
+```
+
+`null` is compared as a value: a nickname that stays `null`, or keeps its value, passes; one that changes to another value, or goes from `null` to a value or back, is a violation. Things to know:
+
+- A `string`, a delegate and a nullable value type (`int?`, `DateTime?`) are compared as a whole: a `string` with `Equals`, a delegate by its methods, a nullable value type with `Equals` and then by its fields. Assignable patterns do not apply to them or to a `null` on one side.
+- A pattern cannot name a field of a nullable struct. To compare it by its members, test both values for `null` and pass the unwrapped values. Do not pass `.Value`: it throws when there is no value, and `Old<T>()` returns a value without one when postconditions are off. For a `Money? _price` member with a `Currency` property, and `var oldPrice = Contract.Old(() => _price);`:
+
+  ```csharp
+  if (_price is { } now && oldPrice is { } before)
+      Contract.EnsureAssignable(now, before, "Currency");
+  else
+      Contract.EnsureAssignable(_price, oldPrice);
+  ```
+
+- A `string`, a delegate or a nullable value type is compared as a whole only when the member is declared as that type. For a member typed as `object`, as an interface or as a base class, take the pair on the owning object (`Old(() => this)`).
+- Do not use the pair on a member of a resource type that `Old<T>()` shares, such as a `Stream` or a `Task`: `Old<T>()` returns the same instance, and the comparison reads its properties ([#40](https://github.com/cwouyang/uContract.NET/issues/40), [#54](https://github.com/cwouyang/uContract.NET/issues/54)).
+- Take the `Old` snapshot outside any other contract's condition. Inside one, `Old<T>()` returns `default`, and a later comparison reports a violation that did not happen, or misses one.
+
 **Using Regex Patterns:**
 
 ```csharp

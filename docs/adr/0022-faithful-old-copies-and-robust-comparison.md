@@ -8,6 +8,7 @@
 - **Deciders**: Project maintainer
 - **Status Date**: 2026-10-07
 - **Amended**: 2026-10-09 — the `DBC_POST=off` pairing limitation under "What the measurements add or correct" is superseded (#47), and the smoke program gains checks 58 to 62; see the Amendment under Implementation Notes
+- **Amended**: 2026-10-09 — at the top level a `string`, a delegate type and a nullable value type are compared as one pair by R0–R8, and a `null` side is decided first for every `T` (#52); the smoke program has 72 checks; see the second Amendment under Implementation Notes
 
 ---
 
@@ -621,6 +622,459 @@ A switch that works in the same process is [issue #35](https://github.com/cwouya
 
 **Unchanged.** Every decision of this ADR.
 
+### Amendment (2026-10-09): The top level compares null, and a string, a delegate or a nullable value as a whole (#52)
+
+This amendment follows the #47 amendment above and carries the same date. It records how
+`EnsureAssignable<T>()` compares `actual` and `expected` themselves after
+[issue #52](https://github.com/cwouyang/uContract.NET/issues/52). A `null` side is decided first,
+for every `T`. When `T` is a `string`, a delegate type or a nullable value type, two values that are
+not `null` are compared as a whole: as one pair, by R0–R8. The decisions on `null` and on argument
+validation are in the amendment of [ADR-0012](0012-dotnet-improvements-over-java.md) for #52. This
+amendment records the comparison, the measurements and the limits.
+
+**Qualified in the accepted text.** Each statement is quoted by its opening words:
+
+- The Decision: "`EnsureAssignable<T>()` compares by the rules R0–R8 below, on the values' runtime
+  types". At the top level a test on the declared `T` comes first. It selects whether those rules or
+  the member walk compare the two arguments.
+- "Unchanged: which members are compared (D9), the top level comparing the members of `typeof(T)`,
+  the assignable patterns, and the violation message format." For the three kinds of `T` the top
+  level is a pair, and the patterns do not apply. There are three more violation messages (A and B
+  in the amendment of ADR-0012 for #52, C below).
+- R0: "Every branch decides on the values' runtime types". At the top level a test on the declared
+  `T` comes first.
+- R1: "The top-level pair is in progress for the whole call." That does not hold for the three
+  kinds of `T`. Their two values are not tracked as a pair of references.
+- "R8 applies to the nested walk only. When `T` itself has no visible members, the top-level message
+  of ADR-0021 is unchanged." R8 can now be raised below a nullable value type at the top level, with
+  the text given below. The top-level message of ADR-0021 is not reached when `actual` or `expected`
+  is `null`, or for the three kinds of `T`.
+- The three scope statements on #40. Constraints: "members that a runtime type derived from `T` adds
+  at the top level, are still not compared (#40 items 1 and 2-top-level)". D6: "#40 items 1,
+  2-top-level, 4, 6 and 7 stay open." Known Limitations: "**Scope.** #40 items 1, 2-top-level, 4, 6
+  and 7 remain." Item 2-top-level is now partly taken: see "Relation to #40 and #54" below.
+
+**The rule.** The steps of a call, in order:
+
+1. The pattern array is checked for `null`.
+2. A call that does not compare returns: with postconditions off, or a call made while another
+   contract check is running.
+3. The `null` rule. Two `null`s are equal, and the method returns. Exactly one `null` is a
+   violation.
+4. The recursion guard is set. Then:
+   - when `T` is a `string`, a delegate type or a nullable value type, the two values are compared
+     as one pair by R0–R8. If they are unequal, the method throws
+     `PostconditionViolationException` with message C;
+   - for every other `T`, the members of `typeof(T)` are walked, as before.
+5. The recursion guard is cleared, also when step 4 throws.
+
+Steps 1 to 3 are recorded in the amendment of ADR-0012 for #52.
+
+The declared type `T` decides whether the two values are compared as a whole. The test is:
+
+- `typeof(T)` is `string`; or
+- `typeof(Delegate).IsAssignableFrom(typeof(T))`, so `Delegate` and `MulticastDelegate` themselves
+  count as delegate types; or
+- `Nullable.GetUnderlyingType(typeof(T))` is not `null`.
+
+For these three kinds of `T` the top level applies the whole "Order for a pair" of this ADR. For
+every other `T` it applies only the "a `null` side" half of the first step of that order. It does
+not apply "same reference": two references to one object are still walked member by member.
+
+What R0–R8 give for two values that are not `null`:
+
+| `T` | Compared by | Rule |
+|---|---|---|
+| `string` | `Equals`: ordinal and case-sensitive | R5 |
+| a delegate type | Two delegates of different runtime types are unequal. That is possible when `T` is `Delegate` or `MulticastDelegate`, and for a variant generic delegate (an `Action<object>` held as an `Action<string>`). Otherwise `Delegate.Equals`; if it is false, the methods of the two invocation lists. Targets are not compared. A method that cannot be read makes the pair unequal | R6, R4 |
+| a nullable value type | R3, applied to the two boxed values of the underlying type: a primitive or an enum with `Equals`; any other value type by steps 1 to 4 of R3 | R3 |
+
+Message C is the `Description` of the exception. `{T}` is `typeof(T)` formatted with
+`Type.ToString()`, as in the existing "cannot compare" messages: for example `System.String`,
+`System.Action`, ``System.Nullable`1[System.Int32]``. The message holds no value of either argument.
+
+```text
+actual and expected are not equal. {T} is compared as a whole, so assignable patterns do not apply.
+```
+
+Below a nullable value type, the comparison can reach a class with no members visible under Native
+AOT: in a field of the underlying type, or in an element of a collection in such a field. When that
+class's `Equals` reports the values unequal, the method throws `InvalidOperationException`. The
+text is the one of R8 without the way out "list … as assignable", because no member can be listed.
+`{path}` starts with the name of the underlying type, not with `typeof(T).Name`:
+
+```text
+EnsureAssignable cannot compare {type} (reached through '{path}'): no properties or fields are visible to reflection under Native AOT. Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. Ways out: if the type has members, preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; or set DBC_POST=off (disables all postcondition checks).
+```
+
+What holds for a comparison as a whole:
+
+- It runs with the recursion guard set, as the member walk does. Below a nullable value type it can
+  run the `Equals` of a user struct, and the property getters, enumerators and `Equals` of what the
+  fields of the underlying type refer to. An exception from any of them propagates as it does from
+  the member walk (one from a getter is wrapped in a `TargetInvocationException`), and the guard is
+  cleared.
+- It reads no member metadata of `T`. So the rule "no members visible" of ADR-0021 is not reached
+  for `T`.
+- The patterns are not used. The elements of the pattern array are not examined, so a `null`
+  element or an invalid regular expression in it is not reported. The array itself is still checked
+  for `null` first.
+
+What changes, all in a call that compares:
+
+- `T` = `string`. The two strings are compared with `Equals`. Before, the members of `string`
+  visible to reflection were compared: `Length`, `_stringLength` and `_firstChar`. So two different
+  strings of the same length and first character were equal by accident. A difference gives message
+  C, not a list of those members.
+- `T` = a nullable value type with a value on both sides. The values are compared. Before, the
+  method threw `NotSupportedException`.
+- `T` = a delegate type. Before, `Method`, `Target` and the fields visible through `T` were
+  compared, and `Target` by its members. Now less is reported in one case: the same method on
+  another target whose state differs is equal. And more is reported in another: every entry of a
+  multicast delegate counts (R4). This was read from the code; no measurement or test compares a
+  multicast delegate as `T`. A difference gives message C, not a list of delegate members.
+- For these three kinds of `T`, a pattern that matched a member name no longer excuses a
+  difference.
+
+Nothing changes when `T` is any other type and both values are not `null`:
+
+- `T` = `object`. `object` has no members, so nothing is compared beyond `null`, even for two
+  different strings. This is about a value passed as `actual` and `expected`. A member typed as
+  `object` inside the compared object is compared as the type it holds (R0).
+- A base class as `T`. The members that it declares or inherits are compared (private fields of its
+  own base classes excepted), not those that the runtime type adds.
+- An interface as `T`. Only the properties that the interface itself declares are compared.
+- A shared type (B3) other than `string` or a delegate as `T`, such as a `Stream`, a `Task` or a
+  frozen collection. Its members are walked.
+- A value type without `?` as `T`. Its members are walked: `EnsureAssignable(1, 2)` still reports
+  the field `m_value` (measured on `669499c`).
+
+**Decisions and reasons.** The maintainer decided them on 2026-10-09, except where a line says
+otherwise.
+
+- **A `string`, a delegate type and a nullable value type as `T` are compared as one pair.** These
+  are the types that a member that can be `null` usually has. The amendment of ADR-0012 for #52
+  makes the pair `EnsureAssignable(_name, Contract.Old(() => _name))` usable for such a member.
+  With the member walk, that pair missed a `string` that changed but kept its length and first
+  character, and it threw for an `int?` with a value on both sides (see "Measured on `669499c`"
+  below). So the two were decided in one change.
+- **A nullable value type with a value on both sides is compared by R3**, exactly as a member of
+  the underlying type is. Equal values then need no reflection.
+- **The declared type `T` decides.** For each of the three kinds, a value that is not `null` has a
+  runtime type of the same kind: `string` is sealed, a value of a delegate type is a delegate, and a
+  boxed nullable value is a boxed value of the underlying type. So the declared type and the runtime
+  type cannot disagree about the kind. `Delegate` and `MulticastDelegate` count as delegate types.
+  With them as `T`, the two delegates can have different runtime types, and R6 makes them unequal. A
+  unit test pins that with an `Action` and a `ThreadStart` over one method on one target: the result
+  is message C with `System.Delegate`.
+- **Other shared types are not compared as a whole.** `Stream`, `Task`, `Regex`, frozen
+  collections, comparers and the rest of B3 keep the member walk at the top level. They stay with
+  #40 and #54. See the first rejected alternative.
+- **The assignable patterns do not apply to a comparison as a whole, and message C says so.** A
+  pattern names a member of `T`. One pair has no member to name.
+- **Message C names the parameters and the type**, and makes no statement about what happened
+  before the call, like messages A and B.
+- **The comparison runs with the recursion guard set**, after the pattern check and the `null`
+  rule. It can run user code, as the member walk can. (Derived from the code, not a maintainer
+  decision.)
+- **No shortcut for the same reference is added for other types.** When `T` is not one of the three
+  kinds and both values are not `null`, nothing changes. A shortcut would stop a call with one
+  instance on both sides from reaching the rule "no members visible" (item 6 of #40, at the top
+  level), and would hide #54. A unit test pins one case under a simulated Native AOT runtime: a `T`
+  with no visible members still throws when both sides are the same instance. (Derived from the
+  code, not a maintainer decision.)
+- **Under Native AOT, a nullable value type whose underlying type has no visible fields, and whose
+  `Equals` says "unequal", is a violation with message C.** That is what step 4 of R3 gives for a
+  member. It is not reported as "cannot compare". See the last rejected alternative.
+
+**Known consequences of comparing a nullable value type by R3.** They are accepted and documented.
+
+- **A nullable value type is compared less strictly than the same type without `?`.**
+  `EnsureAssignable<DateTime>` walks the fields and reports a changed `Kind`. `DateTime.Equals`
+  ignores `Kind`, so `EnsureAssignable<DateTime?>` does not report it. The same holds for a
+  `DateTimeOffset?` with a changed offset, for `1.0m` against `1.00m`, and for a user struct whose
+  `Equals` ignores state. Members of these types already behave so.
+- **The patterns cannot name a field of a nullable struct.** The way out is to test both values for
+  `null` and to pass the unwrapped values:
+
+  ```csharp
+  if (_price is { } now && oldPrice is { } before)
+      Contract.EnsureAssignable(now, before, "Currency");   // T = Money: members and patterns
+  else
+      Contract.EnsureAssignable(_price, oldPrice);          // the null rule
+  ```
+
+  `_price.Value` and `oldPrice.Value` must not be passed. `.Value` throws
+  `InvalidOperationException` when there is no value, and `Old` returns a value without one with
+  postconditions off and in a call made while another contract check is running. The user
+  documentation gives this form and never advises `.Value`.
+- **Under Native AOT, the fields of the underlying type may not be preserved.** The annotations on
+  `T` name the members of the nullable type, not those of the underlying type, for
+  `EnsureAssignable<T>()` and for `Old<T>()` alike. Whether the fields are visible then depends on
+  the rest of the application. When they are not, an underlying type that holds a reference (a
+  struct with a `List<T>` field) goes wrong in two directions:
+  - two values built separately with equal content are a violation: `Equals` says "unequal", and no
+    field is visible (step 4 of R3);
+  - with an `Old` snapshot, a change inside the object that the field refers to is missed. `Old`
+    cannot replace a field that it cannot see (D5), so the snapshot shares the object with the
+    original, and `Equals` says "equal".
+
+  An underlying type without reference fields (`int`, `DateTime`, `Guid`, a struct of such values)
+  is not affected: `Equals` decides correctly without reflection. The ways out are to preserve the
+  underlying type with `DynamicDependency`, or the two-branch form above: the annotation on `T` =
+  `Money` preserves the fields of `Money`. Smoke checks 70 and 72 were written to measure the two
+  directions. They measured the opposite: see "Checks 70 and 72" below.
+
+**Rejected alternatives.**
+
+- **Every shared type (B3) as a `T` that is compared as a whole.** An earlier form of this change
+  took `SharedTypes.IsShared(typeof(T))` as the test. The declared type and the runtime type can
+  then disagree:
+  - The B3 test is true for the interfaces `IEqualityComparer`, `IComparer`,
+    `IEqualityComparer<string>` and `IComparer<string>`, and false for a user class that implements
+    them. Such a pair would be walked member by member by R0–R8, with no defined result when its
+    class has no visible members.
+  - Two frozen sets with equal content compared equal as `T` on `669499c`. By reference they would
+    be a violation that no pattern could excuse.
+  - A shared value type (an enumerator in `System.Collections.Frozen`) would never be equal: each
+    side is boxed separately.
+  - With `Old`, the two sides of a shared type are the same instance. The comparison could only
+    show that the member was reassigned.
+- **Compare a nullable value type as `T` = its underlying type.** The members of the underlying
+  type would be walked, and the patterns would apply. But the annotation on `T` preserves the
+  members of the nullable type for trimming, not those of the underlying type. Under Native AOT an
+  `int?` or a `DateTime?` could then throw "no members visible" even when both sides are equal.
+  With R3, equal values need no reflection.
+- **Decide on the runtime type at the top level.** `EnsureAssignable<object>("a", "b")` would
+  change, and so would every call whose declared type is a base class or an interface. That is item
+  2 of #40 as a whole.
+- **An `ArgumentException` for patterns passed with one of the three kinds of `T`.** It would show
+  the misuse at once. But a call that runs today would start to throw when the values are equal,
+  and the method would need a second kind of argument validation. Message C tells the caller
+  instead.
+- **"Cannot compare" for a nullable value type whose underlying type has no visible fields.** A
+  review proposed `InvalidOperationException` instead of message C when `Equals` says "unequal" and
+  no field is visible under Native AOT, because message C names no member and the patterns cannot
+  excuse it. But the usual underlying type holds only values (a `Money`, a `DateTime`), and for it
+  "unequal" is reliable. A real change would be reported as "cannot compare" until the type is
+  preserved. The top level and a member would also differ.
+
+**Why an amendment and not a new ADR.** The main decision of this ADR stands: R0–R8, decided on
+runtime types. It is applied one level higher, for a closed set of `T`. `docs/adr/README.md` gives
+the amendment as the form for "a later decision that leaves the ADR's main decision standing". The
+same file lists breaking changes under "Requires ADR". The amended ADRs (ADR-0012, ADR-0022,
+ADR-0021 and ADR-0007) are that record. The three scope statements of this ADR on #40 are reversed
+in part, and this amendment says so above. Issue #52 itself asks for an amendment of ADR-0012. A
+comment on #40 of 2026-10-06 says that "the ADR README asks for a new ADR rather than an amendment
+for a new decision". The rest of item 2 of #40 is that case: it would change what every top-level
+comparison does.
+
+**Superseded in the #47 amendment.** Each statement is quoted by its opening words:
+
+- "The smoke program now has 62 checks in the default build and 61 in the" variant. It has 72 and
+  71.
+- The results with the defaults of check 58 ("With the defaults, `ArgumentNullException` naming
+  `expected`"), of check 59 ("naming `actual`") and of check 61 ("With the defaults, the exception
+  names `expected`"). The list of checks below gives the results now.
+- "Checks 58 to 61 compare the `ParamName` of the exception, not its message." Checks 58 to 61 and
+  63 to 72 now report one of three outcomes: no exception, a postcondition violation, or the
+  `ParamName` of an `ArgumentNullException`.
+
+Its result table, its unit-test figures and its other statements are the dated record of #47 and
+stay.
+
+**Measured on `669499c`.** These were measured while the change was designed, on `origin/master`
+at `669499c`, with throwaway tests that were not committed:
+
+| Call | Result on `669499c` |
+|---|---|
+| `EnsureAssignable("abc", "abd")` | no exception (reflection shows `Length`, `_stringLength` and `_firstChar`) |
+| `EnsureAssignable("abc", "abcd")` | violation listing `Length` and `_stringLength` |
+| `EnsureAssignable("abc", "abd", ".*")` | no exception |
+| `EnsureAssignable<int?>(1, 1)`, `<int?>(1, 2)`, `<DateTime?>` with equal values, a user struct `Holder?` | `NotSupportedException` ("Specified method is not supported") |
+| `EnsureAssignable(1, 2)` (`T` = `int`) | violation listing the field `m_value` |
+| `T` = `Action`, two delegates for different methods | violation listing `Method`, `_target`, `_methodBase`, `_methodPtrAux` |
+| `T` = `Action`, one instance method on one target, or on two targets with equal state | no exception |
+| `Action a = M; Action b = M;` for a static method `M` | one cached instance (`ReferenceEquals` is true); an instance method group gives two instances |
+| two `FrozenSet<string>` with equal content, different instances, as `T` | no exception |
+| `EnsureAssignable<DateTime>`, equal ticks, `Kind` `Utc` against `Local` | violation listing `Kind` and `_dateData`; `DateTime.Equals` returns true |
+| `class Worker : Component` with `Old(() => this)` | `Old` returns the same instance, so the pair never fails (issue #54) |
+
+The cached static delegate matters for the tests: a test or a smoke check that builds its two
+delegates from a static method group passes one instance twice and proves nothing. The delegate
+fixtures use an instance method group.
+
+**Measured results, unit tests.** JIT, whole suite, postconditions on. The suite had 585 tests on
+`669499c`. One theory row was removed and 43 cases were added, so it has 627. The change was made in
+three steps. For each step the tests were run before the library changed, with the tests of that
+step already written (the RED run), and after:
+
+| Step | Tests | Before: failed / passed | After |
+|---|---|---|---|
+| The `null` rule | 599 | 20 / 579 | 599 of 599 pass |
+| A `string`, a delegate type or a nullable value type as a whole | 625 | 19 / 606 | 625 of 625 pass |
+| `EnsureImmutableCollection<T>()` | 627 | 2 / 625 | 627 of 627 pass |
+
+Two more cases were added after the last review, and both passed on their first run: two strings
+that differ only in letter case are a violation, and a nullable value type without a value still
+throws `ArgumentNullException` from `EnsureImmutableCollection<T>()` when the method checks the
+collection. The suite then has 629 tests.
+
+- 20 failures were predicted for the second step. 19 were observed, in two runs. The test of
+  a nullable struct whose `Equals` throws passed before the change. Before the change, the member
+  walk over the nullable type read the properties `HasValue` and `Value` from the boxed value. That
+  worked. It compared the two `Value` results by R3, and so called the struct's `Equals`, which
+  threw the exception of the fixture. `NotSupportedException` came later, from reading the fields
+  `hasValue` and `value`. So before the change the `Equals` of the underlying type already ran once
+  before the call failed, and the test saw the exception that it expects.
+- 8 of the added cases pass before and after, and are pins: the same instance with no visible
+  members; equal strings in different instances; two delegates for one method on one target; equal
+  frozen sets; `T` = `object` with two strings; the pair on a string member that does not change; a
+  `null` pattern array with two strings; and the nullable struct whose `Equals` throws.
+- Two predictions that were traced in the code, not measured on `669499c`, held. The same instance
+  method on two targets whose state differs was a violation listing `Target` and `_target` before,
+  and is equal after. One method through two delegate types (`Action` and `ThreadStart`) with `T` =
+  `Delegate` gave no exception before, and is unequal after.
+
+**Measured results, smoke program.** A JIT run of the default build with `DBC_POST=off` and
+`--assert` gave 62 `PASS` before the work, 64 after the first step and 71 after the second. In the
+third step the RED run gave 1 `FAIL` and 71 `PASS`: check 64 expected no exception and got an
+`ArgumentNullException` naming `collection`. With the library changed it gave 72 `PASS`. The results
+with the defaults were not observed RED in the smoke program; the unit tests are the RED evidence
+for them.
+
+Native AOT. Environment: `win-x64`. The command was
+`dotnet publish tests\uContract.AotSmoke\uContract.AotSmoke.csproj -c Release -r win-x64
+-warnaserror`; the project file sets `PublishAot`. Clean `obj` and `bin` before each publish. The
+variant adds `-p:AotSmokeHiddenDictionaryEntry=true`. Every publish exited with code 0.
+
+The first publish had checks 70 and 72 with the predicted expectations:
+
+| Build | ILC and MSBuild warnings | `--assert`, defaults | `--assert`, `DBC_POST=off` |
+|---|---|---|---|
+| Project reference | 0 | 70 of 72 pass (checks 70 and 72 fail) | 72 of 72 pass |
+| Project reference, `-p:AotSmokeHiddenDictionaryEntry=true` | 0 | 69 of 71 pass (checks 70 and 72 fail) | 71 of 71 pass |
+
+The second publish had the expectations of checks 70 and 72 changed to the measured results:
+
+| Build | ILC and MSBuild warnings | `--assert`, defaults | `--assert`, `DBC_POST=off` |
+|---|---|---|---|
+| Project reference | 0 | 72 of 72 pass | 72 of 72 pass |
+| Project reference, `-p:AotSmokeHiddenDictionaryEntry=true` | 0 | 71 of 71 pass | 71 of 71 pass |
+
+The program has 72 checks in the default build and 71 in the variant, which has no check 35.
+
+**Checks 70 and 72: predicted one way, measured the other.** Both checks use `ListHolder`, a struct
+with a `List<int>` field, as a nullable value. No attribute in the smoke program preserves
+`ListHolder`, and the annotation on `T` names only the members of `Nullable<ListHolder>`. From that,
+it was predicted that the field of `ListHolder` is hidden under Native AOT. Then check 70 (equal
+contents in different lists) would be a violation, and check 72 (the pair on a value whose list
+changes in place) would report nothing. Those are the two directions of the known consequence
+above. The first publish measured the opposite. Check 70 gave no exception, and check 72 gave a
+violation. So the field of `ListHolder` is visible to reflection in this program, and both checks
+give the results of the JIT. The expectations were changed to the measured results, and the second
+publish passed. Why the field is visible in this program was not determined.
+
+The documentation keeps "may not be preserved" for the fields of the underlying type. One program's
+result does not show what another application preserves. ADR-0021 says the same of a framework
+type's members ("Whether a framework type's members are visible depends on the application"). So
+the two directions of the known consequence are a prediction from the annotations. No run has shown
+them, and no run has shown the violation with message C for an underlying type with no visible
+fields.
+
+**The smoke checks changed or added.** Each reports no exception, a violation, or the `ParamName`
+of an `ArgumentNullException`. Checks 60 and 62 are unchanged.
+
+- Check 58: `EnsureAssignable` with a `null` `expected`. With the defaults, a violation; it was an
+  `ArgumentNullException` naming `expected`. With `DBC_POST=off`, no exception.
+- Check 59: the same with a `null` `actual`. With the defaults, a violation; it was an
+  `ArgumentNullException` naming `actual`. With `DBC_POST=off`, no exception.
+- Check 61: a `null` `expected` and a `null` pattern array. It names `assignableFieldPatterns` in
+  both columns; with the defaults it named `expected`. It pins that the pattern check comes first.
+- Check 63: `EnsureAssignable<FlatType>(null, null)`. No exception in both columns. It pins that
+  two `null`s are equal.
+- Check 64: `EnsureImmutableCollection<ImmutableList<string>>(null)`. With the defaults,
+  `ArgumentNullException` naming `collection`. With `DBC_POST=off`, no exception. It is the only
+  test of that method with postconditions off.
+- Check 65: `EnsureAssignable("abc", "abd")`. With the defaults, a violation. With `DBC_POST=off`,
+  no exception. The two strings have the same length and first character.
+- Check 66: `EnsureAssignable<int?>(1, 1)`. No exception in both columns.
+- Check 67: `EnsureAssignable<DateTime?>` with two different dates. With the defaults, a violation.
+  With `DBC_POST=off`, no exception.
+- Check 68: `EnsureAssignable<DateTime?>` with two equal dates. No exception in both columns.
+- Check 69: `EnsureAssignable<Action>` with two delegates for one instance method on one target. No
+  exception in both columns. The helper reports `same-instance` when the two delegates are one
+  reference. It did not, so two distinct delegates were compared.
+- Check 70: `EnsureAssignable<ListHolder?>` with equal contents in different lists. No exception in
+  both columns (measured, see above).
+- Check 71: `EnsureAssignable<Marker>(new Marker(), null)`; `Marker` is a class with no members.
+  With the defaults, a violation. With `DBC_POST=off`, no exception. It shows under Native AOT that
+  the `null` rule comes before the rule "no members visible": with two `Marker` values that are not
+  `null`, that rule would throw.
+- Check 72: `Old` and `EnsureAssignable` on a `ListHolder?` whose list changes in place. With the
+  defaults, a violation (measured, see above). With `DBC_POST=off`, no exception.
+
+Checks 63 to 72 use fixtures that no other check uses, or `FlatType`, which is already the `T` of
+other checks. So no fixture that must stay hidden becomes visible to reflection.
+
+**Limits.** Checked by reading the code, and not pinned by a test:
+
+- A call of `EnsureImmutableCollection<T>()` with postconditions off and made while another
+  contract check is running.
+- That the `null` rule and the comparison as a whole read no metadata of `T`. The cache is private.
+  A `string`, a delegate type and a nullable value type always have visible members, so an
+  implementation that still ran the rule "no members visible" for them would give the same results.
+- That the `null` rule runs before the recursion guard is set. It runs no user code, so the
+  position cannot be observed. The unit tests show that the guard is not left set.
+- A comparison as a whole that reaches a class with no visible members under real Native AOT. A
+  unit test simulates it and compares the whole message. It uses a direct field of the underlying
+  type. A class reached through an element of a collection is not tested; the path is built by the
+  code that R8 already uses.
+- `T` = `MulticastDelegate`. A unit test covers `T` = `Delegate`. A test on the base type that left
+  out `MulticastDelegate` itself would pass.
+- That `EnsureAssignable<int?>` and `EnsureAssignable<int>` give different messages.
+- A multicast delegate as `T`.
+- That a nullable value type whose underlying type has no visible fields and whose `Equals` says
+  "unequal" gives message C. Read from the code (step 4 of R3); no unit test and no Native AOT run
+  shows it.
+
+Known limits of the behaviour:
+
+- **`int` against `int?`, and `DateTime` against `DateTime?`.** A value type without `?` as `T` is
+  walked by its members, and its patterns can name fields of a user struct. The same type with `?`
+  is compared as a whole. So the two give different messages for the same change, and can give
+  different results (the first known consequence above).
+- **A nullable value type whose underlying type is a shared value type** (an enumerator in
+  `System.Collections.Frozen`) is never equal. Each side is boxed separately, and a shared type is
+  compared by reference (R5). It is not handled; such a `T` has no use.
+- **The advice of the unreadable-property message cannot be followed below a nullable value type.**
+  A property of a class below the underlying type that has no visible get method still throws the
+  message of ADR-0021. Its advice to list the top-level member as assignable does not apply: there
+  is no member to list. The rest of the message still applies (preserve the type if trimming
+  removed the getter, or set `DBC_POST=off`), and passing the unwrapped values makes the member
+  listable.
+
+**Relation to #40 and #54.**
+
+- **Taken from #40**: the delegate half of its comment that a `T` that is itself a shared type or a
+  delegate walks its members; a `string` as `T`, which is one shared type; and the nullable value
+  type with a value on both sides, which a comment on #40 of 2026-10-09 measured. #40 files all of
+  these under its item 2 (top level). So that item is partly taken.
+- **Left in #40**: the rest of item 2. `EnsureAssignable<object>("abc", "abd")` compares nothing. A
+  base class as `T` compares the members it declares or inherits, and an interface only its own
+  properties; in neither case what the runtime type adds. A shared type other than `string` or a
+  delegate as `T` walks its members. Items 1, 4, 6 (top level) and 7, and the byref-like property,
+  are untouched.
+- **[Issue #54](https://github.com/cwouyang/uContract.NET/issues/54)** was opened while this change
+  was designed. A class derived from a shared type (`Component`, `Stream`, `Task`) is not copied by
+  `Old`, so the pair never fails in it. This change does not touch it.
+
+**Not re-run.** The table "The 2.0.0 package on the same checks" is unchanged. Package mode was not
+run again for this change. The CHANGELOG states no 2.x result that was not read from the 2.0.0
+source. `linux-x64` was not measured locally; CI publishes and runs the smoke program there.
+
+**Unchanged.** Every other decision of this ADR.
+
 ---
 
 ## References
@@ -630,6 +1084,8 @@ A switch that works in the same process is [issue #35](https://github.com/cwouya
 - [Issue #39: `Old`/`EnsureAssignable` under Native AOT](https://github.com/cwouyang/uContract.NET/issues/39)
 - [Issue #46: Fields-only comparison](https://github.com/cwouyang/uContract.NET/issues/46)
 - [Issue #47: `DBC_POST=off` and the `Old` + `EnsureAssignable` pairing](https://github.com/cwouyang/uContract.NET/issues/47)
+- [Issue #52: A `null` `actual` or `expected` in `EnsureAssignable<T>()`](https://github.com/cwouyang/uContract.NET/issues/52)
+- [Issue #54: `Old` + `EnsureAssignable` in a class derived from a shared type](https://github.com/cwouyang/uContract.NET/issues/54)
 - [`DeepCopier.cs`](../../src/uContract/DeepCopier.cs) — the copy
 - [`SharedTypes.cs`](../../src/uContract/SharedTypes.cs) — B3
 - [`MemberComparison.cs`](../../src/uContract/MemberComparison.cs) — R0–R8 and the walk
@@ -658,3 +1114,4 @@ A switch that works in the same process is [issue #35](https://github.com/cwouya
 |------------|-------------|--------------------------------|
 | 2026-10-07 | Accepted    | Decision recorded after implementation (issue #45). Supersedes ADR-0006 and the `Old` parts of ADR-0021; amends ADR-0007, ADR-0016, ADR-0020, ADR-0001 and ADR-0005. |
 | 2026-10-09 | Amended     | The `DBC_POST=off` pairing limitation is superseded (#47); checks 58 to 62 added. Decision unchanged. See Implementation Notes > Amendment. |
+| 2026-10-09 | Amended     | The top level decides a `null` side first and compares a `string`, a delegate type and a nullable value type as one pair (#52); 72 smoke checks. Decision unchanged. See Implementation Notes > second Amendment. |

@@ -74,6 +74,21 @@ internal static class MemberComparison
         );
     }
 
+    // The comparison of a nullable value type as a whole met a class whose members are not visible.
+    internal static InvalidOperationException CannotCompareBelowNullable(Type underlyingType, HiddenMembers hidden)
+    {
+        string path = $"{underlyingType.Name}{hidden.PathBelowTopLevelMember}";
+
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
+                + "no properties or fields are visible to reflection under Native AOT. "
+                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
+                + "Ways out: if the type has members, preserve them, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "or set DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
     // Under Native AOT a type whose members were not preserved reflects as having none, which
     // would make every comparison of it pass. System.Object genuinely has none (lock objects).
     internal static bool MembersAreHidden(Type type, TypeMetadata metadata)

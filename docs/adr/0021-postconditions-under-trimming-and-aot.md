@@ -9,6 +9,7 @@
 - **Status Date**: 2026-10-04
 - **Amended**: 2026-10-04 — an exception thrown by the `Old<T>()` supplier now propagates unchanged, which supersedes one Known Limitation; three statements are qualified; see the Amendment under Implementation Notes
 - **Amended**: 2026-10-07 — the `Old<T>()` decisions are superseded by [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), and the open statements on value types, boxed values and framework types are settled there; see the second Amendment under Implementation Notes
+- **Amended**: 2026-10-09 — the "no members visible" check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type (#52); see the third Amendment under Implementation Notes
 
 ---
 
@@ -405,6 +406,19 @@ The decision is unchanged. This amendment records one later decision and qualifi
 - **Settled in part**: ADR-0021 Alternative 2 ("ask `Equals` first") is re-adopted for nested classes (R8). The nested "cannot compare" message gained a sentence; ADR-0022 quotes it.
 - The measurements above stay as the record of 2.0.0. ADR-0022 holds the measurements of the new behaviour.
 
+### Amendment (2026-10-09): When the "no members visible" check for T does not run (#52)
+
+The decision is unchanged. [Issue #52](https://github.com/cwouyang/uContract.NET/issues/52) changes how `EnsureAssignable<T>()` treats `actual` and `expected` themselves. A `null` on either side is compared as a value, before any member of `T` is enumerated. When `T` is a `string`, a delegate type or a nullable value type, the two values are compared as a whole, and no member of `T` is enumerated. The decisions and their reasons are in the amendments for #52 of [ADR-0012](0012-dotnet-improvements-over-java.md) (`null`) and of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) (the comparison, the measurements and the limits). This amendment names the statements of this ADR that they qualify. Each is quoted by its opening words:
+
+- "The check runs where the members of a type would be enumerated: for `T` always". The check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type. The members of `T` are not enumerated in those calls.
+- "It runs on every call." It runs on every call that enumerates the members of `T`. A `T` with no visible members and a `null` on one side gives a postcondition violation, and two `null`s give no exception.
+- "`{path}` is `typeof(T).Name`, then". Below a nullable value type as `T`, the path starts with the name of the underlying type.
+- Decision 1: "keep the members of `T` that are compared". For a nullable value type as `T`, the compared fields are those of the underlying type. The annotation names the members of the nullable type and does not name those fields, so they may not be preserved.
+- Positive Consequences: "Under Native AOT, `EnsureAssignable<T>()` compares the members of `T`", which ends "without the consumer doing anything". That does not hold for the three kinds of `T`: no member of `T` is compared. For a nullable struct that holds a reference, the consumer may have to preserve the underlying type.
+- The unreadable-property message: "Otherwise list the top-level member that leads to it as assignable". Below a nullable value type as `T` there is no member to list. The rest of the message still applies (preserve the type if trimming removed the getter, or set `DBC_POST=off`), and passing the unwrapped values makes the member listable.
+
+Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
+
 ---
 
 ## References
@@ -433,3 +447,4 @@ The decision is unchanged. This amendment records one later decision and qualifi
 | 2026-10-04 | Accepted    | Message wording decided after review of the implementation: three of the four questions raised are implemented, one is deferred to issue #40. See Questions Raised in Review. |
 | 2026-10-04 | Amended     | Supplier exceptions in `Old<T>()` propagate unchanged (supersedes one Known Limitation). Corrections: unit-test figures are a snapshot; an inherited auto-property is compared once; the second `Accepted` row was a wording revision. See Implementation Notes > Amendment. |
 | 2026-10-07 | Amended     | `Old<T>()` decisions and the `[RequiresDynamicCode]` statement superseded by ADR-0022; value-type, boxed-value and framework-type statements settled there. `EnsureAssignable<T>()` decisions and measurements unchanged. See Implementation Notes > second Amendment. |
+| 2026-10-09 | Amended     | The check for `T` does not run for a `null` argument or for a `T` that is compared as a whole (#52); decisions in ADR-0012 and ADR-0022. Decision unchanged. See Implementation Notes > third Amendment. |

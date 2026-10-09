@@ -336,7 +336,8 @@ public static class Contract
     /// <param name="supplier">Lazy-evaluated supplier that provides the object to capture.</param>
     /// <returns>
     ///     A deep copy of the object when postconditions are enabled;
-    ///     default value when postconditions are disabled or recursion guard is active.
+    ///     default value when postconditions are disabled, recursion guard is active, or the supplier
+    ///     returns null.
     /// </returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="supplier" /> is null.</exception>
     /// <remarks>
@@ -821,12 +822,20 @@ public static class Contract
     /// <summary>
     ///     Ensures that the specified collection is immutable in postconditions.
     ///     Returns the collection if it is immutable, or throws <see cref="PostconditionViolationException" /> if mutable.
+    ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
     /// <typeparam name="T">The type of the collection</typeparam>
     /// <param name="collection">The collection to verify for immutability</param>
-    /// <returns>The original collection if it is immutable</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="collection" /> is null</exception>
-    /// <exception cref="PostconditionViolationException">Thrown when the collection is mutable and postconditions are enabled</exception>
+    /// <returns>
+    ///     The original collection if it is immutable. In a call that does not check it, the argument as it
+    ///     is, null included: see the remarks.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="collection" /> is null and the method checks the collection
+    /// </exception>
+    /// <exception cref="PostconditionViolationException">
+    ///     Thrown when the collection is mutable and the method checks the collection
+    /// </exception>
     /// <remarks>
     ///     This method verifies that a collection returned from a method is immutable.
     ///     It checks if the type is from System.Collections.Immutable namespace or
@@ -834,6 +843,8 @@ public static class Contract
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
+    ///     When the method is disabled, or in a call made while another contract check is running, it returns
+    ///     <paramref name="collection" /> without checking it, null included.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -846,20 +857,20 @@ public static class Contract
     /// </example>
     public static T EnsureImmutableCollection<T>(T collection)
     {
-        // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
-        ArgumentNullException.ThrowIfNull(collection);
-
-        // Step 2: Check recursion guard
+        // Step 1: Check recursion guard
         if (Entered.Value)
         {
             return collection;
         }
 
-        // Step 3: Check if postconditions enabled
+        // Step 2: Check if postconditions enabled
         if (!Config.PostconditionsEnabled)
         {
             return collection;
         }
+
+        // Step 3: Validate parameters (only when the collection is checked)
+        ArgumentNullException.ThrowIfNull(collection);
 
         // Step 4: Execute with guard
         try
@@ -939,17 +950,23 @@ public static class Contract
     ///     Compares the public instance properties and the instance fields of the compared type, non-public fields
     ///     included, throwing an exception if any non-assignable field has been modified.
     ///     Private fields declared on a base class are not compared.
+    ///     A null on one side only is reported too, as are two unequal values of a type that is compared as a
+    ///     whole: see the remarks.
     /// </summary>
     /// <typeparam name="T">
     ///     The type of objects to compare (supports both reference and value types).
     ///     Its public properties and its public and non-public fields are preserved for reflection in trimmed and
     ///     Native AOT applications. Members inherited from base classes are compared and preserved too, except
     ///     private fields declared on a base class.
+    ///     When it is a <see cref="string" />, a delegate type or a nullable value type, the two values are
+    ///     compared as a whole and no member of it is compared; for a nullable value type the fields of the
+    ///     underlying type may not be preserved. <see cref="object" /> compares nothing beyond null; a base
+    ///     class compares the members it declares or inherits, and an interface only the properties it
+    ///     declares itself.
     /// </typeparam>
-    /// <param name="actual">The current state of the object</param>
+    /// <param name="actual">The current state of the object. Null is compared as a value: see the remarks.</param>
     /// <param name="expected">
-    ///     The expected (old) state of the object. Null is accepted only when the method does not compare:
-    ///     see the remarks.
+    ///     The expected (old) state of the object. Null is compared as a value: see the remarks.
     /// </param>
     /// <param name="assignableFieldPatterns">
     ///     Regular expression patterns matching top-level member names that are allowed to change.
@@ -958,20 +975,24 @@ public static class Contract
     ///     and as its backing field <c>&lt;Email&gt;k__BackingField</c>, so a pattern anchored with <c>^</c> and
     ///     <c>$</c> must cover both, for example <c>^(Email|&lt;Email&gt;k__BackingField)$</c>.
     ///     Examples: "Email", ".*Timestamp", "^_.*"
+    ///     The patterns do not apply, and are not examined, when one of the two values is null or when the two
+    ///     values are compared as a whole.
     /// </param>
     /// <exception cref="ArgumentNullException">
-    ///     Thrown when <paramref name="assignableFieldPatterns" /> is null. Also thrown when
-    ///     <paramref name="actual" /> or <paramref name="expected" /> is null (for a nullable value type: has
-    ///     no value), but only when the method compares them: see the remarks.
+    ///     Thrown when <paramref name="assignableFieldPatterns" /> is null.
     /// </exception>
     /// <exception cref="PostconditionViolationException">
-    ///     Thrown when fields not marked as assignable have been modified
+    ///     Thrown when fields not marked as assignable have been modified, or when exactly one of
+    ///     <paramref name="actual" /> and <paramref name="expected" /> is null (for a nullable value type: has
+    ///     no value). Also thrown when the two values are compared as a whole and are not equal.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    ///     Thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to
-    ///     reflection, or when the runtime type of a nested member or collection element that has to be compared
-    ///     has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c> override this
-    ///     only means they are different instances).
+    ///     Thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to reflection and
+    ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
+    ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to
+    ///     be compared has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c>
+    ///     override this only means they are different instances). Below a nullable value type, the same holds for a
+    ///     class with no visible members whose <c>Equals</c> reports the values unequal.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method
     ///     visible through the compared type: a write-only property, or one whose getter was removed by trimming.
@@ -986,30 +1007,55 @@ public static class Contract
     ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
     ///     base class are not compared. The walk goes deeper into nested objects and collection elements
     ///     without recursion, so cycles and deep graphs are safe.
-    ///     Every comparison decides on the runtime types of the two values. Values of different runtime types are
-    ///     unequal, except two sequences, which are compared by element. Value types are equal when their
-    ///     <c>Equals</c> says so, and are otherwise compared by their fields. Dictionaries are compared entry by
-    ///     entry in enumeration order. Delegates are equal when their methods match; their targets are not
-    ///     compared. Other shared instances (see <see cref="Old{T}" />) are compared by reference; a
-    ///     <see cref="string" /> is compared with <c>Equals</c> and a delegate by its methods.
+    ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
+    ///     runtime types are unequal, except two sequences, which are compared by element. A member or element of a
+    ///     value type, and a nullable value type as <typeparamref name="T" />, is equal when its <c>Equals</c> says so,
+    ///     and is otherwise compared by its fields; a value type without <c>?</c> as <typeparamref name="T" /> is
+    ///     compared by its members. Dictionaries are compared entry by entry in enumeration order. Delegates are equal
+    ///     when their methods match; their targets are not compared. Other shared instances (see <see cref="Old{T}" />)
+    ///     that a member or element holds are compared by reference; a <see cref="string" /> is compared with
+    ///     <c>Equals</c> and a delegate by its methods.
     ///     Under Native AOT, a nested class whose members were not preserved is compared by its own
     ///     <c>Equals</c>: equal when it returns true. When it returns false, the method throws
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose
     ///     <c>Equals</c> ignores state (for example entity equality by ID) therefore hides a change in such a
     ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
-    ///     When <typeparamref name="T" /> itself has no visible members, the method throws without asking
-    ///     <c>Equals</c>.
+    ///     When <typeparamref name="T" /> itself has no visible members, the method throws and does not ask
+    ///     <c>Equals</c>, unless <paramref name="actual" /> or <paramref name="expected" /> is null or
+    ///     <typeparamref name="T" /> is compared as a whole.
     ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
     ///     When the method is disabled, or in a call made while another contract check is running, it returns
-    ///     without comparing and without checking <paramref name="actual" /> or <paramref name="expected" />
-    ///     for null. Work started from inside such a check (a task, a timer, a continuation) counts as such a
-    ///     call, also after the check has returned. <see cref="Old{T}" /> returns <c>default</c> without
-    ///     running its supplier in the same cases, so the two calls together do nothing there. When the method
-    ///     compares, a null <paramref name="actual" /> or <paramref name="expected" /> still throws, whatever
-    ///     its source.
+    ///     without comparing. Work started from inside such a check (a task, a timer, a continuation) counts
+    ///     as such a call, also after the check has returned. <see cref="Old{T}" /> returns <c>default</c>
+    ///     without running its supplier in the same cases, so the two calls together do nothing there.
+    ///     When the method compares, null is a value: two nulls are equal, and exactly one null is a
+    ///     violation, whatever the patterns, which are not examined then. The method never throws
+    ///     <see cref="ArgumentNullException" /> for <paramref name="actual" /> or <paramref name="expected" />.
+    ///     An <see cref="Old{T}" /> result taken while another contract check is running is <c>default</c>
+    ///     (null for a reference type or a nullable value type). Comparing it later reports a violation that
+    ///     did not happen, or misses one: take the snapshot outside such a check.
+    ///     When <typeparamref name="T" /> is a <see cref="string" />, a delegate type or a nullable value type, the two
+    ///     values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
+    ///     delegate by its methods (not its targets, so the same method on another object is equal;
+    ///     <see cref="Delegate" /> and <see cref="MulticastDelegate" /> count as delegate types, and two delegates of
+    ///     different runtime types are unequal), a nullable value type with <c>Equals</c> first and then by the fields
+    ///     of the underlying type. The patterns do not apply. A nullable value type can therefore be compared less
+    ///     strictly than the same type without <c>?</c> (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of it
+    ///     cannot be listed as assignable. To compare it by its members, test both values for null first and pass the
+    ///     unwrapped values, for example with <c>if (a is { } x &amp;&amp; b is { } y)</c>; do not read <c>.Value</c>
+    ///     before that test: it throws when there is no value.
+    ///     For every other <typeparamref name="T" /> the members visible through it are compared:
+    ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class compares the
+    ///     members it declares or inherits, and an interface only the properties it declares itself; in
+    ///     neither case what the runtime type adds, even if the values are strings. A shared type other than
+    ///     a string or a delegate (a <c>Stream</c>, a frozen collection) is still compared member by member.
+    ///     Native AOT: for a nullable value type the fields of the underlying type may not be preserved. If it holds a
+    ///     reference, the comparison can then report a difference for an unchanged value or, with an
+    ///     <see cref="Old{T}" /> snapshot, miss a change inside the object it refers to. Preserve the underlying type
+    ///     with <c>[DynamicDependency]</c>, or pass the unwrapped values as above.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Pattern matching uses <see cref="Regex" /> for flexible field name matching.
     /// </remarks>
@@ -1025,7 +1071,7 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of the top-level type are preserved; the types of nested objects and collection elements are not."
+        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of the top-level type are preserved; the types of nested objects and collection elements are not. For a nullable value type, the fields of the underlying type may not be preserved."
     )]
     public static void EnsureAssignable<[DynamicallyAccessedMembers(MemberComparison.ComparedMembers)] T>(
         T actual,
@@ -1033,23 +1079,34 @@ public static class Contract
         params string[] assignableFieldPatterns
     )
     {
-        // Step 1: Check recursion guard and whether the method is enabled. A call that does not compare
-        // validates only the pattern array, which is checked in every call, and returns.
+        // Step 1: Validate the pattern array. It is checked in every call, first. actual and expected are
+        // never rejected: a null is a value.
+        ArgumentNullException.ThrowIfNull(assignableFieldPatterns);
+
+        // Step 2: Check recursion guard and whether the method is enabled. A call that does not compare returns.
         if (Entered.Value || !Config.PostconditionsEnabled)
         {
-            ArgumentNullException.ThrowIfNull(assignableFieldPatterns);
             return;
         }
 
-        // Step 2: Validate the parameters. actual and expected are checked only here, when the method compares.
-        ArgumentNullException.ThrowIfNull(actual);
-        ArgumentNullException.ThrowIfNull(expected);
-        ArgumentNullException.ThrowIfNull(assignableFieldPatterns);
+        // Step 3: Compare a null as a value, before the guard is set. The patterns and the metadata of T are
+        // not read.
+        if (_CompareNullAsValue(actual, expected))
+        {
+            return;
+        }
 
-        // Step 3: Execute with guard
+        // Step 4: Execute with guard. A string, a delegate type or a nullable value type is compared as one pair,
+        // without the patterns and without the member metadata of T; any other T is compared member by member.
         try
         {
             Entered.Value = true;
+
+            if (_IsComparedAsWhole(typeof(T)))
+            {
+                _CompareAsWhole(typeof(T), actual, expected);
+                return;
+            }
 
             List<string> differences = _FindDifferences(actual, expected, assignableFieldPatterns);
 
@@ -1065,6 +1122,58 @@ public static class Contract
         {
             Entered.Value = false;
         }
+    }
+
+    // Returns true when at least one of the two values is null, which settles the comparison: two nulls are
+    // equal, and exactly one null is a violation (thrown here).
+    private static bool _CompareNullAsValue<T>(T actual, T expected)
+    {
+        bool actualIsNull = actual is null;
+        bool expectedIsNull = expected is null;
+        if (!actualIsNull && !expectedIsNull)
+        {
+            return false;
+        }
+
+        if (actualIsNull && expectedIsNull)
+        {
+            return true;
+        }
+
+        throw new PostconditionViolationException(
+            expectedIsNull
+                ? "expected is null and actual is not. If expected came from Contract.Old, null can also mean "
+                    + "that no snapshot was taken: Old returns default while another contract check is running."
+                : "actual is null and expected is not."
+        );
+    }
+
+    // A string, a delegate type and a nullable value type are compared as one pair, as a member of that type is.
+    // The declared type decides, and its member metadata is not read.
+    private static bool _IsComparedAsWhole(Type type)
+    {
+        return type == typeof(string)
+            || typeof(Delegate).IsAssignableFrom(type)
+            || Nullable.GetUnderlyingType(type) is not null;
+    }
+
+    private static void _CompareAsWhole(Type type, object? actual, object? expected)
+    {
+        ComparisonContext context = new();
+
+        if (MemberComparison.AreEqual(actual, expected, context))
+        {
+            return;
+        }
+
+        if (context.Hidden is not null)
+        {
+            throw MemberComparison.CannotCompareBelowNullable(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
+        }
+
+        throw new PostconditionViolationException(
+            $"actual and expected are not equal. {type} is compared as a whole, so assignable patterns do not apply."
+        );
     }
 
     private static List<string> _FindDifferences<[DynamicallyAccessedMembers(MemberComparison.ComparedMembers)] T>(
