@@ -9,6 +9,7 @@
 - **Status Date**: 2025-10-18
 - **Amended**: 2026-10-04 — behaviour under trimming and Native AOT, and for a property with no get method, is added by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
 - **Amended**: 2026-10-07 — the comparison rules are replaced by rules R0–R8 of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), and the walk is iterative; see the second Amendment under Implementation Notes
+- **Amended**: 2026-10-09 — at the top level a `null` is compared as a value, and a `string`, a delegate type and a nullable value type are compared as a whole, without the patterns (#52, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the third Amendment under Implementation Notes
 
 ---
 
@@ -433,6 +434,32 @@ R0–R8 of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md).
   so (R8).
 - The listings above stay as the historical record. ADR-0022 holds the rules and their limits.
 
+### Amendment (2026-10-09): The top level for null and for three kinds of T (#52)
+
+The decision is unchanged. This ADR is the record of the shape of the top level: the members of `T`
+are compared one by one, and the assignable patterns are matched against their names.
+[Issue #52](https://github.com/cwouyang/uContract.NET/issues/52) changes that shape in two cases.
+A `null` `actual` or `expected` is compared as a value: two `null`s are equal, and exactly one
+`null` is a postcondition violation. When `T` is a `string`, a delegate type or a nullable value
+type, two values that are not `null` are compared as a whole, by rules R0–R8. In both cases no
+member of `T` is compared, and the patterns do not apply and are not examined.
+
+The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #52 records the
+comparison, its reasons, the measurements and the limits. The amendment of
+[ADR-0012](0012-dotnet-improvements-over-java.md) for #52 records the decisions on `null`. They
+qualify these statements of this ADR, each quoted by its opening words:
+
+- The Decision: "compare all public properties and private fields".
+- The amendment of 2026-10-04: "regex patterns for assignable members) is unchanged".
+- The same amendment: "Assignable patterns are matched against top-level member names only".
+- The amendment of 2026-10-07: "regex patterns for top-level members) is unchanged".
+- The same amendment: "Every rule now decides on the values' runtime types (R0)". At the top level
+  a test on the declared `T` comes first.
+- The Revision History row of 2026-10-07: "Members compared and patterns unchanged".
+
+Each still holds for every other `T` with two values that are not `null`. This amendment adds no
+decision. It is the record that this ADR was considered for #52.
+
 ---
 
 ## References
@@ -451,3 +478,4 @@ R0–R8 of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md).
 | 2025-10-18 | Accepted    | Decision finalized             |
 | 2026-10-04 | Amended     | Annotation on `T`, the "no members visible" rule and the unreadable-property rule added by ADR-0021. Comparison strategy unchanged. See Implementation Notes > Amendment. |
 | 2026-10-07 | Amended     | Comparison rules replaced by R0–R8 of ADR-0022; the walk is iterative (explicit stack). Members compared and patterns unchanged. See Implementation Notes > second Amendment. |
+| 2026-10-09 | Amended     | The top level compares `null` as a value and three kinds of `T` as a whole (#52, ADR-0022). Decision unchanged. See Implementation Notes > third Amendment. |
