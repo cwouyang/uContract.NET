@@ -1138,7 +1138,7 @@ public static class Program
             58,
             "EnsureAssignable null expected",
             static () =>
-                NullArgumentOf(static () => Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!)),
+                CallOutcomeOf(static () => Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!)),
             Expect.Value("expected"),
             Expect.Value("none")
         );
@@ -1146,7 +1146,7 @@ public static class Program
             59,
             "EnsureAssignable null actual",
             static () =>
-                NullArgumentOf(static () => Contract.EnsureAssignable(null!, new FlatType { Name = "a", Count = 1 })),
+                CallOutcomeOf(static () => Contract.EnsureAssignable(null!, new FlatType { Name = "a", Count = 1 })),
             Expect.Value("actual"),
             Expect.Value("none")
         );
@@ -1156,7 +1156,7 @@ public static class Program
             60,
             "EnsureAssignable null patterns",
             static () =>
-                NullArgumentOf(static () =>
+                CallOutcomeOf(static () =>
                     Contract.EnsureAssignable(
                         new FlatType { Name = "a", Count = 1 },
                         new FlatType { Name = "a", Count = 1 },
@@ -1172,7 +1172,7 @@ public static class Program
             61,
             "EnsureAssignable null expected and patterns",
             static () =>
-                NullArgumentOf(static () =>
+                CallOutcomeOf(static () =>
                     Contract.EnsureAssignable(new FlatType { Name = "a", Count = 1 }, null!, null!)
                 ),
             Expect.Value("expected"),
@@ -1407,11 +1407,11 @@ public static class Program
         }
     }
 
-    private static string NullArgumentOf(Action ensure)
+    private static string CallOutcomeOf(Action call)
     {
         try
         {
-            ensure();
+            call();
             return "none";
         }
         catch (ArgumentNullException ex)
