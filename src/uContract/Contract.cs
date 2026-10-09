@@ -1005,9 +1005,11 @@ public static class Contract
     ///     if neither decides, the method is enabled.
     ///     When the method is disabled, or in a call made while another contract check is running, it returns
     ///     without comparing and without checking <paramref name="actual" /> or <paramref name="expected" />
-    ///     for null. <see cref="Old{T}" /> returns <c>default</c> without running its supplier in the same
-    ///     two cases, so the two calls together do nothing there. When the method compares, a null
-    ///     <paramref name="actual" /> or <paramref name="expected" /> still throws, whatever its source.
+    ///     for null. Work started from inside such a check (a task, a timer, a continuation) counts as such a
+    ///     call, also after the check has returned. <see cref="Old{T}" /> returns <c>default</c> without
+    ///     running its supplier in the same cases, so the two calls together do nothing there. When the method
+    ///     compares, a null <paramref name="actual" /> or <paramref name="expected" /> still throws, whatever
+    ///     its source.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Pattern matching uses <see cref="Regex" /> for flexible field name matching.
     /// </remarks>

@@ -109,10 +109,10 @@ applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) i
 - `EnsureAssignable<T>()` no longer throws `ArgumentNullException` for a `null` `actual` or
   `expected` when it does not compare them: with postconditions off, or in a call made while another
   contract check is running. `Old<T>()` returns `default` in both cases, so the documented `Old` +
-  `EnsureAssignable` pair threw there for a reference type; it now does nothing. This is an
-  exception to "parameter validation always runs". A `null` pattern array still throws in every
-  call. When no comparison runs and `actual` or `expected` is `null` too, the exception now names
-  `assignableFieldPatterns` (#47; ADR-0012).
+  `EnsureAssignable` pair threw there for a reference type or a nullable value type; it now does
+  nothing. This is an exception to "parameter validation always runs". A `null` pattern array still
+  throws in every call. When no comparison runs and `actual` or `expected` is `null` too, the
+  exception now names `assignableFieldPatterns` (#47; ADR-0012).
 
 ### Removed
 

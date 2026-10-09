@@ -1180,7 +1180,8 @@ public static class Program
         );
 
         // The pairing in a call made while another contract check is running: Old returns default there,
-        // with postconditions on or off. "skipped" would mean that preconditions are off in the environment;
+        // with postconditions on or off. "skipped" would mean that the condition of Require did not run:
+        // preconditions are off in the environment, or an earlier check left the recursion guard set.
         // "guard-cleared" would mean that the pairing cleared the recursion guard that Require had set.
         yield return new Check(
             62,

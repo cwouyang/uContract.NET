@@ -605,9 +605,10 @@ smoke table already changed (the RED run):
 - Smoke program (JIT run of the default build, `DBC_POST=off`, `--assert`): 20 `FAIL`, 42 `PASS`,
   exit code 1. The failing checks are the 16 pairing checks and checks 58, 59, 61 and 62.
 
-With the library changed, the unit tests pass: 584 of 584, and 585 of 585 after two further
-test-only pins (that the call skips the comparison, and that it keeps the recursion guard). The JIT
-smoke run with `DBC_POST=off` gives 62 `PASS` and 0 `FAIL`.
+With the library changed, the unit tests pass: 584 of 584, and 585 of 585 after one further unit
+test (a call made inside another contract's condition does not compare two different objects and
+keeps the recursion guard). A second test-only pin is in the smoke program: the nested `Require` of
+check 62. The JIT smoke run with `DBC_POST=off` gives 62 `PASS` and 0 `FAIL`.
 
 **Not re-run.** The table "The 2.0.0 package on the same checks" is unchanged. Package mode was not
 run again for this change.

@@ -401,7 +401,7 @@ For `EnsureAssignable<T>()`, they no longer hold as written. The rule is now:
 2. `assignableFieldPatterns` is checked for `null` in every call. When it is `null` and no comparison runs, the `ArgumentNullException` names `assignableFieldPatterns`, even if `actual` or `expected` is `null` too.
 3. A call that does not compare does not change the recursion guard.
 
-The reason is that `Old<T>()` returns `default` without running its supplier in two cases: with postconditions off, and in a call made while another contract check is running. Those are the same two cases in which `EnsureAssignable<T>()` does not compare. Before this amendment the method checked `actual` and `expected` before it tested either case. So the documented pair `Old(() => this)` and `EnsureAssignable(this, oldState, …)` threw `ArgumentNullException` for `expected` whenever `T` was a reference type. `actual` and `expected` are the data that the method compares, and the pattern array describes the call. `EnsureNotNull` and `EnsureResult` already leave `value` and `result` unchecked, and `Ensure` takes its data only through its condition.
+The reason is that `Old<T>()` returns `default` without running its supplier in two cases: with postconditions off, and in a call made while another contract check is running. Those are the same two cases in which `EnsureAssignable<T>()` does not compare. Before this amendment the method checked `actual` and `expected` before it tested either case. So the documented pair `Old(() => this)` and `EnsureAssignable(this, oldState, …)` threw `ArgumentNullException` for `expected` in those two cases, when `T` was a reference type or a nullable value type. `actual` and `expected` are the data that the method compares, and the pattern array describes the call. `EnsureNotNull` and `EnsureResult` already leave `value` and `result` unchecked, and `Ensure` takes its data only through its condition.
 
 | Call | `actual` | `expected` | `assignableFieldPatterns` | Result |
 |---|---|---|---|---|
@@ -417,7 +417,7 @@ A call that compares keeps the order of checks `actual`, `expected`, `assignable
 Consequences for a call that does not compare:
 
 - The calling method continues past the pair. Before, it stopped there with the exception.
-- A comparison whose property getter, `Equals` or enumerator itself uses the pair now completes. That inner call is made while another contract check is running, so it returns. Before, the outer call failed with the inner `ArgumentNullException`.
+- A comparison whose property getter, `Equals` or enumerator itself uses the pair now completes. That inner call is made while another contract check is running, so it returns. Before, the outer call failed with the inner `ArgumentNullException` (wrapped in a `TargetInvocationException` when a property getter raised it).
 - Work started from inside the condition of a contract (a task, an asynchronous continuation) inherits the recursion guard, which is an `AsyncLocal`. The pair returns without comparing there too, even after that check has ended. Before this change the `ArgumentNullException` was the only visible sign of that state.
 - No violation that was reported before is lost. Every result that changes was an `ArgumentNullException`, or a `TargetInvocationException` that wrapped one. `PostconditionViolationException` is raised only by the comparison.
 
@@ -425,9 +425,9 @@ Three alternatives were rejected:
 
 - **Check nothing in a call that does not compare.** A `null` pattern array would then be reported only by a call that compares. It should fail in every call, as a `null` `description` does in the sibling methods.
 - **Keep checking `actual`.** Issue #47 lists this option. `actual` is data, like `value` in `EnsureNotNull`. A rule that checks one compared value and not the other is harder to state. And `EnsureAssignable(_member, Contract.Old(() => _member))` would still throw when `_member` is `null`.
-- **Keep the checks and document the recursion guard.** The caller would have to test the `Old` result for `null` before each `EnsureAssignable` call. The pair exists so that the caller does not have to. The caller cannot observe the recursion guard at all.
+- **Keep the checks and tell callers to test the `Old` result for `null`.** The caller would have to test the `Old` result for `null` before each `EnsureAssignable` call. The pair exists so that the caller does not have to. The caller cannot observe the recursion guard at all.
 
-This is one exception, for one method. It is not a general rule about data arguments. `EnsureImmutableCollection` and `RequireNotEmpty` check a data argument in every configuration and are unchanged. No other `Contract` method changes, and the public signature does not change.
+This is one exception, for one method. It is not a general rule about data arguments. `EnsureImmutableCollection` and `RequireNotEmpty` check a data argument in every configuration and are unchanged. So `EnsureImmutableCollection(Contract.Old(() => _items))` still throws `ArgumentNullException` with postconditions off; that method is meant for a return value and the pattern is not documented (noted in #52). No other `Contract` method changes, and the public signature does not change.
 
 Not covered, and left open in [issue #52](https://github.com/cwouyang/uContract.NET/issues/52): a top-level value that is `null` when the method compares. It still throws. Two shapes lead to it. One is a member that is legitimately `null`, as in `EnsureAssignable(_address, Contract.Old(() => _address))`. The other is an `Old` result taken while another contract check was running (so `null`) and passed later to a call that compares. So the pair on a member that can be `null` returns in a call that does not compare and throws in a call that compares.
 
