@@ -504,7 +504,7 @@ What changes in a call that compares:
 
 A call that does not check does not change the recursion guard. The `null` in the first row can be an `Old` result or any other value that the caller passes. The method is documented for a return value, as in `return Contract.EnsureImmutableCollection(names);`. With postconditions off, or in a call made while another contract check is running, a `null` result now passes through to the caller. 2.x threw in every configuration. Code that relied on the method as a `null` guard must add its own. A test suite that runs with postconditions on does not see the difference.
 
-**Decisions and reasons.** The maintainer decided them on 2026-10-09.
+**Decisions and reasons.** The maintainer decided them on 2026-10-09. Two lines below were derived from the code and are not maintainer decisions: the position of the `null` rule before the recursion guard is set, and the account of an `Old` result taken while another contract check was running.
 
 - **`null` is a value (option 1 of the issue).** The pair `Old` + `EnsureAssignable` could not check a member that can be `null`. `Old<T>()` returns `default` when its supplier returns `null`, and the method rejected that `null`. For `EnsureAssignable(_address, Contract.Old(() => _address))`:
 
@@ -519,14 +519,13 @@ A call that does not check does not change the recursion guard. The `null` in th
 - **The messages name the parameters and make no statement about the past.** The method sees two arguments. It cannot know where a `null` came from. Message A carries a hint about `Old`, because of the second shape below.
 - **The pattern check comes first, and the `null` rule comes before the recursion guard is set.** The pattern array describes the call, so a `null` array fails in every call, as the #47 amendment decided. The `null` rule needs no guard, because it runs no user code. It reads no metadata of `T`, so under Native AOT it also decides for a `T` that has no members visible to reflection. A smoke check pins that under Native AOT (check 71 in the amendment of ADR-0022 for #52).
 - **`EnsureImmutableCollection<T>()` is in scope.** It checked `collection` for `null` before it read the configuration or the recursion guard. So a call in which nothing is checked threw `ArgumentNullException` for a `null` argument. That is the order of checks that the #47 amendment removed from `EnsureAssignable<T>()`. The `null` check now comes after the two tests. When the method checks the collection, it keeps the check and the exception.
-- **The records are amendments, and no new ADR is written.** The reasoning is in the amendment of ADR-0022 for #52.
 
 **The second shape of the issue is not detected.** The #47 amendment names it: an `Old` result taken while another contract check was running, and passed later to a call that compares. Such a result is `null` for a reference type or a nullable value type. Compared later, it has two outcomes:
 
 - With an `actual` that is not `null`, the method reports message A. That is a violation that did not happen. Before, the method threw `ArgumentNullException`.
 - With an `actual` that is `null`, the method returns. A change from a value to `null` is missed. Before, the method threw `ArgumentNullException`.
 
-The library cannot tell such a `null` from an old value that really was `null`. A value type already behaves so: `Old(() => _count)` returns `0` while another contract check is running. The hint in message A and the documentation say that the snapshot must be taken outside another contract check. Two unit tests pin the two outcomes.
+The library cannot tell such a `null` from an old value that really was `null`. A value type already behaves so: `Old(() => _count)` returns `0` while another contract check is running. The hint in message A names the cause, and the documentation says that the snapshot must be taken outside another contract check. Two unit tests pin the two outcomes.
 
 **Rejected alternatives.**
 

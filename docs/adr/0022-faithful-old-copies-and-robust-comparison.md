@@ -730,9 +730,9 @@ What changes, all in a call that compares:
   method threw `NotSupportedException`.
 - `T` = a delegate type. Before, `Method`, `Target` and the fields visible through `T` were
   compared, and `Target` by its members. Now less is reported in one case: the same method on
-  another target, or on a target whose state changed, is equal. And more is reported in another:
-  every entry of a multicast delegate counts. A difference gives message C, not a list of delegate
-  members.
+  another target whose state differs is equal. And more is reported in another: every entry of a
+  multicast delegate counts (R4). This was read from the code; no measurement or test compares a
+  multicast delegate as `T`. A difference gives message C, not a list of delegate members.
 - For these three kinds of `T`, a pattern that matched a member name no longer excuses a
   difference.
 
@@ -747,7 +747,7 @@ Nothing changes when `T` is any other type and both values are not `null`:
 - A shared type (B3) other than `string` or a delegate as `T`, such as a `Stream`, a `Task` or a
   frozen collection. Its members are walked.
 - A value type without `?` as `T`. Its members are walked: `EnsureAssignable(1, 2)` still reports
-  the field `m_value`.
+  the field `m_value` (measured on `669499c`).
 
 **Decisions and reasons.** The maintainer decided them on 2026-10-09, except where a line says
 otherwise.
@@ -775,17 +775,17 @@ otherwise.
 - **Message C names the parameters and the type**, and makes no statement about what happened
   before the call, like messages A and B.
 - **The comparison runs with the recursion guard set**, after the pattern check and the `null`
-  rule. It can run user code, as the member walk can. (Decided in the design, from the code.)
+  rule. It can run user code, as the member walk can. (Derived from the code, not a maintainer
+  decision.)
 - **No shortcut for the same reference is added for other types.** When `T` is not one of the three
-  kinds and both values are not `null`, nothing changes. A shortcut would change what the member
-  walk reports for types that this change leaves to #40. A unit test pins one case under a simulated
-  Native AOT runtime: a `T` with no visible members still throws when both sides are the same
-  instance. (Decided in the design, from the code.)
+  kinds and both values are not `null`, nothing changes. A shortcut would stop a call with one
+  instance on both sides from reaching the rule "no members visible" (item 6 of #40, at the top
+  level), and would hide #54. A unit test pins one case under a simulated Native AOT runtime: a `T`
+  with no visible members still throws when both sides are the same instance. (Derived from the
+  code, not a maintainer decision.)
 - **Under Native AOT, a nullable value type whose underlying type has no visible fields, and whose
   `Equals` says "unequal", is a violation with message C.** That is what step 4 of R3 gives for a
   member. It is not reported as "cannot compare". See the last rejected alternative.
-- **The records are amendments, and no new ADR is written.** See "Why an amendment and not a new
-  ADR" below.
 
 **Known consequences of comparing a nullable value type by R3.** They are accepted and documented.
 
@@ -827,14 +827,15 @@ otherwise.
 
 **Rejected alternatives.**
 
-- **Every shared type (B3) as a `T` that is compared as a whole.** A draft of the design took
-  "`T` is a shared type" as the test. The declared type and the runtime type can then disagree:
+- **Every shared type (B3) as a `T` that is compared as a whole.** An earlier form of this change
+  took `SharedTypes.IsShared(typeof(T))` as the test. The declared type and the runtime type can
+  then disagree:
   - The B3 test is true for the interfaces `IEqualityComparer`, `IComparer`,
     `IEqualityComparer<string>` and `IComparer<string>`, and false for a user class that implements
     them. Such a pair would be walked member by member by R0–R8, with no defined result when its
     class has no visible members.
-  - Two frozen sets with equal content compare equal at the top level today. By reference they
-    would be a violation that no pattern could excuse.
+  - Two frozen sets with equal content compared equal as `T` on `669499c`. By reference they would
+    be a violation that no pattern could excuse.
   - A shared value type (an enumerator in `System.Collections.Frozen`) would never be equal: each
     side is boxed separately.
   - With `Old`, the two sides of a shared type are the same instance. The comparison could only
@@ -891,6 +892,7 @@ at `669499c`, with throwaway tests that were not committed:
 | `EnsureAssignable("abc", "abcd")` | violation listing `Length` and `_stringLength` |
 | `EnsureAssignable("abc", "abd", ".*")` | no exception |
 | `EnsureAssignable<int?>(1, 1)`, `<int?>(1, 2)`, `<DateTime?>` with equal values, a user struct `Holder?` | `NotSupportedException` ("Specified method is not supported") |
+| `EnsureAssignable(1, 2)` (`T` = `int`) | violation listing the field `m_value` |
 | `T` = `Action`, two delegates for different methods | violation listing `Method`, `_target`, `_methodBase`, `_methodPtrAux` |
 | `T` = `Action`, one instance method on one target, or on two targets with equal state | no exception |
 | `Action a = M; Action b = M;` for a static method `M` | one cached instance (`ReferenceEquals` is true); an instance method group gives two instances |
@@ -913,7 +915,7 @@ step already written (the RED run), and after:
 | A `string`, a delegate type or a nullable value type as a whole | 625 | 19 / 606 | 625 of 625 pass |
 | `EnsureImmutableCollection<T>()` | 627 | 2 / 625 | 627 of 627 pass |
 
-- The design predicted 20 failures for the second step. 19 were observed, in two runs. The test of
+- 20 failures were predicted for the second step. 19 were observed, in two runs. The test of
   a nullable struct whose `Equals` throws passed before the change. Before the change, the member
   walk over the nullable type read the properties `HasValue` and `Value` from the boxed value. That
   worked. It compared the two `Value` results by R3, and so called the struct's `Equals`, which
@@ -941,7 +943,7 @@ Native AOT. Environment: `win-x64`. The command was
 -warnaserror`; the project file sets `PublishAot`. Clean `obj` and `bin` before each publish. The
 variant adds `-p:AotSmokeHiddenDictionaryEntry=true`. Every publish exited with code 0.
 
-The first publish had checks 70 and 72 with the expectations that the design predicted:
+The first publish had checks 70 and 72 with the predicted expectations:
 
 | Build | ILC and MSBuild warnings | `--assert`, defaults | `--assert`, `DBC_POST=off` |
 |---|---|---|---|
@@ -960,7 +962,7 @@ The program has 72 checks in the default build and 71 in the variant, which has 
 **Checks 70 and 72: predicted one way, measured the other.** Both checks use `ListHolder`, a struct
 with a `List<int>` field, as a nullable value. No attribute in the smoke program preserves
 `ListHolder`, and the annotation on `T` names only the members of `Nullable<ListHolder>`. From that,
-the design predicted that the field of `ListHolder` is hidden under Native AOT. Then check 70 (equal
+it was predicted that the field of `ListHolder` is hidden under Native AOT. Then check 70 (equal
 contents in different lists) would be a violation, and check 72 (the pair on a value whose list
 changes in place) would report nothing. Those are the two directions of the known consequence
 above. The first publish measured the opposite. Check 70 gave no exception, and check 72 gave a
@@ -970,10 +972,10 @@ publish passed. Why the field is visible in this program was not determined.
 
 The documentation keeps "may not be preserved" for the fields of the underlying type. One program's
 result does not show what another application preserves. ADR-0021 says the same of a framework
-type's members ("Whether a framework type's members are visible depends on the application", line
-259). So the two directions of the known consequence are a prediction from the annotations. No run
-has shown them, and no run has shown the violation with message C for an underlying type with no
-visible fields.
+type's members ("Whether a framework type's members are visible depends on the application"). So
+the two directions of the known consequence are a prediction from the annotations. No run has shown
+them, and no run has shown the violation with message C for an underlying type with no visible
+fields.
 
 **The smoke checks changed or added.** Each reports no exception, a violation, or the `ParamName`
 of an `ArgumentNullException`. Checks 60 and 62 are unchanged.
@@ -1028,6 +1030,10 @@ other checks. So no fixture that must stay hidden becomes visible to reflection.
 - `T` = `MulticastDelegate`. A unit test covers `T` = `Delegate`. A test on the base type that left
   out `MulticastDelegate` itself would pass.
 - That `EnsureAssignable<int?>` and `EnsureAssignable<int>` give different messages.
+- A multicast delegate as `T`.
+- That a nullable value type whose underlying type has no visible fields and whose `Equals` says
+  "unequal" gives message C. Read from the code (step 4 of R3); no unit test and no Native AOT run
+  shows it.
 
 Known limits of the behaviour:
 
@@ -1041,7 +1047,9 @@ Known limits of the behaviour:
 - **The advice of the unreadable-property message cannot be followed below a nullable value type.**
   A property of a class below the underlying type that has no visible get method still throws the
   message of ADR-0021. Its advice to list the top-level member as assignable does not apply: there
-  is no member to list. Only preserving the type helps.
+  is no member to list. The rest of the message still applies (preserve the type if trimming
+  removed the getter, or set `DBC_POST=off`), and passing the unwrapped values makes the member
+  listable.
 
 **Relation to #40 and #54.**
 

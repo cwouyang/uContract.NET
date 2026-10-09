@@ -415,7 +415,7 @@ The decision is unchanged. [Issue #52](https://github.com/cwouyang/uContract.NET
 - "`{path}` is `typeof(T).Name`, then". Below a nullable value type as `T`, the path starts with the name of the underlying type.
 - Decision 1: "keep the members of `T` that are compared". For a nullable value type as `T`, the compared fields are those of the underlying type. The annotation names the members of the nullable type and does not name those fields, so they may not be preserved.
 - Positive Consequences: "Under Native AOT, `EnsureAssignable<T>()` compares the members of `T`", which ends "without the consumer doing anything". That does not hold for the three kinds of `T`: no member of `T` is compared. For a nullable struct that holds a reference, the consumer may have to preserve the underlying type.
-- The unreadable-property message: "Otherwise list the top-level member that leads to it as assignable". Below a nullable value type as `T` there is no member to list. Only preserving the type helps.
+- The unreadable-property message: "Otherwise list the top-level member that leads to it as assignable". Below a nullable value type as `T` there is no member to list. The rest of the message still applies (preserve the type if trimming removed the getter, or set `DBC_POST=off`), and passing the unwrapped values makes the member listable.
 
 Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
 
