@@ -1133,7 +1133,11 @@ public class EnsureAssignableTests
         TestPerson? actual = null;
         TestPerson expected = new();
 
-        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, "Name"));
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable(actual, expected, "Name")
+        );
+
+        Assert.Equal("actual", exception.ParamName);
     }
 
     [Fact]
@@ -1142,7 +1146,11 @@ public class EnsureAssignableTests
         TestPerson actual = new();
         TestPerson? expected = null;
 
-        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, "Name"));
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable(actual, expected, "Name")
+        );
+
+        Assert.Equal("expected", exception.ParamName);
     }
 
     [Fact]
@@ -1151,7 +1159,45 @@ public class EnsureAssignableTests
         TestPerson actual = new();
         TestPerson expected = new();
 
-        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, null!));
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable(actual, expected, null!)
+        );
+
+        Assert.Equal("assignableFieldPatterns", exception.ParamName);
+    }
+
+    [Theory]
+    [InlineData(true, true, false, "actual")]
+    [InlineData(false, true, true, "expected")]
+    [InlineData(true, false, true, "actual")]
+    [InlineData(true, true, true, "actual")]
+    public void EnsureAssignable_WhenSeveralArgumentsAreNull_NamesTheFirst(
+        bool actualIsNull,
+        bool expectedIsNull,
+        bool patternsIsNull,
+        string expectedParamName
+    )
+    {
+        TestPerson? actual = actualIsNull ? null : new TestPerson();
+        TestPerson? expected = expectedIsNull ? null : new TestPerson();
+        string[] names = ["Name"];
+        string[] patterns = patternsIsNull ? null! : names;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable(actual, expected, patterns)
+        );
+
+        Assert.Equal(expectedParamName, exception.ParamName);
+    }
+
+    [Fact]
+    public void EnsureAssignable_ThrowsArgumentNullException_WhenActualIsNullableWithoutValue()
+    {
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable<int?>(null, 1)
+        );
+
+        Assert.Equal("actual", exception.ParamName);
     }
 
     [Fact]
@@ -1172,6 +1218,130 @@ public class EnsureAssignableTests
                 return true;
             }
         );
+    }
+
+    [Fact]
+    public void EnsureAssignable_InsideAnotherContractsCondition_AcceptsTheNullThatOldReturns()
+    {
+        TestPerson person = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        bool oldIsNull = false;
+        bool reachedEnd = false;
+        bool nestedRan = false;
+
+        Contract.Ensure(
+            "Outer contract",
+            () =>
+            {
+                TestPerson? old = Contract.Old(() => person);
+                oldIsNull = old is null;
+                Contract.EnsureAssignable(person, old, "Name");
+                Contract.Ensure(
+                    "Nested contract",
+                    () =>
+                    {
+                        nestedRan = true;
+                        return true;
+                    }
+                );
+                reachedEnd = true;
+                return true;
+            }
+        );
+
+        Assert.True(oldIsNull);
+        Assert.True(reachedEnd);
+        // The recursion guard is still set after the inner call, so the nested condition did not run.
+        Assert.False(nestedRan);
+    }
+
+    [Fact]
+    public void EnsureAssignable_InsideAnotherContractsCondition_AcceptsNullActual()
+    {
+        TestPerson person = new();
+        TestPerson? actual = null;
+        bool reachedEnd = false;
+
+        Contract.Ensure(
+            "Outer contract",
+            () =>
+            {
+                Contract.EnsureAssignable(actual, person, "Name");
+                reachedEnd = true;
+                return true;
+            }
+        );
+
+        Assert.True(reachedEnd);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EnsureAssignable_InsideAnotherContractsCondition_StillRejectsNullPatterns(bool actualIsNull)
+    {
+        TestPerson? actual = actualIsNull ? null : new TestPerson();
+        TestPerson? expected = null;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.Ensure(
+                "Outer contract",
+                () =>
+                {
+                    Contract.EnsureAssignable(actual, expected, null!);
+                    return true;
+                }
+            )
+        );
+
+        Assert.Equal("assignableFieldPatterns", exception.ParamName);
+    }
+
+    [Fact]
+    public void EnsureAssignable_InsideAnotherContractsCondition_DoesNotCompare()
+    {
+        TestPerson original = new()
+        {
+            Name = "Alice",
+            Age = 30,
+            Email = "alice@example.com",
+        };
+        TestPerson changed = new()
+        {
+            Name = "Alice",
+            Age = 31,
+            Email = "alice@example.com",
+        };
+        bool reachedEnd = false;
+        bool nestedRan = false;
+        // The same pair is a violation when the method does compare.
+        Assert.Throws<PostconditionViolationException>(() => Contract.EnsureAssignable(changed, original, "Name"));
+
+        Contract.Ensure(
+            "Outer contract",
+            () =>
+            {
+                Contract.EnsureAssignable(changed, original, "Name");
+                Contract.Ensure(
+                    "Nested contract",
+                    () =>
+                    {
+                        nestedRan = true;
+                        return true;
+                    }
+                );
+                reachedEnd = true;
+                return true;
+            }
+        );
+
+        Assert.True(reachedEnd);
+        // The recursion guard is still set after the inner call, so the nested condition did not run.
+        Assert.False(nestedRan);
     }
 
     [Fact]

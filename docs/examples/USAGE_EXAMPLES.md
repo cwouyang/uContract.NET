@@ -337,7 +337,7 @@ public class User
 
 In trimmed and Native AOT applications, `EnsureAssignable<T>()` can throw `InvalidOperationException` for nested types; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot).
 
-> **Note**: When postconditions are off (`DBC_POST=off`, or `DBC=off` with `DBC_POST` unset), `Old<T>()` returns `default`, and `EnsureAssignable<T>()` still validates its arguments before it reads the configuration. So the `Old` + `EnsureAssignable` pair above throws `ArgumentNullException` in that setup. This is tracked in [issue #47](https://github.com/cwouyang/uContract.NET/issues/47).
+> **Note**: When postconditions are off (`DBC_POST=off`, or `DBC=off` with `DBC_POST` unset), `Old<T>()` returns `default` and `EnsureAssignable<T>()` returns without comparing, so the `Old` + `EnsureAssignable` pair above does nothing. The same holds, with postconditions on, when a method that uses the pair (such as `ChangeEmail` above) is called from inside another contract's condition. It also holds in work started from inside such a condition (a task or a continuation), even after the condition has returned.
 
 **Using Regex Patterns:**
 

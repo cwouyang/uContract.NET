@@ -98,6 +98,8 @@ Contract.Require(null, () => true);  // ✅ Throws ArgumentNullException
 Contract.Require("test", null);      // ✅ Throws ArgumentNullException
 ```
 
+One exception: `EnsureAssignable<T>()` checks `actual` and `expected` for `null` only when it compares them (postconditions on, and not while another contract check is running). Its pattern array is always checked.
+
 ### 3. Generic Constraints
 ✅ **Use correct constraints**:
 ```csharp
@@ -153,7 +155,7 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 - ✅ **Zero overhead**: Conditions never evaluated (except `Ignore`, which evaluates its condition and returns the result; called from inside another contract's condition, it returns `false` without evaluating)
 - ✅ **No allocations**: Lambda expressions not invoked (except by `Ignore`, as above)
 - ✅ **No exceptions**: No contract violations thrown
-- ⚠️ **Parameter validation still runs**: Always validated for safety
+- ⚠️ **Parameter validation still runs**: Always validated for safety, except `actual` and `expected` of `EnsureAssignable<T>()`
 
 ### When Contracts Are Enabled
 - ⚠️ **Condition evaluation cost**: Lambda expressions are invoked
@@ -171,7 +173,7 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 
 ## Trimming and Native AOT
 
-`Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications. `DBC_POST=off` turns off every postcondition check, these two helpers included. With it, `Old<T>()` returns `default`, so the documented `Old` + `EnsureAssignable` pair throws `ArgumentNullException` ([#47](https://github.com/cwouyang/uContract.NET/issues/47)).
+`Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications. `DBC_POST=off` turns off every postcondition check, these two helpers included. With it, `Old<T>()` returns `default` and `EnsureAssignable<T>()` returns without comparing, so the documented `Old` + `EnsureAssignable` pair does nothing.
 
 - `Old<T>()` copies field by field with reflection and needs no JSON setup. A field that the trimmer removed from reflection keeps its bitwise value, so the object it refers to is shared with the original. Preserve such types with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]` on `Main` or any method that runs. A caller that forwards its own generic parameter to it gets trim warning `IL2091` unless it carries `[RequiresUnreferencedCode]` or the same `[DynamicallyAccessedMembers]` annotation on that parameter.
 - `EnsureAssignable<T>()` compares the members of `T` in every kind of build. A caller that forwards its own generic parameter to it gets trim warning `IL2091` until that parameter has the same `[DynamicallyAccessedMembers]` annotation.

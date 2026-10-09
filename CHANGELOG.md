@@ -17,9 +17,12 @@ of a `JsonElement`, and a lazily evaluated sequence is cloned as an iterator ins
 materialized (capture it with `.ToList()`). `EnsureAssignable<T>()` now reports some differences it
 missed and no longer reports some it raised wrongly; each case is listed under Changed. Code that
 catches the `InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or
-the `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. For trimmed
-and Native AOT applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) in the
-README.
+the `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. Code that
+tests the `Old` result for `null`, or catches `ArgumentNullException`, around the `Old` +
+`EnsureAssignable` pair for the case that postconditions are off can drop that test or handler when
+the captured value is never `null` (for example `Old(() => this)`). Keep it for a member that can be
+`null`: a comparison still rejects a `null` top-level value (#52). For trimmed and Native AOT
+applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) in the README.
 
 ### Changed
 
@@ -103,6 +106,13 @@ README.
 - `EnsureAssignable<T>()` no longer reports false violations for unchanged dictionaries, structs
   that hold a reference, interface-typed members, and objects that hold a `Regex` (also after it is
   used), an `AsyncLocal<T>` or a `System.Threading.Lock` (ADR-0022).
+- `EnsureAssignable<T>()` no longer throws `ArgumentNullException` for a `null` `actual` or
+  `expected` when it does not compare them: with postconditions off, or in a call made while another
+  contract check is running. `Old<T>()` returns `default` in both cases, so the documented `Old` +
+  `EnsureAssignable` pair threw there for a reference type or a nullable value type; it now does
+  nothing. This is an exception to "parameter validation always runs". A `null` pattern array still
+  throws in every call. When no comparison runs and `actual` or `expected` is `null` too, the
+  exception now names `assignableFieldPatterns` (#47; ADR-0012).
 
 ### Removed
 

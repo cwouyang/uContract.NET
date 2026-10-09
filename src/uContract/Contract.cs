@@ -947,7 +947,10 @@ public static class Contract
     ///     private fields declared on a base class.
     /// </typeparam>
     /// <param name="actual">The current state of the object</param>
-    /// <param name="expected">The expected (old) state of the object</param>
+    /// <param name="expected">
+    ///     The expected (old) state of the object. Null is accepted only when the method does not compare:
+    ///     see the remarks.
+    /// </param>
     /// <param name="assignableFieldPatterns">
     ///     Regular expression patterns matching top-level member names that are allowed to change.
     ///     A pattern matches anywhere in the member name (it is not anchored), so "Email" also matches
@@ -957,8 +960,9 @@ public static class Contract
     ///     Examples: "Email", ".*Timestamp", "^_.*"
     /// </param>
     /// <exception cref="ArgumentNullException">
-    ///     Thrown when <paramref name="actual" />, <paramref name="expected" />, or
-    ///     <paramref name="assignableFieldPatterns" /> is null
+    ///     Thrown when <paramref name="assignableFieldPatterns" /> is null. Also thrown when
+    ///     <paramref name="actual" /> or <paramref name="expected" /> is null (for a nullable value type: has
+    ///     no value), but only when the method compares them: see the remarks.
     /// </exception>
     /// <exception cref="PostconditionViolationException">
     ///     Thrown when fields not marked as assignable have been modified
@@ -999,6 +1003,13 @@ public static class Contract
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
+    ///     When the method is disabled, or in a call made while another contract check is running, it returns
+    ///     without comparing and without checking <paramref name="actual" /> or <paramref name="expected" />
+    ///     for null. Work started from inside such a check (a task, a timer, a continuation) counts as such a
+    ///     call, also after the check has returned. <see cref="Old{T}" /> returns <c>default</c> without
+    ///     running its supplier in the same cases, so the two calls together do nothing there. When the method
+    ///     compares, a null <paramref name="actual" /> or <paramref name="expected" /> still throws, whatever
+    ///     its source.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Pattern matching uses <see cref="Regex" /> for flexible field name matching.
     /// </remarks>
@@ -1022,24 +1033,20 @@ public static class Contract
         params string[] assignableFieldPatterns
     )
     {
-        // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
+        // Step 1: Check recursion guard and whether the method is enabled. A call that does not compare
+        // validates only the pattern array, which is checked in every call, and returns.
+        if (Entered.Value || !Config.PostconditionsEnabled)
+        {
+            ArgumentNullException.ThrowIfNull(assignableFieldPatterns);
+            return;
+        }
+
+        // Step 2: Validate the parameters. actual and expected are checked only here, when the method compares.
         ArgumentNullException.ThrowIfNull(actual);
         ArgumentNullException.ThrowIfNull(expected);
         ArgumentNullException.ThrowIfNull(assignableFieldPatterns);
 
-        // Step 2: Check recursion guard
-        if (Entered.Value)
-        {
-            return;
-        }
-
-        // Step 3: Check if enabled
-        if (!Config.PostconditionsEnabled)
-        {
-            return;
-        }
-
-        // Step 4: Execute with guard
+        // Step 3: Execute with guard
         try
         {
             Entered.Value = true;

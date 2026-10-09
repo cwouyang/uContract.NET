@@ -7,6 +7,7 @@
 - **Date**: 2026-10-07
 - **Deciders**: Project maintainer
 - **Status Date**: 2026-10-07
+- **Amended**: 2026-10-09 — the `DBC_POST=off` pairing limitation under "What the measurements add or correct" is superseded (#47), and the smoke program gains checks 58 to 62; see the Amendment under Implementation Notes
 
 ---
 
@@ -554,6 +555,72 @@ FastCloner (`c3fc2eb`, v1.2.6), FastDeepCloner (`5769dbc`), AnyClone (`d40a1bd`)
   producing graphs that `EnsureAssignable` cannot compare. The intermediate commits are not release
   candidates.
 
+### Amendment (2026-10-09): The DBC_POST=off pairing limitation is removed (#47)
+
+**Superseded.** The entry "`DBC_POST=off` and the `Old` + `EnsureAssignable` pairing" under "What
+the measurements add or correct" no longer holds. It said that the documented pairing throws
+`ArgumentNullException` when postconditions are off. The pair now does nothing there: with
+postconditions off, and in a call made while another contract check is running, `EnsureAssignable`
+checks neither `actual` nor `expected`. The decision, its reason and the rejected alternatives are
+recorded in the amendment of [ADR-0012](0012-dotnet-improvements-over-java.md). This amendment
+records the measurements.
+
+**The dated record stays.** The statement "57 checks" under "Native AOT: measured" and its result
+table are the measurements of 2026-10-07. The smoke program now has 62 checks in the default build
+and 61 in the `-p:AotSmokeHiddenDictionaryEntry=true` variant, which has no check 35. The pairing
+checks (28 to 32, 35 to 37, 47, 48, 51, 52 and 54 to 57) now expect no exception in the
+`DBC_POST=off` column. Their other column is unchanged. Five checks are new:
+
+- Check 58: `EnsureAssignable` with a `null` `expected`. With the defaults, `ArgumentNullException`
+  naming `expected`. With `DBC_POST=off`, no exception.
+- Check 59: the same with a `null` `actual`, naming `actual`. With `DBC_POST=off`, no exception.
+- Check 60: a `null` pattern array. It names `assignableFieldPatterns` in both columns. It passed
+  before the change and after it, and pins that a call that does not compare still checks the array.
+- Check 61: a `null` `expected` and a `null` pattern array. With the defaults, the exception names
+  `expected`. With `DBC_POST=off`, it names `assignableFieldPatterns`.
+- Check 62: the documented `User.ChangeEmail` pairing, called from inside the condition of
+  `Contract.Require`. In both columns the condition runs to its end, and a contract nested after the
+  pairing is still skipped: the pairing neither throws nor clears the recursion guard.
+
+Checks 58 to 61 compare the `ParamName` of the exception, not its message.
+
+**Measured results.** Environment: `win-x64`. The command was
+`dotnet publish tests\uContract.AotSmoke\uContract.AotSmoke.csproj -c Release -r win-x64
+-warnaserror`; the project file sets `PublishAot`. The `obj` and `bin` folders were cleaned before
+each publish. The variant adds `-p:AotSmokeHiddenDictionaryEntry=true`. Each run exited with code 0.
+
+| Build | ILC and MSBuild warnings | `--assert`, defaults | `--assert`, `DBC_POST=off` |
+|---|---|---|---|
+| Project reference | 0 | 62 of 62 pass | 62 of 62 pass |
+| Project reference, `-p:AotSmokeHiddenDictionaryEntry=true` | 0 | 61 of 61 pass | 61 of 61 pass |
+
+The tests were also run before the library changed, with the unit tests, the smoke checks and the
+smoke table already changed (the RED run):
+
+- Unit tests (JIT, whole suite, postconditions on): 584 tests, 580 passed, 4 failed. Two failures
+  are the pair inside another contract's condition (it threw `ArgumentNullException` for `expected`)
+  and a `null` `actual` inside a condition (it threw for `actual`). The other two are the rows of
+  the null-pattern-array theory: the exception named `expected` and `actual`, not
+  `assignableFieldPatterns`.
+- Smoke program (JIT run of the default build, `DBC_POST=off`, `--assert`): 20 `FAIL`, 42 `PASS`,
+  exit code 1. The failing checks are the 16 pairing checks and checks 58, 59, 61 and 62.
+
+With the library changed, the unit tests pass: 584 of 584, and 585 of 585 after one further unit
+test (a call made inside another contract's condition does not compare two different objects and
+keeps the recursion guard). A second test-only pin is in the smoke program: the nested `Require` of
+check 62. The JIT smoke run with `DBC_POST=off` gives 62 `PASS` and 0 `FAIL`.
+
+**Not re-run.** The table "The 2.0.0 package on the same checks" is unchanged. Package mode was not
+run again for this change.
+
+**Limitation.** The postconditions-off path is tested only by the smoke program: in Linux CI, and by
+hand on Windows. `Contract.Config` is read once for each process, and the unit test project cannot
+turn postconditions off for a `Contract` call. The unit tests cover the call made while another
+contract check is running. An implementation that handled only that call would pass every unit test.
+A switch that works in the same process is [issue #35](https://github.com/cwouyang/uContract.NET/issues/35).
+
+**Unchanged.** Every decision of this ADR.
+
 ---
 
 ## References
@@ -590,3 +657,4 @@ FastCloner (`c3fc2eb`, v1.2.6), FastDeepCloner (`5769dbc`), AnyClone (`d40a1bd`)
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2026-10-07 | Accepted    | Decision recorded after implementation (issue #45). Supersedes ADR-0006 and the `Old` parts of ADR-0021; amends ADR-0007, ADR-0016, ADR-0020, ADR-0001 and ADR-0005. |
+| 2026-10-09 | Amended     | The `DBC_POST=off` pairing limitation is superseded (#47); checks 58 to 62 added. Decision unchanged. See Implementation Notes > Amendment. |

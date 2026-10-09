@@ -185,7 +185,7 @@ export DBC=off
 ### Key Behaviors
 
 - **Default**: All contracts **enabled** in every build configuration; set `DBC=off` to disable
-- **Parameter validation**: Always executed (even when DBC is disabled)
+- **Parameter validation**: Always executed (even when DBC is disabled). One exception: `EnsureAssignable<T>()` checks `actual` and `expected` for `null` only when it compares them, that is, with postconditions on and not while another contract check is running; its pattern array is always checked
 - **Zero overhead**: Conditions are never evaluated when disabled (lazy evaluation), except by `Ignore`, which is never disabled
 
 ---
@@ -217,7 +217,7 @@ export DBC=off
 
 ### Trimming and Native AOT
 
-`Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications. Setting `DBC_POST=off` turns off every postcondition check, these two helpers included. With it, `Old<T>()` returns `default` and `EnsureAssignable<T>()` still validates its arguments first, so the documented `Old` + `EnsureAssignable` pair throws `ArgumentNullException` ([#47](https://github.com/cwouyang/uContract.NET/issues/47)).
+`Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications. Setting `DBC_POST=off` turns off every postcondition check, these two helpers included. With it, `Old<T>()` returns `default` and `EnsureAssignable<T>()` returns without comparing, so the documented `Old` + `EnsureAssignable` pair does nothing.
 
 - **`Old<T>()`** copies the value field by field with reflection. It needs no JSON setup and no dynamic code. Trimming preserves the fields declared on `T`. A field that the trimmer removed from reflection keeps its bitwise value, so the object it refers to is shared with the original, and a later change to that object passes silently. This can affect private fields of `T`'s base classes (for example a base-class auto-property that holds a `List<Line>`), the fields of the types that `T`'s fields refer to, and runtime types other than `T`. Preserve such types with `DynamicDependency`; put it on `Main` or on any method that runs. A caller that forwards its own generic type parameter to `Old<T>` gets trim warning `IL2091` until it adds `[RequiresUnreferencedCode]` or the same `[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields)]` to that parameter. Suppressing `IL2026` does not silence it.
 - **`EnsureAssignable<T>()`** compares the members of `T` in every kind of build. A caller that forwards its own generic type parameter to `EnsureAssignable<T>` gets trim warning `IL2091` until it adds `[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields)]` to that parameter.
@@ -272,7 +272,7 @@ uContract.NET maintains **semantic parity** with the Java version while leveragi
 
 | Feature | Java | C# |
 |---------|------|-----|
-| **Parameter validation** | ❌ Not validated | ✅ Always validated (even when DBC off) |
+| **Parameter validation** | ❌ Not validated | ✅ Always validated (even when DBC off), with one exception for `EnsureAssignable<T>()`: see [Key Behaviors](#key-behaviors) |
 | **Exception messages** | ⚠️ Inconsistent format | ✅ Unified format |
 | **Async support** | ❌ ThreadLocal (no async) | ✅ AsyncLocal (async/await safe) |
 | **Configuration** | ⚠️ Public static fields | ✅ Encapsulated ContractConfiguration class |
