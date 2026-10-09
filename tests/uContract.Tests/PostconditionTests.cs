@@ -674,6 +674,16 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
+    public void EnsureImmutableCollection_WhenCollectionIsNullableWithoutValue_ThrowsArgumentNullException()
+    {
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureImmutableCollection<ImmutableArray<int>?>(null)
+        );
+
+        Assert.Equal("collection", exception.ParamName);
+    }
+
+    [Fact]
     public void EnsureImmutableCollection_WhenRecursionGuardActive_ReturnsCollection()
     {
         List<string> mutableList = ["Alice", "Bob"];
@@ -1785,6 +1795,7 @@ public class EnsureAssignableTests
     [Theory]
     [InlineData("abc", "abd")]
     [InlineData("abc", "abcd")]
+    [InlineData("abc", "ABC")]
     public void EnsureAssignable_WhenStringsDiffer_ThrowsPostconditionViolation(string actual, string expected)
     {
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
