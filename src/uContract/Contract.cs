@@ -822,11 +822,17 @@ public static class Contract
     /// <summary>
     ///     Ensures that the specified collection is immutable in postconditions.
     ///     Returns the collection if it is immutable, or throws <see cref="PostconditionViolationException" /> if mutable.
+    ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
     /// <typeparam name="T">The type of the collection</typeparam>
     /// <param name="collection">The collection to verify for immutability</param>
-    /// <returns>The original collection if it is immutable</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="collection" /> is null</exception>
+    /// <returns>
+    ///     The original collection if it is immutable. In a call that does not check it, the argument as it
+    ///     is, null included: see the remarks.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="collection" /> is null and the method checks the collection
+    /// </exception>
     /// <exception cref="PostconditionViolationException">Thrown when the collection is mutable and postconditions are enabled</exception>
     /// <remarks>
     ///     This method verifies that a collection returned from a method is immutable.
@@ -835,6 +841,8 @@ public static class Contract
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
+    ///     When the method is disabled, or in a call made while another contract check is running, it returns
+    ///     <paramref name="collection" /> without checking it, null included.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -847,20 +855,20 @@ public static class Contract
     /// </example>
     public static T EnsureImmutableCollection<T>(T collection)
     {
-        // Step 1: Validate parameters (ALWAYS - even if DBC disabled)
-        ArgumentNullException.ThrowIfNull(collection);
-
-        // Step 2: Check recursion guard
+        // Step 1: Check recursion guard
         if (Entered.Value)
         {
             return collection;
         }
 
-        // Step 3: Check if postconditions enabled
+        // Step 2: Check if postconditions enabled
         if (!Config.PostconditionsEnabled)
         {
             return collection;
         }
+
+        // Step 3: Validate parameters (only when the collection is checked)
+        ArgumentNullException.ThrowIfNull(collection);
 
         // Step 4: Execute with guard
         try

@@ -695,6 +695,55 @@ public class EnsureImmutableCollectionTests
     }
 
     [Fact]
+    public void EnsureImmutableCollection_InsideAnotherContractsCondition_ReturnsANullCollectionUnchecked()
+    {
+        ImmutableList<string>? collection = null;
+        ImmutableList<string>? result = ImmutableList<string>.Empty;
+        bool reachedEnd = false;
+        bool nestedRan = false;
+
+        Contract.Ensure(
+            "Outer contract",
+            () =>
+            {
+                result = Contract.EnsureImmutableCollection(collection);
+                Contract.Ensure(
+                    "Nested contract",
+                    () =>
+                    {
+                        nestedRan = true;
+                        return true;
+                    }
+                );
+                reachedEnd = true;
+                return true;
+            }
+        );
+
+        Assert.Null(result);
+        Assert.True(reachedEnd);
+        // The recursion guard is still set after the inner call, so the nested condition did not run.
+        Assert.False(nestedRan);
+    }
+
+    [Fact]
+    public void EnsureImmutableCollection_InsideAnotherContractsCondition_ReturnsANullableWithoutValueUnchecked()
+    {
+        ImmutableArray<int>? result = ImmutableArray.Create(1);
+
+        Contract.Ensure(
+            "Outer contract",
+            () =>
+            {
+                result = Contract.EnsureImmutableCollection<ImmutableArray<int>?>(null);
+                return true;
+            }
+        );
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void EnsureImmutableCollection_WhenCalled_SupportsMethodChaining()
     {
         ImmutableList<string> result = GetNames();

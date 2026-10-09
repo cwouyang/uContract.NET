@@ -1219,6 +1219,15 @@ public static class Program
             Expect.Value("none")
         );
 
+        // EnsureImmutableCollection checks its collection for null only when it checks the collection.
+        yield return new Check(
+            64,
+            "EnsureImmutableCollection null collection",
+            static () => CallOutcomeOf(static () => Contract.EnsureImmutableCollection<ImmutableList<string>>(null!)),
+            Expect.Value("collection"),
+            Expect.Value("none")
+        );
+
         // ---- T is a string, a delegate type or a nullable value type: the two values are compared as a
         // whole, without the members of T (issue #52). ----
         yield return new Check(
