@@ -1046,23 +1046,11 @@ public static class Contract
             return;
         }
 
-        // Step 3: Compare a null as a value, before the guard is set. Two nulls are equal; exactly one null is
-        // a violation. The patterns and the metadata of T are not read.
-        bool actualIsNull = actual is null;
-        bool expectedIsNull = expected is null;
-        if (actualIsNull || expectedIsNull)
+        // Step 3: Compare a null as a value, before the guard is set. The patterns and the metadata of T are
+        // not read.
+        if (_CompareNullAsValue(actual, expected))
         {
-            if (actualIsNull && expectedIsNull)
-            {
-                return;
-            }
-
-            throw new PostconditionViolationException(
-                expectedIsNull
-                    ? "expected is null and actual is not. If expected came from Contract.Old, null can also mean "
-                        + "that no snapshot was taken: Old returns default while another contract check is running."
-                    : "actual is null and expected is not."
-            );
+            return;
         }
 
         // Step 4: Execute with guard
@@ -1084,6 +1072,30 @@ public static class Contract
         {
             Entered.Value = false;
         }
+    }
+
+    // Returns true when at least one of the two values is null, which settles the comparison: two nulls are
+    // equal, and exactly one null is a violation (thrown here).
+    private static bool _CompareNullAsValue<T>(T actual, T expected)
+    {
+        bool actualIsNull = actual is null;
+        bool expectedIsNull = expected is null;
+        if (!actualIsNull && !expectedIsNull)
+        {
+            return false;
+        }
+
+        if (actualIsNull && expectedIsNull)
+        {
+            return true;
+        }
+
+        throw new PostconditionViolationException(
+            expectedIsNull
+                ? "expected is null and actual is not. If expected came from Contract.Old, null can also mean "
+                    + "that no snapshot was taken: Old returns default while another contract check is running."
+                : "actual is null and expected is not."
+        );
     }
 
     private static List<string> _FindDifferences<[DynamicallyAccessedMembers(MemberComparison.ComparedMembers)] T>(
