@@ -1280,14 +1280,16 @@ public static class Program
             Expect.Value("none")
         );
 
-        // Checks 70 and 72 record what Native AOT does with a nullable struct that holds a reference when the
-        // fields of the struct are not visible: Equals says "unequal" for two lists with equal content, and
-        // Old cannot copy what it cannot see. Under the JIT the results are "none" and "violation".
+        // Checks 70 and 72 record what Native AOT does with a nullable struct that holds a reference. No
+        // attribute preserves ListHolder, and the annotation on T names the fields of Nullable<ListHolder>
+        // only. Measured: its field is visible to reflection in this program all the same, so the results are
+        // those of the JIT. If it were hidden, Equals would say "unequal" for two lists with equal content
+        // (check 70: "violation"), and Old could not copy what it cannot see (check 72: "none").
         yield return new Check(
             70,
             "EnsureAssignable ListHolder? with equal lists",
             NullableStructsWithEqualLists,
-            Expect.Value("violation"),
+            Expect.Value("none"),
             Expect.Value("none")
         );
 
@@ -1304,7 +1306,7 @@ public static class Program
             72,
             "Old and EnsureAssignable on a ListHolder? changed in place",
             NullableStructChangedInPlace,
-            Expect.Value("none"),
+            Expect.Value("violation"),
             Expect.Value("none")
         );
     }
