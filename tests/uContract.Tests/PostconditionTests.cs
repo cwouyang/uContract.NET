@@ -1133,7 +1133,11 @@ public class EnsureAssignableTests
         TestPerson? actual = null;
         TestPerson expected = new();
 
-        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, "Name"));
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable(actual, expected, "Name")
+        );
+
+        Assert.Equal("actual", exception.ParamName);
     }
 
     [Fact]
@@ -1142,7 +1146,11 @@ public class EnsureAssignableTests
         TestPerson actual = new();
         TestPerson? expected = null;
 
-        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, "Name"));
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable(actual, expected, "Name")
+        );
+
+        Assert.Equal("expected", exception.ParamName);
     }
 
     [Fact]
@@ -1151,7 +1159,45 @@ public class EnsureAssignableTests
         TestPerson actual = new();
         TestPerson expected = new();
 
-        Assert.Throws<ArgumentNullException>(() => Contract.EnsureAssignable(actual, expected, null!));
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable(actual, expected, null!)
+        );
+
+        Assert.Equal("assignableFieldPatterns", exception.ParamName);
+    }
+
+    [Theory]
+    [InlineData(true, true, false, "actual")]
+    [InlineData(false, true, true, "expected")]
+    [InlineData(true, false, true, "actual")]
+    [InlineData(true, true, true, "actual")]
+    public void EnsureAssignable_WhenSeveralArgumentsAreNull_NamesTheFirst(
+        bool actualIsNull,
+        bool expectedIsNull,
+        bool patternsIsNull,
+        string expectedParamName
+    )
+    {
+        TestPerson? actual = actualIsNull ? null : new TestPerson();
+        TestPerson? expected = expectedIsNull ? null : new TestPerson();
+        string[] names = ["Name"];
+        string[] patterns = patternsIsNull ? null! : names;
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable(actual, expected, patterns)
+        );
+
+        Assert.Equal(expectedParamName, exception.ParamName);
+    }
+
+    [Fact]
+    public void EnsureAssignable_ThrowsArgumentNullException_WhenActualIsNullableWithoutValue()
+    {
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            Contract.EnsureAssignable<int?>(null, 1)
+        );
+
+        Assert.Equal("actual", exception.ParamName);
     }
 
     [Fact]
