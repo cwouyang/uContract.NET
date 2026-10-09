@@ -83,10 +83,10 @@ README.
   example `Order.Lines[i].Order`) is no longer a difference of the member that holds it; 2.0.0
   overflowed the stack or reported it. A cycle whose shape changed but whose values unroll
   identically compares equal. Delegate targets and closure state are not compared. State inside
-  shared instances (`Lazy<T>`, `Task`, `CancellationTokenSource`, streams, `Regex`) is not compared;
-  the `Value` of a shared `AsyncLocal<T>` is not compared either, so a value first set after `Old`
-  passes. Structs,
-  tuples and dictionaries whose content is equal but whose references differ are equal. (ADR-0022)
+  shared instances that a member or element holds (`Lazy<T>`, `Task`, `CancellationTokenSource`,
+  streams, `Regex`) is not compared; the `Value` of a shared `AsyncLocal<T>` is not compared either,
+  so a value first set after `Old` passes. Structs, tuples and dictionaries whose content is equal
+  but whose references differ are equal. (ADR-0022)
 - **BREAKING**: Under Native AOT, `EnsureAssignable<T>()` asks `Equals` first for a nested class with
   no members visible to reflection. A class whose `Equals` returns `true` is equal. Otherwise it
   throws `InvalidOperationException`, as before; the message now says that `Equals` reports the values
