@@ -833,7 +833,9 @@ public static class Contract
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="collection" /> is null and the method checks the collection
     /// </exception>
-    /// <exception cref="PostconditionViolationException">Thrown when the collection is mutable and postconditions are enabled</exception>
+    /// <exception cref="PostconditionViolationException">
+    ///     Thrown when the collection is mutable and the method checks the collection
+    /// </exception>
     /// <remarks>
     ///     This method verifies that a collection returned from a method is immutable.
     ///     It checks if the type is from System.Collections.Immutable namespace or
@@ -1005,16 +1007,14 @@ public static class Contract
     ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
     ///     base class are not compared. The walk goes deeper into nested objects and collection elements
     ///     without recursion, so cycles and deep graphs are safe.
-    ///     Every comparison of a member or element decides on the runtime types of the two values. Values of
-    ///     different runtime types are unequal, except two sequences, which are compared by element. A member or
-    ///     element of a value type, and a nullable value type as <typeparamref name="T" />, is equal when its
-    ///     <c>Equals</c> says so, and is
-    ///     otherwise compared by its fields; a value type without <c>?</c> as <typeparamref name="T" /> is compared
-    ///     by its members. Dictionaries are compared entry by
-    ///     entry in enumeration order. Delegates are equal when their methods match; their targets are not
-    ///     compared. Other shared instances (see <see cref="Old{T}" />) that a member or element holds are compared by
-    ///     reference; a
-    ///     <see cref="string" /> is compared with <c>Equals</c> and a delegate by its methods.
+    ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
+    ///     runtime types are unequal, except two sequences, which are compared by element. A member or element of a
+    ///     value type, and a nullable value type as <typeparamref name="T" />, is equal when its <c>Equals</c> says so,
+    ///     and is otherwise compared by its fields; a value type without <c>?</c> as <typeparamref name="T" /> is
+    ///     compared by its members. Dictionaries are compared entry by entry in enumeration order. Delegates are equal
+    ///     when their methods match; their targets are not compared. Other shared instances (see <see cref="Old{T}" />)
+    ///     that a member or element holds are compared by reference; a <see cref="string" /> is compared with
+    ///     <c>Equals</c> and a delegate by its methods.
     ///     Under Native AOT, a nested class whose members were not preserved is compared by its own
     ///     <c>Equals</c>: equal when it returns true. When it returns false, the method throws
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose
@@ -1037,23 +1037,25 @@ public static class Contract
     ///     An <see cref="Old{T}" /> result taken while another contract check is running is <c>default</c>
     ///     (null for a reference type or a nullable value type). Comparing it later reports a violation that
     ///     did not happen, or misses one: take the snapshot outside such a check.
-    ///     When <typeparamref name="T" /> is a <see cref="string" />, a delegate type or a nullable value type,
-    ///     the two values are compared as a whole, as a member of that type is: a string with an ordinal
-    ///     <c>Equals</c>, a delegate by its methods (not its targets, so the same method on another object is
-    ///     equal), a nullable value type with <c>Equals</c> first and then by the fields of the underlying
-    ///     type. The patterns do not apply. A nullable value type can therefore be compared less strictly
-    ///     than the same type without <c>?</c> (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of
-    ///     it cannot be listed as assignable. To compare it by its members, test both values for null and
-    ///     pass the values without <c>?</c>; do not pass <c>.Value</c>, which throws when there is no value.
+    ///     When <typeparamref name="T" /> is a <see cref="string" />, a delegate type or a nullable value type, the two
+    ///     values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
+    ///     delegate by its methods (not its targets, so the same method on another object is equal;
+    ///     <see cref="Delegate" /> and <see cref="MulticastDelegate" /> count as delegate types, and two delegates of
+    ///     different runtime types are unequal), a nullable value type with <c>Equals</c> first and then by the fields
+    ///     of the underlying type. The patterns do not apply. A nullable value type can therefore be compared less
+    ///     strictly than the same type without <c>?</c> (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of it
+    ///     cannot be listed as assignable. To compare it by its members, test both values for null first and pass the
+    ///     unwrapped values, for example with <c>if (a is { } x &amp;&amp; b is { } y)</c>; do not read <c>.Value</c>
+    ///     before that test: it throws when there is no value.
     ///     For every other <typeparamref name="T" /> the members visible through it are compared:
     ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class compares the
     ///     members it declares or inherits, and an interface only the properties it declares itself; in
     ///     neither case what the runtime type adds, even if the values are strings. A shared type other than
     ///     a string or a delegate (a <c>Stream</c>, a frozen collection) is still compared member by member.
-    ///     Native AOT: for a nullable value type the fields of the underlying type may not be preserved. If
-    ///     it holds a reference, the comparison can then report a difference for an unchanged value or, with
-    ///     an <see cref="Old{T}" /> snapshot, miss a change inside the object it refers to. Preserve the
-    ///     underlying type with <c>[DynamicDependency]</c>, or pass the values without <c>?</c>.
+    ///     Native AOT: for a nullable value type the fields of the underlying type may not be preserved. If it holds a
+    ///     reference, the comparison can then report a difference for an unchanged value or, with an
+    ///     <see cref="Old{T}" /> snapshot, miss a change inside the object it refers to. Preserve the underlying type
+    ///     with <c>[DynamicDependency]</c>, or pass the unwrapped values as above.
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Pattern matching uses <see cref="Regex" /> for flexible field name matching.
     /// </remarks>
