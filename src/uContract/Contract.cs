@@ -1095,10 +1095,10 @@ public static class Contract
     ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class compares the
     ///     members it declares or inherits, and an interface only the properties it declares itself; in
     ///     neither case what the runtime type adds, even if the values are strings. Two different instances
-    ///     of a type that <see cref="Old{T}" /> shares, other than a string, a delegate, or a
-    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> (two <c>Stream</c>s are still
-    ///     compared member by member), and so is a type that is shared, and fixed (a <c>Regex</c>), also for one
-    ///     instance on both sides.
+    ///     of a type that <see cref="Old{T}" /> shares (two <c>Stream</c>s) are still compared member by member,
+    ///     unless the type is a string, a delegate, or a <c>FrozenSet&lt;T&gt;</c> or a
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>; and so is a type that is shared, and fixed (a <c>Regex</c>),
+    ///     also for one instance on both sides.
     ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
     ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
     ///     in a class derived from <c>Stream</c>, <c>Task</c> or <c>Component</c> compares the object with
