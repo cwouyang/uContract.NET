@@ -199,8 +199,14 @@ internal static class MemberComparison
             return null;
         }
 
-        // A shared type (see SharedTypes) is compared by reference, its members never read.
-        if (actualType == expectedType && SharedTypes.IsShared(actualType))
+        // A shared type (see SharedTypes) is compared by reference, its members never read, except a
+        // FrozenSet<T> or a FrozenDictionary<TKey, TValue>: two of them are compared element by element, in
+        // enumeration order, below.
+        if (
+            actualType == expectedType
+            && SharedTypes.IsShared(actualType)
+            && !SharedTypes.IsComparedByElement(actualType)
+        )
         {
             return null;
         }

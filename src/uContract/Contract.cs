@@ -373,8 +373,9 @@ public static class Contract
     ///     collections (the types declared in <c>System.Collections.Frozen</c>) and the comparers that the base
     ///     class library itself declares; a class of yours derived from <c>StringComparer</c> or
     ///     <c>Comparer&lt;T&gt;</c> is copied.
-    ///     State inside a shared instance is not snapshotted, and state that an instance of the second group
-    ///     refers to (the elements of a frozen collection, the target of a delegate) is not compared.
+    ///     State inside a shared instance is not snapshotted. The target of a delegate is not compared. The
+    ///     elements of a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> are shared
+    ///     with it, so a change inside one of them is not seen while both sides hold the same object.
     ///     A class that derives from a type of the first group is shared too, so <c>Old(() =&gt; this)</c> in
     ///     such a class returns <c>this</c>. There, check each state member with
     ///     <see cref="Ensure(string, Func{bool})" /> and a value taken with this method.
@@ -1045,8 +1046,9 @@ public static class Contract
     ///     and is otherwise compared by its fields; a value type without <c>?</c> as <typeparamref name="T" /> is
     ///     compared by its members. Dictionaries are compared entry by entry in enumeration order. Delegates are equal
     ///     when their methods match; their targets are not compared. Other shared instances (see <see cref="Old{T}" />)
-    ///     that a member or element holds are compared by reference; a <see cref="string" /> is compared with
-    ///     <c>Equals</c> and a delegate by its methods.
+    ///     that a member or element holds are compared by reference, except that a <see cref="string" /> is compared
+    ///     with <c>Equals</c>, a delegate by its methods, and two instances of a <c>FrozenSet&lt;T&gt;</c> or a
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> are compared element by element, in enumeration order.
     ///     Under Native AOT, a nested class whose members were not preserved is compared by its own
     ///     <c>Equals</c>: equal when it returns true. When it returns false, the method throws
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose
