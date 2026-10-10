@@ -519,6 +519,27 @@ public class EnsureAssignableArrayDimensionTests
         Assert.Equal(ItemsChanged, exception.Description);
     }
 
+    // Each helper below returns a new array on every call, also for a length of 0.
+
+    private static int[,] OneByTwo() =>
+        new[,]
+        {
+            { 1, 2 },
+        };
+
+    private static int[,] TwoByOne() =>
+        new[,]
+        {
+            { 1 },
+            { 2 },
+        };
+
+    private static int[] ArrayOfNumbers(int length) => new int[length];
+
+    private static int[][] ArrayOfArrays(int length) => new int[length][];
+
+    private static int[,] Grid(int rows, int columns) => new int[rows, columns];
+
     private static Array OneDimensional(int lowerBound, params int[] values)
     {
         int[] lengths = [values.Length];
@@ -533,17 +554,6 @@ public class EnsureAssignableArrayDimensionTests
 
         return array;
     }
-
-    // A new instance on every call, also for a length of 0.
-    private static int[][] ArrayOfArrays(int length) => new int[length][];
-
-    private static int[,] Grid(int rows, int columns) => new int[rows, columns];
-
-    private static int[,] OneByTwo() =>
-        new[,]
-        {
-            { 1, 2 },
-        };
 
     private static Array TwoDimensional(int rowLowerBound, int columnLowerBound, int[,] values)
     {
@@ -562,15 +572,6 @@ public class EnsureAssignableArrayDimensionTests
 
         return array;
     }
-
-    private static int[] ArrayOfNumbers(int length) => new int[length];
-
-    private static int[,] TwoByOne() =>
-        new[,]
-        {
-            { 1 },
-            { 2 },
-        };
 
     private struct Board
     {
