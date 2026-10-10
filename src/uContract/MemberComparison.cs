@@ -240,8 +240,10 @@ internal static class MemberComparison
             return null;
         }
 
-        // Decided after the lookup above, so that a pair being compared still counts as equal when it is
-        // reached again, and before any element of either array is read.
+        // Decided before any element of either array is read, and after the lookup above. The lookup knows
+        // only pairs that passed this test, except the top-level pair, which is entered without it: when the
+        // two values of the call are arrays and a member leads back to them (SyncRoot), that member still
+        // counts as equal, whatever their rank, lengths and lower bounds.
         if (ArraysDifferInRankLengthOrLowerBound(actual, expected))
         {
             equal = false;
