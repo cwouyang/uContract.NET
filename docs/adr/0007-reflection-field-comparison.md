@@ -11,6 +11,7 @@
 - **Amended**: 2026-10-07 — the comparison rules are replaced by rules R0–R8 of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), and the walk is iterative; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-09 — at the top level a `null` is compared as a value, and a `string`, a delegate type and a nullable value type are compared as a whole, without the patterns (#52, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the third Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — at the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared member by member: the call throws `InvalidOperationException`, and the patterns do not apply (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
+- **Amended**: 2026-10-10 — two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared element by element, not by reference, and one of the two types as `T` is compared as a whole, without the patterns (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fifth Amendment under Implementation Notes
 
 ---
 
@@ -485,6 +486,44 @@ of the third Amendment above, each quoted by its opening words:
 
 This amendment adds no decision. It is the record that this ADR was considered for #54.
 
+### Amendment (2026-10-10): FrozenSet and FrozenDictionary values are compared by element (#49)
+
+The decision is unchanged. [Issue #49](https://github.com/cwouyang/uContract.NET/issues/49) changes
+how two rules treat a `FrozenSet<T>` and a `FrozenDictionary<TKey, TValue>` ("the two types" below).
+`Old<T>()` shares a value of the two types with the original instead of copying it (B3 of ADR-0022),
+and it still does. Two values of the two types that a member or element holds are now compared
+element by element, in enumeration order (R7), where R5 compared them by reference when their
+runtime types were equal. When the declared `T` is one of the two types, two values that are not
+`null` are compared as a whole, by the same rule. No member of `T` is compared, and the patterns do
+not apply and are not examined.
+
+The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #49 records the
+change, with its reasons, the measurements and the limits. It qualifies these statements of this
+ADR, each quoted by its opening words:
+
+- The amendment of 2026-10-07: "**Shared types** are compared by" reference (R5). Two values of the
+  two types that a member or element holds are the exception: they are compared by element (R7). Two
+  instances of one runtime type that is another type declared in the namespace
+  `System.Collections.Frozen` (two arrays of `FrozenSet<T>`, two instances of a class of the caller
+  declared there) are still compared by reference.
+- The third Amendment above: "When `T` is a `string`, a delegate type or a nullable value" type, two
+  values that are not `null` are compared as a whole. The same now holds when `T` is one of the two
+  types.
+- The Status line of 2026-10-09: "a `string`, a delegate type and a nullable value type are compared
+  as a whole, without the patterns". So is one of the two types as `T`. The Revision History row of
+  2026-10-09 ("three kinds of `T` as a whole") and the title of the third Amendment count three
+  kinds. The two types are added to them.
+- The third Amendment: "Each still holds for every other `T` with two values that are not `null`."
+  "Every other `T`" no longer includes the two types. The statements that the third Amendment lists
+  are qualified for them in the same way.
+
+Still true:
+
+- The fourth Amendment above: "There are now three cases." There are still three. The second case, a
+  `T` that is compared as a whole, now also covers the two types.
+
+This amendment adds no decision. It is the record that this ADR was considered for #49.
+
 ---
 
 ## References
@@ -505,3 +544,4 @@ This amendment adds no decision. It is the record that this ADR was considered f
 | 2026-10-07 | Amended     | Comparison rules replaced by R0–R8 of ADR-0022; the walk is iterative (explicit stack). Members compared and patterns unchanged. See Implementation Notes > second Amendment. |
 | 2026-10-09 | Amended     | The top level compares `null` as a value and three kinds of `T` as a whole (#52, ADR-0022). Decision unchanged. See Implementation Notes > third Amendment. |
 | 2026-10-10 | Amended     | At the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: `InvalidOperationException` (#54, ADR-0022). Decision unchanged. See Implementation Notes > fourth Amendment. |
+| 2026-10-10 | Amended     | Two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared by element, not by reference; one of the two types as `T` is compared as a whole (#49, ADR-0022). Decision unchanged. See Implementation Notes > fifth Amendment. |

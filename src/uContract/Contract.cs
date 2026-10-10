@@ -373,8 +373,16 @@ public static class Contract
     ///     collections (the types declared in <c>System.Collections.Frozen</c>) and the comparers that the base
     ///     class library itself declares; a class of yours derived from <c>StringComparer</c> or
     ///     <c>Comparer&lt;T&gt;</c> is copied.
-    ///     State inside a shared instance is not snapshotted, and state that an instance of the second group
-    ///     refers to (the elements of a frozen collection, the target of a delegate) is not compared.
+    ///     State inside a shared instance is not snapshotted. The target of a delegate is not compared. A
+    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> that the copy holds is the
+    ///     original's own set or dictionary, so its elements, keys and values are the original objects, as they are
+    ///     when the comparison runs and not as they were when this method ran. A change inside one of them is
+    ///     therefore not seen while both sides hold that object at the same place in the enumeration order. After
+    ///     the collection is replaced, an object that the new collection holds at that place is compared with the
+    ///     original object as it is now, so a change can still be missed, and a violation can be reported for
+    ///     content that is as it was when this method ran. To check the state of an element, take its values with
+    ///     this method before the change and compare them afterwards with
+    ///     <see cref="Ensure(string, Func{bool})" />.
     ///     A class that derives from a type of the first group is shared too, so <c>Old(() =&gt; this)</c> in
     ///     such a class returns <c>this</c>. There, check each state member with
     ///     <see cref="Ensure(string, Func{bool})" /> and a value taken with this method.
@@ -978,7 +986,8 @@ public static class Contract
     ///     Its public properties and its public and non-public fields are preserved for reflection in trimmed and
     ///     Native AOT applications. Members inherited from base classes are compared and preserved too, except
     ///     private fields declared on a base class.
-    ///     When it is a <see cref="string" />, a delegate type or a nullable value type, the two values are
+    ///     When it is a <see cref="string" />, a delegate type, a nullable value type, or a
+    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, the two values are
     ///     compared as a whole and no member of it is compared; for a nullable value type the fields of the
     ///     underlying type may not be preserved. <see cref="object" /> compares nothing beyond null; a base
     ///     class compares the members it declares or inherits, and an interface only the properties it
@@ -1022,8 +1031,10 @@ public static class Contract
     ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
     ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to
     ///     be compared has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c>
-    ///     override this only means they are different instances). Below a nullable value type, the same holds for a
-    ///     class with no visible members whose <c>Equals</c> reports the values unequal.
+    ///     override this only means they are different instances). Below a nullable value type, and below a
+    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> passed as
+    ///     <typeparamref name="T" />, the same holds for a class with no visible members whose <c>Equals</c> reports
+    ///     the values unequal.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
     ///     from this rule (no members visible) only, not from the rule for one shared instance above.
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method
@@ -1045,8 +1056,9 @@ public static class Contract
     ///     and is otherwise compared by its fields; a value type without <c>?</c> as <typeparamref name="T" /> is
     ///     compared by its members. Dictionaries are compared entry by entry in enumeration order. Delegates are equal
     ///     when their methods match; their targets are not compared. Other shared instances (see <see cref="Old{T}" />)
-    ///     that a member or element holds are compared by reference; a <see cref="string" /> is compared with
-    ///     <c>Equals</c> and a delegate by its methods.
+    ///     that a member or element holds are compared by reference, except that a <see cref="string" /> is compared
+    ///     with <c>Equals</c>, a delegate by its methods, and two instances of a <c>FrozenSet&lt;T&gt;</c> or a
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> are compared element by element, in enumeration order.
     ///     Under Native AOT, a nested class whose members were not preserved is compared by its own
     ///     <c>Equals</c>: equal when it returns true. When it returns false, the method throws
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose
@@ -1071,13 +1083,16 @@ public static class Contract
     ///     An <see cref="Old{T}" /> result taken while another contract check is running is <c>default</c>
     ///     (null for a reference type or a nullable value type). Comparing it later reports a violation that
     ///     did not happen, or misses one: take the snapshot outside such a check.
-    ///     When <typeparamref name="T" /> is a <see cref="string" />, a delegate type or a nullable value type, the two
+    ///     When <typeparamref name="T" /> is a <see cref="string" />, a delegate type, a nullable value type, or a
+    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, the two
     ///     values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
     ///     delegate by its methods (not its targets, so the same method on another object is equal;
     ///     <see cref="Delegate" /> and <see cref="MulticastDelegate" /> count as delegate types, and two delegates of
     ///     different runtime types are unequal), a nullable value type with <c>Equals</c> first and then by the fields
-    ///     of the underlying type. The patterns do not apply. A nullable value type can therefore be compared less
-    ///     strictly than the same type without <c>?</c> (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of it
+    ///     of the underlying type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
+    ///     element by element, in enumeration order. The patterns do not apply.
+    ///     A nullable value type can therefore be compared less strictly than the same type without <c>?</c>
+    ///     (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of it
     ///     cannot be listed as assignable. To compare it by its members, test both values for null first and pass the
     ///     unwrapped values, for example with <c>if (a is { } x &amp;&amp; b is { } y)</c>; do not read <c>.Value</c>
     ///     before that test: it throws when there is no value.
@@ -1085,9 +1100,10 @@ public static class Contract
     ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class compares the
     ///     members it declares or inherits, and an interface only the properties it declares itself; in
     ///     neither case what the runtime type adds, even if the values are strings. Two different instances
-    ///     of a type that <see cref="Old{T}" /> shares, other than a string or a delegate (two <c>Stream</c>s),
-    ///     are still compared member by member, and so is a type that is shared, and fixed (a frozen
-    ///     collection, a <c>Regex</c>), also for one instance on both sides.
+    ///     of a type that <see cref="Old{T}" /> shares (two <c>Stream</c>s) are still compared member by member,
+    ///     and so is a type that is shared, and fixed (a <c>Regex</c>), also for one instance on both sides; in
+    ///     both cases unless <typeparamref name="T" /> is a string, a delegate type, or a <c>FrozenSet&lt;T&gt;</c> or a
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, which are compared as a whole.
     ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
     ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
     ///     in a class derived from <c>Stream</c>, <c>Task</c> or <c>Component</c> compares the object with
@@ -1151,8 +1167,9 @@ public static class Contract
             throw _CannotCompareOneSharedInstance(actual.GetType(), shared);
         }
 
-        // Step 5: Execute with guard. A string, a delegate type or a nullable value type is compared as one pair,
-        // without the patterns and without the member metadata of T; any other T is compared member by member.
+        // Step 5: Execute with guard. A string, a delegate type, a nullable value type, and a FrozenSet<T> or a
+        // FrozenDictionary<TKey, TValue> are compared as one pair, without the patterns and without the member
+        // metadata of T; any other T is compared member by member.
         try
         {
             Entered.Value = true;
@@ -1215,13 +1232,15 @@ public static class Contract
         );
     }
 
-    // A string, a delegate type and a nullable value type are compared as one pair, as a member of that type is.
-    // The declared type decides, and its member metadata is not read.
+    // A string, a delegate type, a nullable value type, and a FrozenSet<T> or a FrozenDictionary<TKey, TValue>
+    // are compared as one pair, as a member of that type is. The declared type decides, and its member metadata
+    // is not read.
     private static bool _IsComparedAsWhole(Type type)
     {
         return type == typeof(string)
             || typeof(Delegate).IsAssignableFrom(type)
-            || Nullable.GetUnderlyingType(type) is not null;
+            || Nullable.GetUnderlyingType(type) is not null
+            || SharedTypes.IsFrozenSetOrDictionary(type);
     }
 
     private static void _CompareAsWhole(Type type, object? actual, object? expected)
@@ -1235,7 +1254,7 @@ public static class Contract
 
         if (context.Hidden is not null)
         {
-            throw MemberComparison.CannotCompareBelowNullable(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
+            throw MemberComparison.CannotCompareBelowWhole(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
         }
 
         throw new PostconditionViolationException(

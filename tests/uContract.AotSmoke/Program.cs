@@ -176,7 +176,8 @@ internal sealed class SnapshotCircle : SnapshotShape
     public int Radius;
 }
 
-// Hidden: never a T, never preserved.
+// Hidden: never a T, never preserved. It may be a type argument of a T or of a member of a T (the element
+// type of FrozenLeavesHolder.Leaves).
 internal sealed class HiddenLeaf
 {
     public int Value;
@@ -351,6 +352,17 @@ internal sealed class FrozenHolder
     public FrozenSet<string> Codes = FrozenSet<string>.Empty;
 }
 
+internal sealed class FrozenDictionaryHolder
+{
+    public FrozenDictionary<string, int> Counts = FrozenDictionary<string, int>.Empty;
+}
+
+// The elements are of a hidden type: under Native AOT they cannot be compared member by member.
+internal sealed class FrozenLeavesHolder
+{
+    public FrozenSet<HiddenLeaf> Leaves = FrozenSet<HiddenLeaf>.Empty;
+}
+
 internal sealed unsafe class PointerHolder
 {
     public int* Address;
@@ -448,6 +460,7 @@ public static class Program
     private const string PreservedLineTypeName = "uContract.AotSmoke.PreservedLine";
 
     private static readonly string[] s_frozenCodes = ["a", "b"];
+    private static readonly string[] s_otherFrozenCodes = ["a", "c"];
 
     public static int Main(string[] args)
     {
@@ -1097,10 +1110,11 @@ public static class Program
             offDefault
         );
 
-        // Mutation: none (two equal frozen sets). Compared by reference: different instances are unequal.
+        // Mutation: none (two frozen sets of equal content). A FrozenSet<T> is compared element by element,
+        // in enumeration order: different instances with equal elements are equal.
         yield return new Check(
             50,
-            "Frozen set compared by reference",
+            "Frozen set compared by elements",
             static () =>
                 NoResult(static () =>
                     Contract.EnsureAssignable(
@@ -1108,7 +1122,7 @@ public static class Program
                         new FrozenHolder { Codes = s_frozenCodes.ToFrozenSet(StringComparer.Ordinal) }
                     )
                 ),
-            post,
+            Expect.Ok,
             Expect.Ok
         );
 
@@ -1347,6 +1361,103 @@ public static class Program
             SharedInstanceThroughAnInterface,
             sameSharedInstance,
             Expect.Ok
+        );
+
+        // ---- A FrozenSet<T> or a FrozenDictionary<TKey, TValue> that a member holds is compared element by
+        // element, in enumeration order, and one passed as T is compared as a whole in the same way
+        // (issue #49). ----
+
+        // Mutation: one element replaced (two frozen sets of different content). Visibility: T.
+        yield return new Check(
+            75,
+            "Frozen sets of different content",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new FrozenHolder { Codes = s_frozenCodes.ToFrozenSet(StringComparer.Ordinal) },
+                        new FrozenHolder { Codes = s_otherFrozenCodes.ToFrozenSet(StringComparer.Ordinal) }
+                    )
+                ),
+            post,
+            Expect.Ok
+        );
+
+        // Mutation: none (two frozen dictionaries of equal content). Visibility: T.
+        yield return new Check(
+            76,
+            "Frozen dictionary compared by entries",
+            FrozenDictionariesOfEqualContent,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: one element replaced (two frozen sets of different content). T is the FrozenSet<T> itself:
+        // the two sets are compared as a whole, and the violation says so.
+        yield return new Check(
+            77,
+            "EnsureAssignable<FrozenSet<string>> sets of different content",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        s_frozenCodes.ToFrozenSet(StringComparer.Ordinal),
+                        s_otherFrozenCodes.ToFrozenSet(StringComparer.Ordinal)
+                    )
+                ),
+            Expect.Throws<PostconditionViolationException>("is compared as a whole"),
+            Expect.Ok
+        );
+
+        // Mutation: none (two frozen sets, each with its own element of equal Value). Visibility: T; none for
+        // HiddenLeaf under Native AOT, where its Equals says unequal: the comparison reports that it cannot
+        // compare the elements. Under the JIT the members of HiddenLeaf are visible and the elements are equal.
+        yield return new Check(
+            78,
+            "Frozen set of elements with hidden members",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new FrozenLeavesHolder { Leaves = new[] { new HiddenLeaf { Value = 1 } }.ToFrozenSet() },
+                        new FrozenLeavesHolder { Leaves = new[] { new HiddenLeaf { Value = 1 } }.ToFrozenSet() }
+                    )
+                ),
+            Expect.Throws<InvalidOperationException>("cannot compare", "uContract.AotSmoke.HiddenLeaf"),
+            Expect.Ok
+        );
+
+        // The same two sets, with the FrozenSet<T> itself as T: the sets are compared as a whole, so the path
+        // to the elements that cannot be compared starts at the set and names no member. Under the JIT the
+        // members of HiddenLeaf are visible and the elements are equal.
+        yield return new Check(
+            79,
+            "EnsureAssignable<FrozenSet<HiddenLeaf>> elements with hidden members",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new[] { new HiddenLeaf { Value = 1 } }.ToFrozenSet(),
+                        new[] { new HiddenLeaf { Value = 1 } }.ToFrozenSet()
+                    )
+                ),
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare",
+                "uContract.AotSmoke.HiddenLeaf",
+                "reached through 'FrozenSet`1[]'"
+            ),
+            Expect.Ok
+        );
+    }
+
+    private static object? FrozenDictionariesOfEqualContent()
+    {
+        static FrozenDictionary<string, int> Counts() =>
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["a"] = 1, ["b"] = 2 }.ToFrozenDictionary(
+                StringComparer.Ordinal
+            );
+
+        return NoResult(static () =>
+            Contract.EnsureAssignable(
+                new FrozenDictionaryHolder { Counts = Counts() },
+                new FrozenDictionaryHolder { Counts = Counts() }
+            )
         );
     }
 

@@ -25,13 +25,14 @@ for a type it could not serialize, or the `JsonException` for a deep graph, can 
 back, is now a violation that the assignable patterns cannot excuse, so keep the test where that
 change is allowed. Code that caught `ArgumentNullException` or `ArgumentException` from
 `EnsureAssignable<T>()` for a `null` value gets `PostconditionViolationException` for one `null` and
-nothing for two. For a `string`, a delegate or a nullable value type as `T`, a pattern no longer
-allows a change, so do not call the method for a value that may change; a test that matched "Fields
-were modified" for such a `T` sees another message; a `string` is compared by ordinal `Equals`, so a
-change of letter case is a violation; a delegate's target is no longer compared. An `Old` result
-taken while another contract check is running gave `ArgumentNullException` in 2.x; it now gives a
-violation that did not happen, or none. `EnsureImmutableCollection<T>()` is no longer a `null` guard
-with postconditions off. For trimmed and Native AOT applications, see [Trimming and Native
+nothing for two. For a `string`, a delegate, a nullable value type, or a `FrozenSet<T>` or a
+`FrozenDictionary<TKey, TValue>` as `T`, a pattern no longer allows a change, so do not call the
+method for a value that may change; a test that matched "Fields were modified" for such a `T` sees
+another message; a `string` is compared by ordinal `Equals`, so a change of letter case is a
+violation; a delegate's target is no longer compared. An `Old` result taken while another contract
+check is running gave `ArgumentNullException` in 2.x; it now gives a violation that did not happen,
+or none. `EnsureImmutableCollection<T>()` is no longer a `null` guard with postconditions off. For
+trimmed and Native AOT applications, see [Trimming and Native
 AOT](README.md#trimming-and-native-aot) in the README.
 
 ### Changed
@@ -70,19 +71,29 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `NotSupportedException` from a getter or converter. It throws nothing of its own while copying;
   an exception from the supplier or from the runtime propagates. (ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` reports more. For members and elements that the comparison
-  reaches: distinct instances of shared types are now different, frozen collections
-  (`System.Collections.Frozen`) included: two equal frozen sets that are different instances are a
-  violation. Other shared instances (see `Old<T>()` above) are compared by reference; a `string` is
-  compared with `Equals` and a delegate by its methods. Members whose runtime types differ are
-  unequal; the runtime type decides, not the declared type. Base and derived instances are unequal.
-  A `string` and a `char[]` are unequal. A user-defined struct that implements `IEnumerable`, held
-  in an interface-typed or `object` member, is compared by its fields, so state besides its elements
-  is reported. A change outside the window of a `Memory<T>` or `ReadOnlyMemory<T>` is reported. A
-  dictionary value whose `Equals` ignores the changed content is reported, because values are
-  compared by their members. A member whose declared type is an interface is walked into the members
-  of its runtime type, and their getters run. A getter that throws on a class reached through a
-  struct field propagates. When the two sides of a member have different runtime types, a violation
-  is reported where 2.0.0 threw `ArgumentException` or `TargetException`. (ADR-0022)
+  reaches: distinct instances of shared types are now different, because shared instances (see
+  `Old<T>()` above) are compared by reference; a `string` is compared with `Equals` and a delegate
+  by its methods. A `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` is the exception: two of
+  them are compared element by element, in enumeration order (a dictionary entry by entry, key with
+  key and value with value), as 2.0.0 compared two of them in members of objects passed to it
+  directly. Their elements, keys and values follow the rules of this version: two of the
+  dictionaries whose values are different objects of equal content were a violation in 2.0.0 and
+  are equal now (#49; see the entry that begins "`EnsureAssignable<T>()` reports less" below). The
+  limits (order, comparer, shared elements) and the ways out are in [Types that `Old<T>()`
+  shares](docs/examples/API_REFERENCE.md#types-that-oldt-shares). Two instances of one other type
+  declared in `System.Collections.Frozen` (two arrays of `FrozenSet<T>`, two instances of a class of
+  yours declared there) are compared by reference. Members whose runtime types differ are unequal,
+  except two sequences, which are compared element by element; the runtime type decides, not the
+  declared type. Base and derived instances are unequal, with the same exception. A `string` and a
+  `char[]` are unequal (a `string` is not a sequence here). A user-defined struct that implements
+  `IEnumerable`, held in an interface-typed or `object` member, is compared by its fields, so state
+  besides its elements is reported. A change outside the window of a `Memory<T>` or
+  `ReadOnlyMemory<T>` is reported. A dictionary value whose `Equals` ignores the changed content is
+  reported, because values are compared by their members. A member whose declared type is an
+  interface is walked into the members of its runtime type, and their getters run. A getter that
+  throws on a class reached through a struct field propagates. When the two sides of a member have
+  different runtime types, a violation is reported where 2.0.0 threw `ArgumentException` or
+  `TargetException`. (ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` reports less. A back-reference to the compared object (for
   example `Order.Lines[i].Order`) is no longer a difference of the member that holds it; 2.0.0
   overflowed the stack or reported it. A cycle whose shape changed but whose values unroll
@@ -113,23 +124,31 @@ AOT](README.md#trimming-and-native-aot) in the README.
   another contract check is running is `default` and cannot be told from a real `null`: compared
   later, it gives a violation that did not happen, or misses one. (#47, #52; ADR-0012)
 - **BREAKING**: `EnsureAssignable<T>()` compares the two values as a whole when `T` is a `string`, a
-  delegate type or a nullable value type: a `string` with an ordinal `Equals`, a delegate by its
-  methods, a nullable value type with `Equals` and then by its fields. Before, the members of `T`
-  were compared. For a `string` those were its length and first character, so two different strings
-  could pass. For a delegate they included its target, compared by its members: now targets and
-  closure state are not compared, so the same method on another object passes, and every entry of a
-  multicast delegate counts. A nullable value type with a value on both sides could not be compared.
-  The assignable patterns do not apply to these types and are not examined. A nullable value type
-  can be compared less strictly than the same type without `?` (`DateTime.Equals` ignores `Kind`).
-  Under Native AOT the fields of its underlying type may not be preserved: for a nullable struct
-  that holds a reference, the comparison can then report a difference for an unchanged value or,
-  with an `Old` snapshot, miss a change inside the object it refers to. This holds only when `T`
+  delegate type, a nullable value type, or a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`: a
+  `string` with an ordinal `Equals`, a delegate by its methods, a nullable value type with `Equals`
+  and then by its fields, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` element by element,
+  in enumeration order (a dictionary entry by entry, key with key and value with value). Before, the
+  members of `T` were compared. For a `string` those were its length and first character, so two
+  different strings could pass. For a delegate they included its target, compared by its members:
+  now targets and closure state are not compared, so the same method on another object passes, and
+  every entry of a multicast delegate counts. A nullable value type with a value on both sides could
+  not be compared. For a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` as `T`, 2.0.0 reported
+  `Items`, or `Keys` and `Values`, for two different instances, also of equal content, and a call
+  that listed those names as patterns passed, also for different content: now the elements are
+  compared, and a difference is a violation whatever the patterns (#49). The assignable patterns do
+  not apply to these types and are not examined, so an invalid pattern is not reported. A nullable
+  value type can be compared less strictly than the same type without `?` (`DateTime.Equals` ignores
+  `Kind`). Under Native AOT the fields of its underlying type may not be preserved: for a nullable
+  struct that holds a reference, the comparison can then report a difference for an unchanged value
+  or, with an `Old` snapshot, miss a change inside the object it refers to. This holds only when `T`
   itself is such a type: `T` = `object` still compares nothing beyond `null`, a base class compares
-  the members it declares or inherits, an interface only its own properties, and two different
-  instances of a shared type other than `string` or a delegate are still compared member by member
-  (#40), as is a type that is shared, and fixed (a frozen collection, a `Regex`), also for one
-  instance on both sides. One instance of a shared type whose state can change, passed as `actual`
-  and as `expected`, is not compared, whatever `T` is, `object` included: the method throws
+  the members it declares or inherits, an interface only its own properties, also when the two
+  values are a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` (only the members visible
+  through `T` are compared), and two different instances of a shared type other than `string`, a
+  delegate, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` are still compared member by
+  member (#40), as is a type that is shared, and fixed (a `Regex`), also for one instance on both
+  sides. One instance of a shared type whose state can change, passed as `actual` and as `expected`,
+  is not compared, whatever `T` is, `object` included: the method throws
   `InvalidOperationException`; the entry for #54 below gives the ways out. (#52; ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` throws `InvalidOperationException` when one instance of a
   shared type whose state can change is passed as `actual` and as `expected`. `Old<T>()` shares such

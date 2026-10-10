@@ -10,6 +10,7 @@
 - **Amended**: 2026-10-09 — the `DBC_POST=off` pairing limitation under "What the measurements add or correct" is superseded (#47), and the smoke program gains checks 58 to 62; see the Amendment under Implementation Notes
 - **Amended**: 2026-10-09 — at the top level a `string`, a delegate type and a nullable value type are compared as one pair by R0–R8, and a `null` side is decided first for every `T` (#52); the smoke program has 72 checks; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — at the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: the call throws `InvalidOperationException` (rule S, #54); the smoke program has 74 checks; see the third Amendment under Implementation Notes
+- **Amended**: 2026-10-10 — two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared element by element, in enumeration order (R7), not by reference (R5), and one of the two types as `T` is compared as a whole; `Old<T>()` and B3 are unchanged (#49); the smoke program has 79 checks; see the fourth Amendment under Implementation Notes
 
 ---
 
@@ -1515,6 +1516,720 @@ as for #52.
 
 **Unchanged.** Every other decision of this ADR.
 
+### Amendment (2026-10-10): FrozenSet and FrozenDictionary values are compared by element (#49)
+
+This amendment follows the #54 amendment above and carries the same date. It records how
+`EnsureAssignable<T>()` compares a `FrozenSet<T>` and a `FrozenDictionary<TKey, TValue>` after
+[issue #49](https://github.com/cwouyang/uContract.NET/issues/49). Since #45, `Old<T>()` shares these
+collections with the original (B3), and R5 compared two of them by reference when their runtime
+types were equal. So a method that replaced a member with a collection of equal content violated its
+postcondition (measured: row 25 below). Two of them that a member or element holds are now compared
+element by element, in enumeration order (R7). When the declared `T` is one of the two types,
+`actual` and `expected` are compared as a whole. `Old<T>()`, B3 and `SharedTypes.IsShared` do not
+change. The amendments of 2026-10-10 for #49 of [ADR-0012](0012-dotnet-improvements-over-java.md),
+[ADR-0021](0021-postconditions-under-trimming-and-aot.md) and
+[ADR-0007](0007-reflection-field-comparison.md) point here.
+
+**Terms.** This amendment uses these terms:
+
+- **The two types**: `FrozenSet<T>` and `FrozenDictionary<TKey, TValue>`. A value is of the two
+  types when its runtime type is a construction of one of them or derives from one. An instance is
+  always of an internal class of the base class library that derives from one of them
+  (`Int32FrozenSet`, `LengthBucketsFrozenSet` and others; "Measured" below lists the classes that
+  were seen). Which class the library picks was seen to depend on the element type, on the elements
+  and their number, and on the comparer. Code outside the base class library cannot derive from the
+  two types. An array of them is not one of them, and neither is any other type declared in the
+  namespace `System.Collections.Frozen`. As the declared `T`, "one of the two types" means
+  `FrozenSet<…>`, `FrozenDictionary<…, …>` or a class derived from one; a derived class can be `T`
+  only through reflection.
+- **A pair that a member or element holds**: two values that the comparison meets below `actual` and
+  `expected`: the two values of a member of `T` or of a field, or two elements, keys or values of a
+  collection. Their runtime types decide what is done (R0), not the declared type of the member.
+- **By reference**: equal only when both sides are the same instance.
+- **By element**: R7. Two `IDictionary` values are compared entry by entry, in enumeration order,
+  key with key and value with value. Any other two `IEnumerable` values are compared element by
+  element, in enumeration order. Each key, value and element is compared by R0–R8. A different
+  number of entries or elements is a difference.
+- **Compared as a whole**: `actual` and `expected` are compared as one pair, as the #52 amendment
+  above defines it for three kinds of `T`. No member of `T` is compared, and the assignable patterns
+  are not examined.
+- **Message C**: the violation message of the #52 amendment for a `T` that is compared as a whole.
+- **`6b24bee`**: the commit of `master` on which the design was measured, before the library
+  changed. "Before" in this amendment is the result there, under the JIT, on .NET 8.0.16. "2.0.0" is
+  the result with the 2.0.0 package.
+
+**What changed.** Two rules change, and both are about the two types only:
+
+1. **A pair that a member or element holds.** Two values of the two types are compared by element
+   (R7), whether their runtime types are equal or not. On `6b24bee`, R5 compared two of them by
+   reference when their runtime types were equal, and R6 sent two of different runtime types to R7.
+   So the verdict depended on which internal class the library had picked. Measured on `6b24bee`:
+   with 30 strings, a set built with `StringComparer.Ordinal` and a set of the same strings built
+   with `StringComparer.OrdinalIgnoreCase` are of different classes, and the pair passed; with three
+   strings the two are of one class (`LengthBucketsFrozenSet`), and the pair was a violation. R5 no
+   longer decides a pair of two values of the two types. The same instance on both sides is equal,
+   as for every pair, and is not enumerated.
+2. **One of the two types as `T`.** `actual` and `expected` are compared as a whole: as one pair, by
+   the rule of item 1. The assignable patterns do not apply, and their elements are not examined. A
+   difference is a `PostconditionViolationException` with message C. No message is added or changed.
+   On `6b24bee` the members of the declared type were walked. These are members of the base class
+   library: a violation named `Items`, `Count`, `Keys` or `Values`, and the pattern `"Items"` hid a
+   change of the elements (measured: rows 31 to 37 below).
+
+Not changed:
+
+- `Old<T>()`: every result. It still shares a value of the two types, as it shares every type
+  declared in the namespace `System.Collections.Frozen`. B3 and `SharedTypes.IsShared` are as they
+  were.
+- Rule S of the #54 amendment: which types it reports, and message D. A value of the two types is a
+  fixed shared type, so rule S does not apply to it.
+- Every pair in which no side is of the two types.
+- A pair with a value of the two types on one side only (row 16 below). The runtime types differ,
+  and R6 decides, as before. The same holds for a `FrozenSet` and a `FrozenDictionary`, and for two
+  values of the two types with different element types.
+- Any other type that B3 shares because of its namespace: see F5 below.
+- A call with postconditions off, or made while another contract check is running. It returns
+  without comparing.
+
+**Why the two types and not the namespace.** B3 shares every type whose namespace is
+`System.Collections.Frozen`. That rule also matches types that are not immutable collections.
+Measured on `6b24bee`: `typeof(FrozenSet<int>[]).Namespace` is `System.Collections.Frozen`, a class
+of the caller can be declared in that namespace, and `Old<T>()` shares a `FrozenSet<int>[]` and an
+instance of such a class. To compare such an object by element would run the caller's own
+enumerator, and the object can be a resource: a class declared there can also derive from
+`Component`. R5 compares a shared instance by reference so that no getter or factory of the instance
+runs. The two types cannot be derived from outside the base class library, so the enumerator of a
+value of them is code of that library. That `Old<T>()` shares an array of the two types is a defect
+of its own. It is filed as [#57](https://github.com/cwouyang/uContract.NET/issues/57) and is not
+changed here.
+
+**Decisions and reasons.** The maintainer decided F1 to F4 and F9 on 2026-10-10, before the design
+was written. F5 to F8 and F10 follow from them, come from the review of the design, or keep the
+behaviour of `6b24bee`. The maintainer approved them with the design. The decisions are numbered F1
+to F10 so that they are not taken for D1 to D13 of this ADR or for S1 to S10 of the #54 amendment.
+
+| # | Question | Decision |
+|---|----------|----------|
+| F1 | `Old<T>()` | Unchanged. It still shares a value of the two types. B3 and `SharedTypes.IsShared` do not change. |
+| F2 | A pair of two values of the two types that a member or element holds | Compared by element, whether the runtime types of the two values are equal or not. |
+| F3 | Order and comparer | The order is the enumeration order. The comparer of the collection is not compared and not used. Keys, values and elements are compared by R0–R8, as for every other collection. |
+| F4 | One of the two types as the declared `T` | `actual` and `expected` are compared as a whole, by F2. |
+| F5 | Every other type that B3 shares because of its namespace | Unchanged: a class of the caller declared in `System.Collections.Frozen` (also one that implements `IEnumerable`), a value type declared there, and an array whose element type is declared there. Two different instances that a member or element holds are compared by reference. |
+| F6 | One instance on both sides | Equal, and not enumerated. This is the rule for every pair. A value of the two types stays a fixed shared type in the sense of the #54 amendment: `EnsureAssignable<T>()` does not throw message D for it. |
+| F7 | `T` is `object` or an interface, and the two values are of the two types | Unchanged: the members visible through `T` are compared (#40). |
+| F8 | The message for F4 | Message C. No message is added or changed. |
+| F9 | CHANGELOG | The entries of #45 and #52 are rewritten to state the final behaviour. No entry is added for the state between #45 and this change, which was never released. |
+| F10 | Record | An amendment of ADR-0022, ADR-0012, ADR-0021 and ADR-0007, not a new ADR. See "Why an amendment and not a new ADR" below. |
+
+For F5, "by reference" is R5, which applies to two instances of one runtime type; two sequences of
+different runtime types are compared by R7, as before.
+
+The reasons:
+
+- **F1.** To copy a value of the two types would mean to copy internal structures of the base class
+  library, and it would reopen B3. See the first rejected alternative.
+- **F2 and F3.** This is what R7 does for every other collection. `HashSet<T>` and `Dictionary<,>`
+  are compared in enumeration order (measured on `6b24bee`: two `HashSet<string>` filled in reverse
+  order are a violation). It is also what 2.0.0 did for two members of the two types in objects
+  passed to it directly (measured: the column "2.0.0" of rows 1 to 8 below). One rule then holds for
+  every set and every dictionary.
+- **F4.** With the member walk, the verdict for `T` depended on members of the base class library,
+  and a pattern could name them. The rule for a member and the rule for `T` would also disagree. The
+  #52 amendment gives this reason for letting the declared `T` decide: for its three kinds, the
+  declared type and the runtime type cannot disagree about the kind. That holds here too: a value
+  whose declared type is one of the two types has a runtime type that is that type or derives from
+  it.
+- **F5.** See "Why the two types and not the namespace" above.
+- **F7.** To decide on the runtime type at the top level is the rest of item 2 of #40. The #52
+  amendment rejected it for that change, and it stays with #40.
+- **F8.** Message C is true of the case as it stands. See the last rejected alternative.
+
+**The rule as it is now.** The steps of a call are those of the #54 amendment. Step 5 gains the two
+types:
+
+1. The pattern array is checked for `null`.
+2. A call that does not compare returns.
+3. The `null` rule.
+4. Rule S.
+5. When `T` is a `string`, a delegate type, a nullable value type or one of the two types, the two
+   values are compared as a whole.
+6. For every other `T`, the members of `typeof(T)` are walked.
+
+The test of the #52 amendment on the declared `T` gains a fourth case: `typeof(T)`, or a class that
+it derives from, is a construction of `FrozenSet<>` or of `FrozenDictionary<,>`. The table of that
+amendment ("What R0–R8 give for two values that are not `null`") gains this row:
+
+| `T` | Compared by | Rule |
+|---|---|---|
+| one of the two types | The same instance is equal. Otherwise two `FrozenDictionary` values entry by entry and two `FrozenSet` values element by element, in enumeration order; each key, value and element by R0–R8 | R7; R6 leads to it when the runtime types of the two values differ |
+
+What holds for the comparison of one of the two types as a whole:
+
+- It runs with the recursion guard set. It enumerates two different collections, and it can run the
+  property getters, enumerators and `Equals` of their elements, keys and values and of what those
+  refer to, as the member walk can (read from the code).
+- The pair of the two collections is tracked by R1 while it is compared. An element that leads back
+  to its collection counts as equal (measured: rows 46 and 47 below).
+- The patterns are not used, and the elements of the pattern array are not examined. A `null`
+  element or an invalid regular expression in it is not reported (measured: rows 39 and 40 below).
+  The array itself is still checked for `null` first.
+- No member metadata is read, neither of `T` nor of the runtime types of the two collections: a
+  collection is enumerated, not walked member by member. So the rule "no members visible" of
+  ADR-0021 is not reached for `T` (read from the code).
+
+**In the code.** `SharedTypes.IsFrozenSetOrDictionary(Type)` is the test for the two types. The
+comparison of a member or element and the test on `T` both use it. The helper that builds the
+"cannot compare" exception below a `T` that is compared as a whole was renamed from
+`CannotCompareBelowNullable` to `CannotCompareBelowWhole`, because it now also serves the two types.
+
+**Behaviour.** "Before" was measured on `6b24bee` and "2.0.0" with the 2.0.0 package, with tests and
+a program that are not in the repository. Every cell of those two columns is measured unless it says
+otherwise; where the measured input differs from the row, the cell or a note says so. "After" is
+what the design stated before the library changed. The unit tests of this change show it for every
+row except rows 15, 16, 30, 42, 43 and 45; tests that existed before this change show rows 16 and
+30, and rows 15, 42, 43 and 45 have no test. For those four, the two tests that the change added
+(`IsFrozenSetOrDictionary` on `T` and on the runtime type of a pair) are false or not reached, so
+the path is that of `6b24bee` (read from the code). In the tables, "build order" is the order of the
+sequence from which the collection was built. Sets and dictionaries of strings hold the three
+strings `"a"`, `"b"`, `"c"` unless the row says otherwise. `H` is a class with one property `Items`
+of the type that the row names. `Box` is a small class with content of its own (in the unit tests:
+one property, `Value`). "Violation" for a pair that a member holds means a
+`PostconditionViolationException` that names `Items` and its backing field. "F8 text" is message C.
+"(F5)" and "(F7)" name the decision that the row shows.
+
+A pair that a member holds:
+
+| # | Pair (the `Items` of two `H`) | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 1 | two `FrozenSet<string>`, equal content, built from the same sequence | no exception | violation | no exception |
+| 2 | two `FrozenDictionary<string, int>`, equal content, built from the same sequence | no exception | violation | no exception |
+| 3 | two `FrozenSet<string>`, one element differs | violation (measured with `{"a"}` and `{"b"}`) | violation | violation |
+| 4 | two `FrozenDictionary<string, int>`, one value differs | violation | violation | violation |
+| 5 | two `FrozenDictionary<string, int>`, one key differs | violation | violation | violation |
+| 6 | two `FrozenSet<string>`, different counts | violation | violation | violation |
+| 7 | two `FrozenSet<string>`, equal content, built in reverse order | violation | violation | violation |
+| 8 | two `FrozenDictionary<string, int>`, equal content, built in reverse order | violation | violation | violation |
+| 9a | `FrozenSet<string>` with `Ordinal` and with `OrdinalIgnoreCase`, the three strings, same order (one runtime type) | no exception | violation | no exception |
+| 9b | the same with 30 strings `"key1"`…`"key30"` (two runtime types) | not measured | no exception | no exception |
+| 10 | two `OrdinalIgnoreCase` sets, `"a"`, `"b"`, `"c"` and `"A"`, `"B"`, `"C"` (one runtime type; `SetEquals` is true) | violation | violation | violation |
+| 11 | two `FrozenSet<Box>`, each with one `Box` of its own, equal content | no exception | violation | no exception |
+| 12 | two `FrozenSet<Box>`, each with one `Box` of its own, contents differ | violation | violation | violation |
+| 13 | two `FrozenDictionary<string, Box>`, each with `Box` values of its own, equal content | violation | violation | no exception |
+| 14 | the same frozen set on both sides | no exception | no exception | no exception |
+| 15 | two empty frozen sets (measured: one instance) | no exception | no exception | no exception |
+| 16 | `Items` declared `IEnumerable<int>`: a `List<int>` and a `FrozenSet<int>`, equal elements | no exception (measured with `string`) | no exception | no exception |
+| 17 | `Items` declared `IReadOnlySet<string>`: two frozen sets, equal content | no exception | violation | no exception |
+| 18 | `Items` declared `object`: two frozen sets, equal content | not measured | violation | no exception |
+| 19 | `Items` is a `List<FrozenSet<string>>`: one frozen set each, equal content | not measured | violation | no exception |
+| 20 | `Items` is a `Dictionary<string, FrozenSet<string>>`: one entry each, equal content | not measured | violation | no exception |
+| 21 | two `FrozenSet<int>[]`, different arrays, the same frozen set as element (F5) | not measured | violation | violation |
+| 22 | two instances of a class of the caller in the namespace that implements `IEnumerable<int>`, equal elements (F5) | not measured | violation | violation |
+| 23 | the same, and the class derives from `Component` (F5) | not measured | violation | violation |
+| 24 | two instances of a class of the caller in the namespace, not enumerable, equal properties (F5) | not measured | violation | violation |
+
+Among the rows that were measured with 2.0.0, row 13 is the only one of this table in which 2.0.0
+and "After" differ. 2.0.0 reported two dictionaries whose values are different objects of equal
+content (item 6 of the Problem Statement). The values of a `FrozenDictionary` now follow R0–R8, as
+the values of every other dictionary do since #45.
+
+With `Old<T>()`; `h` is an `H`:
+
+| # | Steps | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 25 | `old = Old(() => h)`; replace `h.Items` by a frozen set of equal strings; `EnsureAssignable(h, old)` | `Old` throws | violation | no exception |
+| 26 | `old = Old(() => h)`; change a `Box` inside the set; `EnsureAssignable(h, old)` | `Old` throws | no exception | no exception |
+| 27 | `old = Old(() => h)`; change a `Box`; replace `h.Items` by a new frozen set of the same `Box` | `Old` throws | violation | no exception |
+| 28 | `old = Old(() => h)`; replace `h.Items` by a frozen set of a new `Box` with other content | `Old` throws | violation | violation |
+
+Rows 26 and 27 show the limit "Elements are shared" below: the change is not seen. The 2.0.0 cells
+of rows 25 to 28 were measured with a `FrozenSet<string>` and a `FrozenDictionary<string, int>`
+member, not with `Box`.
+
+Cycles. A value of the two types that leads back to a pair that is being compared is handled as
+every other collection is: the pair counts as equal (R1). `Node` has a value and a property that
+refers to the frozen set that holds the node; each side has its own set with one node.
+
+| # | Call | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 29a | two `H` with such a set, equal values | not measured | violation | no exception |
+| 29b | two `H` with such a set, values differ | not measured | violation | violation |
+| 46 | `T` = `FrozenSet<Node>`, equal values | not measured | violation (`Items`) | no exception |
+| 47 | `T` = `FrozenSet<Node>`, values differ | not measured | violation (`Items`) | violation, F8 text |
+
+`actual` and `expected` themselves:
+
+| # | Call | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 30 | `T` = `FrozenSet<string>`, equal content, same build order | violation (`Items`) | no exception | no exception |
+| 31 | the same, reverse build order | violation (`Items`) | violation (`Items`) | violation, F8 text |
+| 32 | the same, one element differs, equal counts | violation (`Items`) | violation (`Items`) | violation, F8 text |
+| 33 | row 32 with the pattern `"Items"` | no exception | no exception | violation, F8 text |
+| 34 | the same, different counts | not measured | violation (`Items`, `Count`) | violation, F8 text |
+| 35 | `T` = `FrozenDictionary<string, int>`, equal content, same build order | violation (`Keys`, `Values`) | no exception | no exception |
+| 36 | the same, a value differs | violation (`Keys`, `Values`) | violation (`Values`) | violation, F8 text |
+| 37 | the same, reverse build order | not measured | violation (`Keys`) | violation, F8 text |
+| 38 | `T` = `FrozenSet<string>`, the same instance | no exception | no exception | no exception |
+| 39 | `T` = `FrozenSet<string>`, equal content, pattern `"["` | not measured | `RegexParseException` | no exception |
+| 40 | `T` = `FrozenSet<string>`, equal content, a `null` pattern | not measured | `ArgumentNullException` | no exception |
+| 41a | `T` = `IReadOnlySet<string>`, two frozen sets, an element differs (F7) | no exception | no exception | no exception |
+| 41b | the same, the counts differ (F7) | no exception | no exception | no exception |
+| 42 | `T` = `IReadOnlyCollection<string>`, two frozen sets, counts differ (F7) | not measured | violation (`Count`) | violation (`Count`) |
+| 43 | `T` = `IReadOnlyDictionary<string, int>`, two frozen dictionaries, a value differs (F7) | not measured | violation (`Values`) | violation (`Values`) |
+| 44 | `T` = `object`, two frozen sets, an element differs (F7) | no exception | no exception | no exception |
+| 45 | `T` = `FrozenSet<int>[]`, two arrays with frozen sets of equal content (F5) | not measured | violation (`SyncRoot`) | violation (`SyncRoot`) |
+
+Message C for row 31:
+
+```text
+actual and expected are not equal. System.Collections.Frozen.FrozenSet`1[System.String] is compared as a whole, so assignable patterns do not apply.
+```
+
+Notes on the last table:
+
+- Rows 39 and 40. A pattern is examined only when the members of `T` are walked. `T` = `string`
+  already behaved so (measured on `6b24bee`: the pattern `"["` gives no exception). The array of
+  patterns itself must still not be `null`.
+- One side `null`. The `null` rule of the #52 amendment applies before all of this, unchanged.
+- Rows 41a, 41b and 44 are results under the JIT. Under Native AOT the code reports a `T` other than
+  `object` with no visible members as before ("EnsureAssignable cannot compare …: no properties or
+  fields are visible"), and `T` = `object` is exempt in every build. Both were read from the code.
+  This change has no Native AOT run of these rows.
+
+Measured after the design was written, with the same `H`:
+
+| Example | Before | After |
+|---|---|---|
+| two `FrozenSet<string?>`, each built from `"a"` and `null` (one internal class, `SmallFrozenSet`; the same enumeration order) | violation | no exception |
+| a `FrozenSet<string?>` built from `"a"` and `null`, and one built from `"a"` and `"b"` (two internal classes, `SmallFrozenSet` and `LengthBucketsFrozenSet`) | violation | violation |
+| `old = Old(() => h)`; change the `Box` inside the set; replace `h.Items` by a frozen set of a new `Box` with the changed content; `EnsureAssignable(h, old)` | violation (`Items` and its backing field, by reference; measured on `6b24bee`) | no exception |
+| the same steps, but the new `Box` has the content as it was when `Old` ran | not measured on `6b24bee` | violation |
+
+The third and the fourth example are the two results of the limit "Elements are shared" after the
+collection is replaced. In the third the change is missed. Its "After" is a unit test; with the rule
+of `6b24bee` restored by hand, that test fails (see the mutation check under "Measured"). In the
+fourth a violation is reported although the content is as it was when `Old<T>()` ran. Its "After" is
+a unit test too, which passed on its first run; no change of the library was made for it.
+
+**Native AOT, the members of an element are not visible.** An element, key or value can be of a
+class whose members are not visible to reflection. When that class's `Equals` reports the two values
+unequal, the comparison cannot go on, as for every other collection (R8). Which exception the call
+throws depends on where the two collections are:
+
+- **A member or element holds them.** The call throws the `InvalidOperationException` of R8. Its
+  path leads through the member: `typeof(T).Name`, the member, and `[]` for the element.
+- **`T` is one of the two types.** The call throws the `InvalidOperationException` that the #52
+  amendment gives for a class below a nullable value type: the text of R8 without the way out "list
+  … as assignable", because no member can be listed. No text is added. The path starts with
+  `typeof(T).Name`; for a nullable value type it starts with the name of the underlying type. For a
+  `FrozenSet<T>` the path is ``FrozenSet`1[]``.
+
+Measured, in two ways. Two unit tests simulate Native AOT with the existing test seam and compare
+the whole message, with a class that has no members as the element type: for a member the path is
+`OrderWithFrozenLines.Lines[]`, and for `T` it is ``FrozenSet`1[]``. Smoke checks 78 and 79 show the
+same two cases in a Native AOT publish, with the paths `FrozenLeavesHolder.Leaves[]` and
+``FrozenSet`1[]`` (see "Measured"). In both checks the two elements have equal content. The element
+class `HiddenLeaf` has no `Equals` of its own, so two instances are unequal by `Equals`, and the
+call throws. Under the JIT the members of `HiddenLeaf` are visible, and both checks give no
+exception.
+
+The design had read the path for `T` from the code; the unit test and check 79 measured it. Read
+from the code and not measured: on `6b24bee`, under Native AOT, a call with `T` =
+`FrozenSet<HiddenLeaf>` threw the exception of R8 with a path through `Items`. Also read from the
+code and not measured: the path below a `FrozenDictionary<TKey, TValue>`. The code appends `[]` for
+a key and for a value alike.
+
+The #52 amendment has two statements under its "Limits", among what was checked by reading the code
+only: "A comparison as a whole that reaches a class with no visible members under real Native AOT."
+and, in the same entry, "A class reached through an element of a collection is not tested". Check 79
+is such a run, and its class is reached through an element of a collection. It shows the case for a
+`FrozenSet<T>` as `T` only. For a nullable value type both statements stand.
+
+**Limits that stay.** Limits 1 to 3 are stated in the user documentation, with the ways out.
+
+1. **Order.** Two values of the two types with equal content can enumerate in different orders, and
+   are then different (rows 7, 8, 31 and 37). Measured on .NET 8.0.16, for sets and dictionaries:
+   - `string` elements and keys, and reference types whose hash codes collide: the order follows the
+     order in which the collection was built.
+   - A class without a `GetHashCode` of its own, five or more elements: two sets of equal content
+     that were built the same way enumerate differently (measured for sets of 5 and 30 elements and
+     for a dictionary with 30 such keys; up to 4 elements a set keeps the order in which it was
+     built). The likely cause is that the hash code of such an object does not come from its
+     content.
+   - A record (hash code from content), 5 and 30 elements: the order does not depend on the order in
+     which the collection was built; with 2 and 4 elements it does.
+   - `int` (sets of 5, 11 and 200; dictionaries of 5 and 200) and `Guid` (a set of 30): the order
+     does not depend on the order in which the collection was built.
+
+   These are observations of one runtime, not guarantees. This is the Known Limitation
+   "**Enumeration order.**" of this ADR, which now also holds for two values of the two types of one
+   runtime type. `HashSet<T>` and `Dictionary<,>` are compared in enumeration order too, and 2.0.0
+   compared the two types so.
+2. **Comparer.** The comparer of the collection is not compared and not used. Two sets that their
+   own comparer calls equal can be different (row 10), and two collections with different comparers
+   can be equal (rows 9a and 9b).
+3. **Elements are shared.** `Old<T>()` does not copy a value of the two types. So the elements, keys
+   and values of the old value are the original objects, as they are when the comparison runs and
+   not as they were when `Old<T>()` ran. Two things follow:
+   - A change inside an element is not seen while both sides hold that object at the same place in
+     the enumeration order. That is so when the member was not replaced (row 26), and when it was
+     replaced by a new collection that holds the same object there (row 27).
+   - After the member is replaced by a collection that holds other objects, each of them is compared
+     with the original object at the same place in the enumeration order, as that object is now. A
+     change can then be missed: the original object was changed, and the new object has the changed
+     content (the third example under "Measured after the design was written"). And a violation can
+     be reported although the content is as it was when `Old<T>()` ran: the original object was
+     changed, and the new object has the earlier content (the fourth example there). A unit test
+     shows each of the two cases.
+
+   When the original objects are not changed, a new collection with other content is reported (row
+   28). The same content in a `List<T>` or a `Dictionary<,>` is copied by `Old<T>()`, and there a
+   change inside an element is seen.
+4. **Cost.** Two different sets are each enumerated in full (copied into an array) before any
+   element is compared; two dictionaries are enumerated entry by entry up to the first difference. A
+   pair that R1 has already settled is not enumerated again. The array copy boxes elements of a
+   value type. The keys and values of a dictionary are read as `object` through
+   `IDictionaryEnumerator`, so those of a value type are boxed too. This was read from the code and
+   was not measured. A member that was not replaced is one instance on both sides and is not
+   enumerated.
+5. **The value types of the namespace.** A value type declared in `System.Collections.Frozen` is not
+   one of the two types. B3 shares it, and R5 compares it by reference. Each side of a member of
+   such a type is boxed separately, so the member is never equal. The #52 amendment records this for
+   the enumerators ("**A nullable value type whose underlying type is a shared value type**"), and
+   it stands. The set of such value types can grow with the runtime: the design names the
+   `AlternateLookup` structs of .NET 9 as an example. No run on a later runtime supports that: every
+   measurement of this amendment is of .NET 8.0.16. That such a member is never equal was read from
+   the code and was not tested.
+
+The way out for limits 1 and 2: list the member as assignable, and state the condition with
+`Contract.Ensure` and a value taken with `Contract.Old`, for example `Contract.Ensure("tags
+unchanged", () => _tags.SetEquals(oldTags))` with `oldTags = Contract.Old(() => _tags)`. `Old<T>()`
+returns the earlier instance itself, which is what the condition needs. When `T` itself is one of
+the two types there is no member to list: use `Contract.Ensure` in place of `EnsureAssignable<T>()`.
+The way out for limit 3: before the change, take each value that must stay with `Old<T>()`, and
+check it afterwards with `Contract.Ensure`. An element taken on its own is copied by `Old<T>()`,
+unless its own type is one that `Old<T>()` shares (a nested `FrozenSet<T>` is shared again); compare
+it afterwards with `EnsureAssignable<T>()`. Taking a value that holds no reference, such as a
+number, or a `string`, always works: `Old<T>()` copies such a value, and a `string` cannot change.
+
+**Measured results, unit tests.** The suite had 696 tests on `6b24bee`, with 0 failed in the Debug
+and in the Release configuration. After the change it has 746, with 0 failed in both configurations.
+50 were added: 31 for two values of the two types that a member or element holds, 15 for `T` itself,
+and 4 after review. The 4 are: an element class with no visible members below a `FrozenSet<T>`, as a
+member and as `T`, under the test seam that simulates Native AOT (2 tests); an element that is
+changed in place and whose collection is then replaced by one that holds a new object with the new
+content (no exception: the change is missed); and the same with a new object that has the content as
+it was when `Old<T>()` ran (a violation is reported). The last of these,
+`EnsureAssignable_WhenAnElementIsChangedAndItsFrozenSetReplacedByOneWithANewElementAsItWas_ReportsTheMember`,
+passed on its first run, and no change of the library was made for it. 48 of the 50 are in the new
+class `EnsureAssignableFrozenCollectionTests`, and 2 in `EnsureAssignableWithoutDynamicCodeTests`.
+
+These failing tests were seen before each of the two changes of the library, each for the result
+that "Before" gives:
+
+- a member that holds two frozen sets of equal content: a violation that names `Items`;
+- a member that holds two frozen dictionaries of equal content: the same;
+- `T` = `FrozenSet<string>` with different content and the pattern `"Items"`: no exception was
+  thrown.
+
+With `T` = `FrozenSet<Node>` and a cycle through an element (row 46), the result changed with the
+first of the two changes of the library, not with the second: the member walk over `T` met the pair
+of the two sets while it was in progress. The design had read that from the code; the work showed
+it.
+
+**Measured results, mutation check.** At the final state of the library and the tests, with 746
+tests, the library was changed by hand in two ways. Neither change was committed.
+
+- Every pair of two different instances of the two types is forced equal, whatever the runtime
+  types. 21 tests fail: the 19 that expect a violation for such a pair, and the 2 tests for elements
+  with no visible members.
+- The rule of `6b24bee` is restored: two instances of one runtime type are unequal. 21 tests fail:
+  the 17 that expect no exception for such a pair; the test
+  `EnsureAssignable_WhenFrozenSetsHaveEqualContent_DoesNotThrow`, which existed before; the 2 tests
+  for elements with no visible members; and the test for an element changed in place whose
+  collection is replaced by one that holds a new object with the new content. Two tests whose two
+  sets have different runtime types still pass: their pairs gave the same results on `6b24bee`. The
+  test for a new object with the content as it was still passes too: its pair is a violation either
+  way.
+
+**Measured results, smoke program.** The program had 74 checks in the default build and 73 in the
+variant with the hidden dictionary entry (`-p:AotSmokeHiddenDictionaryEntry=true`). It now has 79
+and 78. Check 50 is renamed and its expected result changed; checks 75 to 79 are new:
+
+| Check | Call | With postconditions on | With `DBC_POST=off` |
+|---|---|---|---|
+| 50, now "Frozen set compared by elements" | two holders, frozen sets of equal content | no exception | no exception |
+| 75 | two holders, frozen sets of different content | `PostconditionViolationException` | no exception |
+| 76 | two holders, `FrozenDictionary<string, int>` of equal content | no exception | no exception |
+| 77 | `T` = `FrozenSet<string>`, the content differs | `PostconditionViolationException` whose text contains "is compared as a whole" | no exception |
+| 78 | two holders, each with a `FrozenSet<HiddenLeaf>` of one element, equal values | Native AOT: `InvalidOperationException` whose text contains "cannot compare" and `uContract.AotSmoke.HiddenLeaf`. JIT: no exception | no exception |
+| 79 | `T` = `FrozenSet<HiddenLeaf>`, the same content | Native AOT: `InvalidOperationException` whose text contains "cannot compare", `uContract.AotSmoke.HiddenLeaf` and ``reached through 'FrozenSet`1[]'``. JIT: no exception | no exception |
+
+Before the change, check 50 was named "Frozen set compared by reference" and expected a violation
+with postconditions on. "What held" under "Native AOT: measured" says: "The namespace rule for
+frozen collections works (checks 49, 50)." Check 49 still shows that `Old<T>()` shares a frozen set.
+Check 50 no longer shows a comparison by reference: it shows the comparison by element.
+
+Native AOT. Environment: `win-x64`. Each run used `--assert`, and no publish gave a diagnostic:
+
+| Publish | With postconditions on | With `DBC_POST=off` |
+|---|---|---|
+| Default | 79 `PASS`, 0 `FAIL` | 79 `PASS`, 0 `FAIL` |
+| Variant with the hidden dictionary entry | 78 `PASS`, 0 `FAIL` | 78 `PASS`, 0 `FAIL` |
+
+The four runs were made at the final state of the library and of the tests. They repeat four earlier
+runs of this change, with the same results and the same lines for the six checks. These are the
+twelve lines of the six checks in the default publish: six with postconditions on, and six with
+`DBC_POST=off`. The prefix `on:` or `off:` names the run and is not output of the program. The
+program prints the first line of a message. Every line is given in full, except the lines of checks
+78 and 79 with postconditions on: they are given up to the closing parenthesis of "(reached through
+…)", and each message continues as every "cannot compare" message does:
+
+```text
+on:  PASS 50 Frozen set compared by elements expected=no exception got=no exception
+on:  PASS 75 Frozen sets of different content expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: Fields were modified that are not marked as assignable:
+on:  PASS 76 Frozen dictionary compared by entries expected=no exception got=no exception
+on:  PASS 77 EnsureAssignable<FrozenSet<string>> sets of different content expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: actual and expected are not equal. System.Collections.Frozen.FrozenSet`1[System.String] is compared as a whole, so assignable patterns do not apply.
+on:  PASS 78 Frozen set of elements with hidden members expected=InvalidOperationException got=InvalidOperationException EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'FrozenLeavesHolder.Leaves[]')…
+on:  PASS 79 EnsureAssignable<FrozenSet<HiddenLeaf>> elements with hidden members expected=InvalidOperationException got=InvalidOperationException EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'FrozenSet`1[]')…
+off: PASS 50 Frozen set compared by elements expected=no exception got=no exception
+off: PASS 75 Frozen sets of different content expected=no exception got=no exception
+off: PASS 76 Frozen dictionary compared by entries expected=no exception got=no exception
+off: PASS 77 EnsureAssignable<FrozenSet<string>> sets of different content expected=no exception got=no exception
+off: PASS 78 Frozen set of elements with hidden members expected=no exception got=no exception
+off: PASS 79 EnsureAssignable<FrozenSet<HiddenLeaf>> elements with hidden members expected=no exception got=no exception
+```
+
+Under the JIT the program is run in its `--report` mode, where it prints 79 and 78 lines. There
+checks 78 and 79 report no exception, because the members of `HiddenLeaf` are visible.
+
+Also measured on `6b24bee` in a Native AOT publish for `win-x64`, with a temporary probe in the
+smoke program: a `FrozenSet<string>` and a `FrozenSet<int>` enumerate through the non-generic
+`IEnumerable`, and a `FrozenDictionary<string, int>` through `IDictionaryEnumerator`; a `List<int>`
+and a `FrozenSet<int>` in a member declared `IEnumerable<int>` are compared by element; and the 74
+checks of that commit pass.
+
+CI publishes the default build for `linux-x64` and runs the smoke program there. It had not run for
+this change when this amendment was written.
+
+**Measured, other results.**
+
+- The internal classes that were seen for sets: `SmallValueTypeComparableFrozenSet`,
+  `Int32FrozenSet`, `LengthBucketsFrozenSet`, `OrdinalStringFrozenSet_RightJustifiedSubstring`,
+  `OrdinalStringFrozenSet_RightJustifiedCaseInsensitiveAsciiSubstring`,
+  `ValueTypeDefaultComparerFrozenSet`, `SmallFrozenSet`, `DefaultFrozenSet`, `EmptyFrozenSet`. For
+  dictionaries: `SmallValueTypeComparableFrozenDictionary`, `Int32FrozenDictionary`,
+  `LengthBucketsFrozenDictionary`, `OrdinalStringFrozenDictionary_RightJustifiedSubstring`,
+  `DefaultFrozenDictionary`.
+- `FrozenDictionary` implements the non-generic `IDictionary`. Its non-generic enumerator is
+  `System.Collections.Immutable.DictionaryEnumerator`.
+- `Old<T>()` shares an array of the two types because `Type.Namespace` of an array type is the
+  namespace of its element type (#57).
+
+**Measured with the 2.0.0 package.** These results come from a program with the 2.0.0 package that
+is not in the repository:
+
+- `Old<T>()` threw `InvalidOperationException` for a value of the two types and for a class with a
+  member of one of them. This was measured with a `FrozenSet<string>`, a `FrozenDictionary<string,
+  int>`, and a class with a member of each. So the pair `EnsureAssignable(this, Contract.Old(() =>
+  this))` did not work in such a class. For example, these are three lines of the record: for a
+  class `H` with a frozen set member, for a frozen set itself, and for a frozen dictionary itself.
+
+  ```text
+  old set member: InvalidOperationException: Type H cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.
+  old top set: InvalidOperationException: Type FrozenSet`1 cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.
+  old top dict: InvalidOperationException: Type FrozenDictionary`2 cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.
+  ```
+- Two members of the two types in objects passed directly were compared element by element, in
+  enumeration order, by the comparison of 2.0.0. That comparison used reflection; only `Old<T>()`
+  used JSON.
+- One of the two types as `T` was a violation for two different instances, also of equal content
+  (measured with three strings). The violation named `Items`, or `Keys` and `Values`. With those
+  names given as patterns the call passed, also for different content.
+
+The table "The 2.0.0 package on the same checks" of the accepted text is unchanged. It already says
+of check 50 that 2.0.0 gave no exception ("frozen sets compared by element"). No run of the smoke
+program in package mode is recorded for this change.
+
+**Not tested.**
+
+- Which internal class the library picks, and which element types keep the order in which the
+  collection was built. The tests assert in their arrangement what they rely on: that two
+  collections enumerate in the same order or in different orders, and that two runtime types are
+  equal or differ.
+- Rows 15, 42, 43 and 45 after the change. Row 15 is one instance on both sides (measured on
+  `6b24bee`), which row 14 covers. Rows 42 and 43 are F7 and stay with #40. Row 45 stays with #57.
+- Limit 1 for a class without a `GetHashCode` of its own with five or more elements: the verdict
+  cannot be reproduced.
+- A value type of the namespace that a member holds (F5, limit 5).
+- Limit 4, the cost.
+- Under Native AOT, an element class with no visible members below a `FrozenDictionary<TKey,
+  TValue>`, and an element class with no visible members whose `Equals` reports the two values equal
+  below a value of the two types. R8 decides both, and R8 did not change.
+- A class derived from one of the two types as the declared `T`. Such a class is internal to the
+  base class library, so only reflection can pass it. It was read from the code that it is compared
+  as a whole.
+
+**Qualified in the accepted text.** Each statement is quoted by its opening words:
+
+- "Order for a pair: same reference or a `null` side → R6 → pointer and `string` → R4 → R5 → R3 →".
+  At the step R5, a pair of two values of the two types is not decided. It goes on to the R1 memo
+  and to R7.
+- R5: "Values of B3 types are compared by reference". Two values of the two types are the exception:
+  they are compared by R7. The rest of the sentence still holds for them: their members are never
+  read. They are enumerated.
+- Negative Consequences: "`EnsureAssignable` reports more in some cases (distinct B3 instances,
+  different". Two distinct instances of the two types with equal elements, keys and values in the
+  same enumeration order are not reported. The same entry names "state inside B3 instances" among
+  what is reported less. For two different instances of the two types the elements, keys and values
+  are compared; inside one shared instance they are still not.
+- Known Limitations: "**Shared types** (B3, D7). State inside them is not snapshotted and compares
+  by reference." A value of the two types is still not snapshotted. Two different instances of the
+  two types do not compare by reference: they compare by element. What remains of the limitation for
+  the two types is limit 3 above.
+- "What held": "The namespace rule for frozen collections works (checks 49, 50)." See "Measured
+  results, smoke program" above.
+
+**Qualified in the #52 amendment.** Each statement is quoted by its opening words:
+
+- The Status line of that amendment: "at the top level a `string`, a delegate type and a nullable
+  value type are compared as one pair by R0–R8". One of the two types as `T` is now compared as one
+  pair too. Its Revision History row ("compares a `string`, a delegate type and a nullable value
+  type as one pair (#52)") states the same and is qualified with it.
+- The statements that name the three kinds of `T`. "When `T` is a `string`, a delegate type or a
+  nullable value type, two values that are"; in step 4 of the rule, "when `T` is a `string`, a
+  delegate type or a nullable value type, the two values are compared" and "for every other `T`, the
+  members of `typeof(T)` are walked, as before"; "The declared type `T` decides whether the two
+  values are compared as a whole. The test is:"; and "For these three kinds of `T` the top level
+  applies the whole "Order for a pair" of this ADR." Each also holds for one of the two types as
+  `T`, and "every other `T`" no longer includes the two types. "The rule as it is now" above gives
+  the steps, the fourth case of the test and the new row of the table.
+- "A shared type (B3) other than `string` or a delegate as `T`, such as a `Stream`, a `Task` or a"
+  frozen collection. "Its members are walked." The members of one of the two types as `T` are not
+  walked. Every other type declared in the namespace `System.Collections.Frozen` is still walked as
+  `T`: for example an array of the two types (row 45, which was not run after the change).
+- "**Other shared types are not compared as a whole.**" The two types now are. `Stream`, `Task`,
+  `Regex`, the comparers and the rest of B3 keep the member walk at the top level, with the
+  exception that the #54 amendment made.
+- The first rejected alternative, at "Two frozen sets with equal content compared equal as `T` on
+  `669499c`." The alternative stays rejected: the test on `T` is not
+  `SharedTypes.IsShared(typeof(T))`. It names the two types. Two frozen sets with equal content in
+  the same enumeration order still compare equal as `T` (row 30), now by element and not by the
+  members `Items` and `Count`.
+- Limits: "A `string`, a delegate type and a nullable value type always have visible members, so
+  an". Whether one of the two types as `T` always has visible members under Native AOT was not
+  determined. That the check "no members visible" does not run for such a `T` was read from the
+  code.
+- Relation to #40 and #54, the entry "Left in #40", at "A shared type other than `string` or a"
+  delegate as `T` walks its members. One of the two types as `T` does not. "What stays open" below
+  gives what is left in #40 now.
+
+The two statements of its Limits about real Native AOT are qualified under "Native AOT, the members
+of an element are not visible" above.
+
+**Still true in the #52 amendment.** The statement is quoted by its opening words:
+
+- R1: "Their two values are not tracked as a pair of references." That stands for the three kinds of
+  `T`. The two values of one of the two types are tracked as a pair while they are compared.
+
+**Qualified in the #54 amendment.** Each statement is quoted by its opening words:
+
+- The steps of a call: "5. When `T` is a `string`, a delegate type or a nullable value type, the two
+  values are compared as" a whole. Step 5 also holds for one of the two types as `T`, and step 6
+  ("every other `T`") no longer includes them.
+- What does not change: "The same instance of a fixed shared type, or of a type that is not shared."
+  The entry says that the call behaves as on `71b2e4e`. For one instance of one of the two types as
+  `T`, the result is still "no exception" (row 38). But no member is read any more, and the elements
+  of the pattern array are not examined, so an invalid pattern is no longer reported in such a call.
+  That was read from the code; rows 39 and 40 measured it for two different instances.
+- "Two different instances of a shared type as `T`. Their members are walked, as on `71b2e4e`." Not
+  for one of the two types as `T`: the two instances are compared as a whole.
+- "A member, an element or a field that holds a shared instance. R5 compares it by reference". The
+  entry names two exceptions, a `string` and a delegate. Two different instances of the two types
+  are a third: they are compared by R7. Its last sentence, on state inside the instance, holds for
+  the two types as limit 3 above says.
+- Decision S8: "Unchanged. B3 and R5 stand." `SharedTypes.IsShared` and B3 are unchanged by this
+  change too. R5 now has the exception for the two types.
+- Qualified in the #52 amendment, the fifth entry: "The entries of that list hold for two" different
+  instances, and for the same instance of a fixed shared type. The fourth entry of that list does
+  not hold for one of the two types as `T`, for two instances or for one.
+- The sixth entry of the same part: "They are still not compared as a whole." and "a fixed shared
+  type keeps it for the same instance too". The two types are now compared as a whole, and they do
+  not keep the member walk, for two instances or for one. The other fixed shared types keep it.
+- Limits: "State that a fixed shared instance refers to: a mutable element or value of a frozen
+  collection,". The part names #49 for it under "What stays open". For a value of the two types that
+  limit is now limit 3 above. It still passes in silence while both sides hold the same object at
+  the same place. When the two sides are two instances, the elements, keys and values are compared.
+  The target of a delegate and an object that a comparer wraps are as that entry says.
+- What stays open, on #40: "Left in #40 of item 2: two different instances of a shared type as `T`;
+  the same". For one of the two types as `T`, the first two parts of that list are taken by this
+  change. "What stays open" below gives what is left.
+- What stays open, on #49, at "proposes to compare them by elements". This change is #49. A value of
+  the two types stays a fixed shared type, and the limit about its elements is now limit 3 above.
+
+**Still true in the #54 amendment.** The statement is quoted by its opening words:
+
+- "**Types compared as a whole.** A `string` and a delegate are fixed shared types." A value of the
+  two types is a fixed shared type too. So its conclusion also holds for one of the two types as
+  `T`: rule S and the comparison as a whole never both apply (read from the code; measured for one
+  frozen set on both sides, row 38).
+
+**Superseded in the #54 amendment.** The statement is quoted by its opening words:
+
+- "The program has 74 checks in the default build and 73 in the" variant. It has 79 and 78. The
+  Status line of that amendment ("the smoke program has 74 checks") and its Revision History row
+  ("74 smoke checks") state the same count and are superseded with it.
+
+Its result tables, its unit-test figures and its other statements are the dated record of #54 and
+stay.
+
+**Rejected alternatives.**
+
+- **Copy a value of the two types in `Old<T>()`.** A change inside an element could then be
+  detected. But it means to copy internal structures of the base class library (hash tables,
+  comparers), and it reopens B3. It is outside #49.
+- **Compare a `FrozenDictionary` by key lookup.** `FrozenDictionary` implements the non-generic
+  `IDictionary`, so a lookup needs no reflection. But the rule would differ from the rule for
+  `Dictionary<,>` (R7: enumeration order) and from the rule for `FrozenSet`.
+- **Compare without regard to order.** `FrozenSet<T>` has no non-generic `Contains`. To call the
+  generic one needs reflection over a method that trimming may remove; otherwise the pairs must be
+  found by comparing every element with every other one. `HashSet<T>` and `Dictionary<,>` are
+  compared in enumeration order, so a frozen set would be the only set that is compared differently.
+- **Leave one of the two types as `T` to #40.** The rule for a member and the rule for `T` would
+  disagree, and the verdict for `T` would still depend on members of the base class library.
+- **Say in message C that the order counts.** It would be the only place where a message explains a
+  rule of comparison. The documentation says it.
+
+**What stays open.**
+
+- **#49** is closed by this change, with the limits above.
+- **[#40](https://github.com/cwouyang/uContract.NET/issues/40)**: this change takes one more part of
+  the rest of item 2: one of the two types as `T`, for two different instances and for one instance
+  on both sides. Left in #40 of item 2, for a shared type as `T` other than a `string`, a delegate
+  type and the two types: two different instances, and the same instance of a fixed shared type (for
+  example a `Regex`, a `Type` or a comparer). Also left: `T` = `object`, a base class or an
+  interface for two different instances. Rows 41a to 44 record that last part for two values of the
+  two types. With `T` = `object`, nothing of two frozen sets is compared. With `T` =
+  `IReadOnlySet<string>`, nothing is compared under the JIT.
+- **[#50](https://github.com/cwouyang/uContract.NET/issues/50)** (compare the counts of two
+  dictionaries first): a pair of two `FrozenDictionary` values of one runtime type that a member or
+  element holds now goes through the dictionary comparison of R7, so #50 will cover it. This change
+  does not change where the counts are compared.
+- **[#57](https://github.com/cwouyang/uContract.NET/issues/57)** (new, filed on 2026-10-10):
+  `Old<T>()` shares an array of the two types. A unit test records the result of today for two such
+  arrays that a member holds (row 21: a violation, by reference). Row 45 is recorded here and has no
+  test.
+- **[#46](https://github.com/cwouyang/uContract.NET/issues/46)** (fields-only comparison) is not
+  affected.
+
+**Why an amendment and not a new ADR.** B3 and R0–R8 stand. The change moves one group of types from
+one existing rule (R5) to another (R7), and it adds one kind of `T` to the existing rule "compared
+as a whole". It does not do what the #52 amendment reserved for a new ADR, which is to change what
+every top-level comparison does. `docs/adr/README.md` lists breaking changes under "Requires ADR".
+The amended ADRs (ADR-0022, ADR-0012, ADR-0021 and ADR-0007) are that record, as for #52 and #54
+(F10).
+
+**Unchanged.** Every other decision of this ADR.
+
 ---
 
 ## References
@@ -1526,6 +2241,7 @@ as for #52.
 - [Issue #47: `DBC_POST=off` and the `Old` + `EnsureAssignable` pairing](https://github.com/cwouyang/uContract.NET/issues/47)
 - [Issue #52: A `null` `actual` or `expected` in `EnsureAssignable<T>()`](https://github.com/cwouyang/uContract.NET/issues/52)
 - [Issue #54: `Old` + `EnsureAssignable` in a class derived from a shared type](https://github.com/cwouyang/uContract.NET/issues/54)
+- [Issue #49: Compare frozen collections by elements in `EnsureAssignable`](https://github.com/cwouyang/uContract.NET/issues/49)
 - [`DeepCopier.cs`](../../src/uContract/DeepCopier.cs) — the copy
 - [`SharedTypes.cs`](../../src/uContract/SharedTypes.cs) — B3
 - [`MemberComparison.cs`](../../src/uContract/MemberComparison.cs) — R0–R8 and the walk
@@ -1556,3 +2272,4 @@ as for #52.
 | 2026-10-09 | Amended     | The `DBC_POST=off` pairing limitation is superseded (#47); checks 58 to 62 added. Decision unchanged. See Implementation Notes > Amendment. |
 | 2026-10-09 | Amended     | The top level decides a `null` side first and compares a `string`, a delegate type and a nullable value type as one pair (#52); 72 smoke checks. Decision unchanged. See Implementation Notes > second Amendment. |
 | 2026-10-10 | Amended     | One instance of a shared type whose state can change, passed as `actual` and as `expected`, throws `InvalidOperationException` (rule S, #54); 74 smoke checks. Decision unchanged. See Implementation Notes > third Amendment. |
+| 2026-10-10 | Amended     | Two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared by element (R7), not by reference (R5), and one of the two types as `T` is compared as a whole (#49); 79 smoke checks. Decision unchanged. See Implementation Notes > fourth Amendment. |

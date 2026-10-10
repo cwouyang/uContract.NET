@@ -362,7 +362,7 @@ public class Profile
 
 `null` is compared as a value: a nickname that stays `null`, or keeps its value, passes; one that changes to another value, or goes from `null` to a value or back, is a violation. Things to know:
 
-- A `string`, a delegate and a nullable value type (`int?`, `DateTime?`) are compared as a whole: a `string` with `Equals`, a delegate by its methods, a nullable value type with `Equals` and then by its fields. Assignable patterns do not apply to them or to a `null` on one side.
+- A `string`, a delegate, a nullable value type (`int?`, `DateTime?`), and a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` are compared as a whole: a `string` with `Equals`, a delegate by its methods, a nullable value type with `Equals` and then by its fields, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` element by element, in enumeration order. Assignable patterns do not apply to them or to a `null` on one side. For the limits of the comparison of a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` (the order counts, the comparer does not, and the elements are shared with the `Old` value), see [Types that `Old<T>()` shares](API_REFERENCE.md#types-that-oldt-shares).
 - A pattern cannot name a field of a nullable struct. To compare it by its members, test both values for `null` and pass the unwrapped values. Do not pass `.Value`: it throws when there is no value, and `Old<T>()` returns a value without one when postconditions are off. For a `Money? _price` member with a `Currency` property, and `var oldPrice = Contract.Old(() => _price);`:
 
   ```csharp
@@ -372,7 +372,7 @@ public class Profile
       Contract.EnsureAssignable(_price, oldPrice);
   ```
 
-- A `string`, a delegate or a nullable value type is compared as a whole only when the member is declared as that type. For a member typed as `object`, as an interface or as a base class, take the pair on the owning object (`Old(() => this)`), unless the owning class derives from a type that `Old<T>()` shares; there, check the member with `Contract.Ensure`.
+- A `string`, a delegate, a nullable value type, or a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` is compared as a whole only when the member is declared as that type. For a member typed as `object`, as an interface or as a base class, take the pair on the owning object (`Old(() => this)`), unless the owning class derives from a type that `Old<T>()` shares; there, check the member with `Contract.Ensure`.
 - The pair on a member of a type that `Old<T>()` shares, and its state can change, such as a `Stream`, a `Task` or a `CancellationTokenSource`, throws `InvalidOperationException` when the member holds an instance and was not replaced: `Old<T>()` returns the same instance, so there is no earlier state to compare with. It passes when the member stays `null`. To check that the member was not replaced, use `Contract.Ensure` with `ReferenceEquals`. When the member was replaced by another instance, the members that the declared type shows are compared ([#40](https://github.com/cwouyang/uContract.NET/issues/40)). See [Types that `Old<T>()` shares](API_REFERENCE.md#types-that-oldt-shares).
 - Take the `Old` snapshot outside any other contract's condition. Inside one, `Old<T>()` returns `default`, and a later comparison reports a violation that did not happen, or misses one.
 

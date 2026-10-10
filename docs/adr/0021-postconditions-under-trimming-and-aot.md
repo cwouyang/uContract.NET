@@ -11,6 +11,7 @@
 - **Amended**: 2026-10-07 — the `Old<T>()` decisions are superseded by [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), and the open statements on value types, boxed values and framework types are settled there; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-09 — the "no members visible" check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type (#52); see the third Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — the "no members visible" check for `T` also does not run when one instance of a shared type whose state can change is passed as `actual` and as `expected` (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
+- **Amended**: 2026-10-10 — the "no members visible" check for `T` also does not run when `T` is a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, and the rule can fire for an element of two such values that a member or element holds (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fifth Amendment under Implementation Notes
 
 ---
 
@@ -432,6 +433,30 @@ Still true: when both sides are one instance of a type that is not shared, a `T`
 
 Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
 
+### Amendment (2026-10-10): The "no members visible" rule and FrozenSet or FrozenDictionary values (#49)
+
+The decision is unchanged. [Issue #49](https://github.com/cwouyang/uContract.NET/issues/49) changes how `EnsureAssignable<T>()` compares a `FrozenSet<T>` and a `FrozenDictionary<TKey, TValue>` ("the two types" below; a value is of the two types when its runtime type is a construction of one of them or derives from one). `Old<T>()` shares such a value with the original instead of copying it, and it still does. Two values of the two types that a member or element holds are now compared element by element, in enumeration order, where they were compared by reference when their runtime types were equal. When the declared `T` is one of the two types, `actual` and `expected` are compared as a whole, and no member of `T` is enumerated. The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #49 records the change, with its reasons, the measurements and the limits. This amendment names the statements of this ADR that it qualifies. Each is quoted by its opening words.
+
+**In the accepted text.**
+
+- Known Limitations: "**Detection depends on the data.** The rule fires when the comparison reaches a type", which ends "A `null` member, a shared instance or an empty collection passes without the type being inspected." One instance on both sides still passes without being inspected. That holds for one value of the two types too: it is not enumerated. Since ADR-0022, two different instances of one runtime type of a type that `Old<T>()` shares are decided by reference, also without their members being inspected (R5; a `string` and a delegate have rules of their own). That no longer holds for two instances of the two types of one runtime type; two of different runtime types were already compared element by element. The elements, keys and values of two different instances of the two types are now reached whatever their runtime types, so the rule can fire for the class of an element. Smoke check 78 shows it under Native AOT: two holders, each with a `FrozenSet<HiddenLeaf>` of one element, give "EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'FrozenLeavesHolder.Leaves[]')". The rest of the statement stands.
+- "`{path}` is `typeof(T).Name`, then" a `.` and the member name per level. When `T` is one of the two types, no member name follows `typeof(T).Name`: the path goes on with `[]` for the element. For `T` = `FrozenSet<HiddenLeaf>` the path is ``FrozenSet`1[]``. This was measured by a unit test under the simulated Native AOT runtime and by smoke check 79 under Native AOT. The message is the one that the #52 amendment of ADR-0022 gives for a class below a nullable value type. It has no way out "list … as assignable", because there is no member to list.
+
+**In the third Amendment (#52).**
+
+- "When `T` is a `string`, a delegate type or a nullable value type, the two values are compared as a whole, and no member of `T` is enumerated." The same now holds when `T` is one of the two types.
+- The Status line of 2026-10-09: "the "no members visible" check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type". It also does not run when `T` is one of the two types. The Revision History row of 2026-10-09 says "for a `T` that is compared as a whole", and that now includes the two types.
+- "The check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type." It also does not run when `T` is one of the two types. The members of `T` are not enumerated in that call.
+- "That does not hold for the three kinds of `T`: no member of `T` is compared." It does not hold either when `T` is one of the two types: the elements, keys and values are compared, and no member of `T`. The annotation on `T` does not name the members of an element type, as for every collection element.
+- "Below a nullable value type as `T`, the path starts with the name of the underlying type." Below one of the two types as `T` it starts with `typeof(T).Name`, as said above.
+- "Below a nullable value type as `T` there is no member to list." Below one of the two types as `T` there is no member to list either. The rest of the unreadable-property message still applies (preserve the type if trimming removed the getter, or set `DBC_POST=off`). This was read from the code.
+
+The fourth Amendment (#54) added one case to the second, third and fourth of these statements. That case stands.
+
+**How this was confirmed.** That the check for `T` does not run when `T` is one of the two types was read from the code. The check is in the method that walks the members of `T`, and that method is not called for a `T` that is compared as a whole. No member metadata is read for `T` or for the runtime types of the two collections. The class of an element, key or value is still checked where the comparison reaches it. Smoke checks 77 and 79 call `EnsureAssignable<T>()` with `T` = `FrozenSet<string>` and with `T` = `FrozenSet<HiddenLeaf>` under Native AOT and give the expected results. They do not show that the check does not run: whether a `FrozenSet<T>` as `T` can have no visible members under Native AOT was not determined.
+
+Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
+
 ---
 
 ## References
@@ -462,3 +487,4 @@ Unchanged: the "no members visible" rule itself, its message when the type is `T
 | 2026-10-07 | Amended     | `Old<T>()` decisions and the `[RequiresDynamicCode]` statement superseded by ADR-0022; value-type, boxed-value and framework-type statements settled there. `EnsureAssignable<T>()` decisions and measurements unchanged. See Implementation Notes > second Amendment. |
 | 2026-10-09 | Amended     | The check for `T` does not run for a `null` argument or for a `T` that is compared as a whole (#52); decisions in ADR-0012 and ADR-0022. Decision unchanged. See Implementation Notes > third Amendment. |
 | 2026-10-10 | Amended     | The check for `T` also does not run for one instance of a shared type whose state can change, passed as `actual` and as `expected` (#54); decision in ADR-0022. Decision unchanged. See Implementation Notes > fourth Amendment. |
+| 2026-10-10 | Amended     | The check for `T` also does not run for a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` as `T`; the elements of two such values that a member or element holds are reached (#49); decision in ADR-0022. Decision unchanged. See Implementation Notes > fifth Amendment. |

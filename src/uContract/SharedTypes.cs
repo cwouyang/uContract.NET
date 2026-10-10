@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -21,6 +22,8 @@ namespace uContract;
 ///     Classifies the shared types: resources and identities (tasks, locks, streams, handles, reflection
 ///     objects, comparers, ...) whose instances are compared by reference, never by their members, so that
 ///     no getter or factory of theirs runs. <see cref="string" /> is listed too; it is compared by Equals.
+///     A <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> is shared too, and two of
+///     them are compared element by element, in enumeration order, also without reading their members.
 /// </summary>
 internal static class SharedTypes
 {
@@ -95,6 +98,17 @@ internal static class SharedTypes
     internal static bool IsShared(Type type)
     {
         return Cache.GetOrAdd(type, Classify);
+    }
+
+    /// <summary>
+    ///     The shared types of which two instances are compared element by element, in enumeration order, and
+    ///     not by reference: every construction of <c>FrozenSet&lt;T&gt;</c> or
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and every type derived from one. No other type declared
+    ///     in <c>System.Collections.Frozen</c> matches, and an array of them does not.
+    /// </summary>
+    internal static bool IsFrozenSetOrDictionary(Type type)
+    {
+        return DerivesFromGeneric(type, typeof(FrozenSet<>)) || DerivesFromGeneric(type, typeof(FrozenDictionary<,>));
     }
 
     /// <summary>

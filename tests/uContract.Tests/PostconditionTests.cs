@@ -1948,13 +1948,14 @@ public class EnsureAssignableTests
         Assert.Equal(NotEqual(typeof(Action)), exception.Description);
     }
 
-    // A frozen set is a shared type, and it is still compared member by member.
+    // A FrozenSet<T> passed as T is compared as a whole: element by element, in enumeration order.
     [Fact]
     public void EnsureAssignable_WhenFrozenSetsHaveEqualContent_DoesNotThrow()
     {
         FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
         FrozenSet<string> expected = Letters.ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actual, expected);
+        Assert.True(actual.SequenceEqual(expected, StringComparer.Ordinal));
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
@@ -2627,6 +2628,49 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
         Assert.True(laterRan);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenAMemberHoldsFrozenSetsOfATypeWithNoVisibleMembers_ThrowsInvalidOperation()
+    {
+        OrderWithFrozenLines actual = new() { Lines = new[] { new NoVisibleMembers() }.ToFrozenSet() };
+        OrderWithFrozenLines expected = new() { Lines = new[] { new NoVisibleMembers() }.ToFrozenSet() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(NoVisibleMembers)} "
+                + "(reached through 'OrderWithFrozenLines.Lines[]'): "
+                + "no properties or fields are visible to reflection under Native AOT. "
+                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
+                + "Ways out: list 'Lines' as assignable (patterns are regular expressions "
+                + "matched against top-level member names, so use the plain member name); "
+                + "if the type has members, preserve them, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAFrozenSetOfATypeWithNoVisibleMembers_ThrowsInvalidOperation()
+    {
+        FrozenSet<NoVisibleMembers> actual = new[] { new NoVisibleMembers() }.ToFrozenSet();
+        FrozenSet<NoVisibleMembers> expected = new[] { new NoVisibleMembers() }.ToFrozenSet();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(NoVisibleMembers)} (reached through 'FrozenSet`1[]'): "
+                + "no properties or fields are visible to reflection under Native AOT. "
+                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
+                + "Ways out: if the type has members, preserve them, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
     private sealed class NoVisibleMembers;
 
     private sealed class Connection : System.ComponentModel.Component;
@@ -2676,6 +2720,11 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     private sealed class OrderWithLines
     {
         public List<NoVisibleMembers> Lines { get; set; } = [];
+    }
+
+    private sealed class OrderWithFrozenLines
+    {
+        public required FrozenSet<NoVisibleMembers> Lines { get; set; }
     }
 
     private sealed class OrderWithWrappedLines

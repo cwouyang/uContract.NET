@@ -74,10 +74,11 @@ internal static class MemberComparison
         );
     }
 
-    // The comparison of a nullable value type as a whole met a class whose members are not visible.
-    internal static InvalidOperationException CannotCompareBelowNullable(Type underlyingType, HiddenMembers hidden)
+    // The comparison of a nullable value type, or of a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, as a
+    // whole met a class whose members are not visible. For one of the last two, wholeType is T itself.
+    internal static InvalidOperationException CannotCompareBelowWhole(Type wholeType, HiddenMembers hidden)
     {
-        string path = $"{underlyingType.Name}{hidden.PathBelowTopLevelMember}";
+        string path = $"{wholeType.Name}{hidden.PathBelowTopLevelMember}";
 
         return new InvalidOperationException(
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
@@ -199,8 +200,14 @@ internal static class MemberComparison
             return null;
         }
 
-        // A shared type (see SharedTypes) is compared by reference, its members never read.
-        if (actualType == expectedType && SharedTypes.IsShared(actualType))
+        // A shared type (see SharedTypes) is compared by reference, its members never read, except a
+        // FrozenSet<T> or a FrozenDictionary<TKey, TValue>: two of them are compared element by element, in
+        // enumeration order, below.
+        if (
+            actualType == expectedType
+            && SharedTypes.IsShared(actualType)
+            && !SharedTypes.IsFrozenSetOrDictionary(actualType)
+        )
         {
             return null;
         }
