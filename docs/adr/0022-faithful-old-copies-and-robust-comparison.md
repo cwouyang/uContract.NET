@@ -1210,7 +1210,8 @@ other rejected alternatives are under "Rejected alternatives" below.
 A type matches an entry as B3 matches it. Entries 1, 4 and 5: the type is the entry or derives from
 it. Entry 2: the type is a construction of the definition, or derives from one, along `BaseType`.
 Entry 3: the full name, along `BaseType`. Entry 6: `Type.IsCOMObject` is true. The matched entry is
-the first one that the type matches in this order.
+the first one that the type matches in this order. For entries 1 and 2, the matched entry is the
+listed type or the definition that matched, the first in the order of the list.
 
 **The fixed shared types.** With B3 as it is on `71b2e4e`, these are: `string`; `Delegate`, `Type`,
 `MemberInfo`, `Assembly`, `Module`, `Pointer`, `Regex` and the types derived from them; the types in
@@ -1236,8 +1237,9 @@ For the entry "a COM object", the second sentence begins "Contract.Old shares a 
 original instead of copying it, so". The rest is the same.
 
 - `{runtime type}` and `{matched entry}` are formatted with `Type.ToString()`, as the existing
-  "cannot compare" messages format their type. For example `uContract.Tests.OldPairingTests+Worker`
-  and `System.ComponentModel.Component`. An open generic entry reads ``System.Lazy`1[T]``.
+  "cannot compare" messages format their type. For example
+  `uContract.Tests.EnsureAssignableSameSharedInstanceTests+Worker` and
+  `System.ComponentModel.Component`. An open generic entry reads ``System.Lazy`1[T]``.
   `System.Threading.Lock` is written as that name.
 - The message begins "EnsureAssignable cannot compare", as the three existing messages of this kind
   do.
@@ -1312,8 +1314,8 @@ Also measured on `71b2e4e`:
   generic type that does.
 - `Dispose()` on a `Task` that was not started throws `InvalidOperationException`.
 - A `[ComImport]` class that is not registered cannot be instantiated (`COMException` 0x80040154).
-- `RuntimeHelpers.GetUninitializedObject(typeof(ComObject))` gives an instance of `ComObject` on
-  every platform.
+- `RuntimeHelpers.GetUninitializedObject(typeof(ComObject))` gives an instance of `ComObject`. This
+  was measured on Windows only. CI runs the unit-test row that uses it on Linux.
 - No unit test and no smoke check passed the same instance of a state-holding shared type as both
   top-level values. Two calls passed one variable twice, neither with a shared type.
 
@@ -1321,10 +1323,11 @@ Also measured on `71b2e4e`:
 67 were added. With the library changed, 0 of the 696 tests fail, in the Debug and in the Release
 configuration.
 
-The new tests were run before the library changed. 47 of them failed. Each failed for the result
-that the table above lists for its case, so those results were observed again. Two examples that are
-not in the table also failed as predicted. Both gave no exception before the change: the pair in a
-class two levels below `Component`, and a call that forwards its own generic parameter.
+The new tests were run before the library changed. 47 of them failed. 45 failed for the result that
+the table above lists for their case, so those results were observed again. The other two are the
+two examples that are not in the table, and they failed as predicted. Both gave no exception before
+the change: the pair in a class two levels below `Component`, and a call that forwards its own
+generic parameter.
 
 **Measured results, smoke program.** The program has 74 checks in the default build and 73 in the
 variant with the hidden dictionary entry, which has no check 35. Two checks are new:
