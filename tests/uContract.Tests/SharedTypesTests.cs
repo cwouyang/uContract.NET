@@ -145,6 +145,13 @@ public sealed class SharedTypesTests
         Assert.False(SharedTypes.IsShared(typeof(delegate* <void>[])));
     }
 
+    // The runtime looks for the namespace of an array type in its innermost element type.
+    [Fact]
+    public unsafe void IsShared_WhenTypeIsAnArrayOfArraysOfFunctionPointers_ReturnsFalse()
+    {
+        Assert.False(SharedTypes.IsShared(typeof(delegate* <void>[][])));
+    }
+
     [Fact]
     public void IsShared_WhenTypeDerivesFromAListedType_ReturnsTrue()
     {

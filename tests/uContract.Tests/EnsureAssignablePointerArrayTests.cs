@@ -593,9 +593,92 @@ public unsafe class EnsureAssignablePointerArrayTests
         Assert.Equal((nint)holder.Items[0], (nint)old.Items[0]);
     }
 
+    [Fact]
+    public void Old_WhenObjectHoldsAnArrayOfArraysOfFunctionPointers_CopiesTheArraysWithTheirAddresses()
+    {
+        Holder<delegate* <void>[][]> holder = new() { Items = [ArrayOfFunctionPointers(&FirstFunction)] };
+
+        Holder<delegate* <void>[][]> old = Contract.Old(() => holder);
+
+        Assert.NotSame(holder.Items, old.Items);
+        Assert.NotSame(holder.Items[0], old.Items[0]);
+        Assert.Equal((nint)holder.Items[0][0], (nint)old.Items[0][0]);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenElementsAreArraysOfFunctionPointersToTheSameFunction_DoesNotThrow()
+    {
+        Holder<delegate* <void>[][]> actual = new() { Items = [ArrayOfFunctionPointers(&FirstFunction)] };
+        Holder<delegate* <void>[][]> expected = new() { Items = [ArrayOfFunctionPointers(&FirstFunction)] };
+        Assert.NotSame(actual.Items, expected.Items);
+        Assert.NotSame(actual.Items[0], expected.Items[0]);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenElementsAreArraysOfFunctionPointersToDifferentFunctions_ReportsTheMember()
+    {
+        Holder<delegate* <void>[][]> actual = new() { Items = [ArrayOfFunctionPointers(&FirstFunction)] };
+        Holder<delegate* <void>[][]> expected = new() { Items = [ArrayOfFunctionPointers(&SecondFunction)] };
+        Assert.NotSame(actual.Items, expected.Items);
+        Assert.NotSame(actual.Items[0], expected.Items[0]);
+        Assert.NotEqual((nint)actual.Items[0][0], (nint)expected.Items[0][0]);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ItemsPropertyChanged, exception.Description);
+    }
+
+    [Fact]
+    public void Old_WhenObjectHoldsAListOfArraysOfFunctionPointers_CopiesTheListAndTheArraysWithTheirAddresses()
+    {
+        Holder<List<delegate* <void>[]>> holder = new() { Items = [ArrayOfFunctionPointers(&FirstFunction)] };
+
+        Holder<List<delegate* <void>[]>> old = Contract.Old(() => holder);
+
+        Assert.NotSame(holder.Items, old.Items);
+        Assert.NotSame(holder.Items[0], old.Items[0]);
+        Assert.Equal((nint)holder.Items[0][0], (nint)old.Items[0][0]);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAListHoldsAnArrayOfFunctionPointersAndNothingChangedSinceOld_DoesNotThrow()
+    {
+        Holder<List<delegate* <void>[]>> holder = new() { Items = [ArrayOfFunctionPointers(&FirstFunction)] };
+        Holder<List<delegate* <void>[]>> old = Contract.Old(() => holder);
+        Assert.NotSame(holder.Items, old.Items);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(holder, old));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAFunctionInAnArrayOfFunctionPointersOfAListIsReplacedSinceOld_ReportsTheMember()
+    {
+        Holder<List<delegate* <void>[]>> holder = new() { Items = [ArrayOfFunctionPointers(&FirstFunction)] };
+        Holder<List<delegate* <void>[]>> old = Contract.Old(() => holder);
+        Assert.NotSame(holder.Items, old.Items);
+        holder.Items[0][0] = &SecondFunction;
+        Assert.NotEqual((nint)holder.Items[0][0], (nint)old.Items[0][0]);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(holder, old)
+        );
+
+        Assert.Equal(ItemsPropertyChanged, exception.Description);
+    }
+
     private static void FirstFunction() { }
 
     private static void SecondFunction() { }
+
+    private static delegate* <void>[] ArrayOfFunctionPointers(delegate* <void> function) => [function];
 
     // Each helper below returns a new array on every call, also for a length of 0.
 

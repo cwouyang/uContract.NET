@@ -173,9 +173,10 @@ internal static class SharedTypes
 
     private static bool Classify(Type type)
     {
-        // Decided first: the runtime throws BadImageFormatException when the namespace of the type of an
-        // array of function pointers is read, and IsInSharedCategory reads the namespace.
-        if (IsArrayOfPointersOrFunctionPointers(type))
+        // Decided first, because IsInSharedCategory reads the namespace: an array of pointers or of function
+        // pointers is never shared, and a type whose namespace the runtime cannot tell is in no namespace
+        // that is shared.
+        if (IsArrayOfPointersOrFunctionPointers(type) || NamespaceCannotBeRead(type))
         {
             return false;
         }
@@ -184,6 +185,20 @@ internal static class SharedTypes
             || Listed.Any(listed => listed.IsAssignableFrom(type))
             || ListedGenerics.Any(definition => DerivesFromGeneric(type, definition))
             || DerivesFromNamed(type, LockFullName);
+    }
+
+    // The runtime looks for the namespace of an array type in its innermost element type, and throws
+    // BadImageFormatException when that is a function pointer: for an array of function pointers, of any
+    // rank, and for an array of such arrays. Only the element types are read here.
+    private static bool NamespaceCannotBeRead(Type type)
+    {
+        Type innermost = type;
+        while (innermost.HasElementType)
+        {
+            innermost = innermost.GetElementType()!;
+        }
+
+        return innermost.IsFunctionPointer;
     }
 
     // Handles (SafeHandle, CriticalHandle), COM objects, frozen collections and CoreLib comparers.
