@@ -1232,7 +1232,7 @@ public static class Contract
         return type == typeof(string)
             || typeof(Delegate).IsAssignableFrom(type)
             || Nullable.GetUnderlyingType(type) is not null
-            || SharedTypes.IsComparedByElement(type);
+            || SharedTypes.IsFrozenSetOrDictionary(type);
     }
 
     private static void _CompareAsWhole(Type type, object? actual, object? expected)
@@ -1246,7 +1246,7 @@ public static class Contract
 
         if (context.Hidden is not null)
         {
-            throw MemberComparison.CannotCompareBelowNullable(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
+            throw MemberComparison.CannotCompareBelowWhole(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
         }
 
         throw new PostconditionViolationException(

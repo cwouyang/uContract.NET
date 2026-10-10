@@ -104,7 +104,7 @@ internal static class SharedTypes
     // by reference: every construction of FrozenSet<T> or FrozenDictionary<TKey, TValue> and every type
     // derived from one. No other type declared in System.Collections.Frozen matches, and an array of them
     // does not.
-    internal static bool IsComparedByElement(Type type)
+    internal static bool IsFrozenSetOrDictionary(Type type)
     {
         return DerivesFromGeneric(type, typeof(FrozenSet<>)) || DerivesFromGeneric(type, typeof(FrozenDictionary<,>));
     }
