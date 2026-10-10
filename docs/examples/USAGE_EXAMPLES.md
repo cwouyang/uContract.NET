@@ -335,7 +335,7 @@ public class User
 }
 ```
 
-In trimmed and Native AOT applications, `EnsureAssignable<T>()` can throw `InvalidOperationException` for nested types; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot).
+In trimmed and Native AOT applications, `EnsureAssignable<T>()` can throw `InvalidOperationException` for nested types; see [Trimming and Native AOT](../../README.md#trimming-and-native-aot). In every build it throws `InvalidOperationException` for one instance of a type that `Old<T>()` shares, and its state can change, passed as `actual` and as `expected`; see [Types that `Old<T>()` shares](API_REFERENCE.md#types-that-oldt-shares).
 
 > **Note**: When postconditions are off (`DBC_POST=off`, or `DBC=off` with `DBC_POST` unset), `Old<T>()` returns `default` and `EnsureAssignable<T>()` returns without comparing, so the `Old` + `EnsureAssignable` pair above does nothing. The same holds, with postconditions on, when a method that uses the pair (such as `ChangeEmail` above) is called from inside another contract's condition. It also holds in work started from inside such a condition (a task or a continuation), even after the condition has returned.
 
@@ -372,8 +372,8 @@ public class Profile
       Contract.EnsureAssignable(_price, oldPrice);
   ```
 
-- A `string`, a delegate or a nullable value type is compared as a whole only when the member is declared as that type. For a member typed as `object`, as an interface or as a base class, take the pair on the owning object (`Old(() => this)`).
-- Do not use the pair on a member of a resource type that `Old<T>()` shares, such as a `Stream` or a `Task`: `Old<T>()` returns the same instance, and the comparison reads its properties ([#40](https://github.com/cwouyang/uContract.NET/issues/40), [#54](https://github.com/cwouyang/uContract.NET/issues/54)).
+- A `string`, a delegate or a nullable value type is compared as a whole only when the member is declared as that type. For a member typed as `object`, as an interface or as a base class, take the pair on the owning object (`Old(() => this)`), unless the owning class derives from a type that `Old<T>()` shares; there, check the member with `Contract.Ensure`.
+- The pair on a member of a type that `Old<T>()` shares, and its state can change, such as a `Stream`, a `Task` or a `CancellationTokenSource`, throws `InvalidOperationException` when the member was not replaced: `Old<T>()` returns the same instance, so there is no earlier state to compare with. To check that the member was not replaced, use `Contract.Ensure` with `ReferenceEquals`. When the member was replaced by another instance, the members that the declared type shows are compared ([#40](https://github.com/cwouyang/uContract.NET/issues/40)). See [Types that `Old<T>()` shares](API_REFERENCE.md#types-that-oldt-shares).
 - Take the `Old` snapshot outside any other contract's condition. Inside one, `Old<T>()` returns `default`, and a later comparison reports a violation that did not happen, or misses one.
 
 **Using Regex Patterns:**

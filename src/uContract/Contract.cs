@@ -330,12 +330,14 @@ public static class Contract
 
     /// <summary>
     ///     Captures the state of an object for use in postcondition validation.
-    ///     Creates a deep copy field by field, private state included.
+    ///     Creates a deep copy field by field, private state included; an instance of a type that this method
+    ///     shares is returned itself, not copied (see the remarks).
     /// </summary>
     /// <typeparam name="T">The type of object to capture.</typeparam>
     /// <param name="supplier">Lazy-evaluated supplier that provides the object to capture.</param>
     /// <returns>
-    ///     A deep copy of the object when postconditions are enabled;
+    ///     A deep copy of the object when postconditions are enabled; an instance of a type that this method
+    ///     shares is returned itself, not copied (see the remarks);
     ///     default value when postconditions are disabled, recursion guard is active, or the supplier
     ///     returns null.
     /// </returns>
@@ -348,16 +350,34 @@ public static class Contract
     ///     Uses a recursion guard to prevent infinite loops when contract checks trigger other contract checks.
     ///     Each copied object starts as a bitwise clone, so every instance field keeps the original's value,
     ///     public or not, readonly or not, declared on the type or on a base class. Each reference-typed field
-    ///     visible to reflection is then replaced by the copy of what it refers to. A <see cref="string" />,
-    ///     a delegate and other resource or identity types are shared with the original, not copied.
+    ///     visible to reflection is then replaced by the copy of what it refers to. An instance of a type
+    ///     that this method shares is shared with the original, not copied: the two groups are listed below.
     ///     An instance reached more than once is copied once, so cycles are reproduced.
     ///     No user code runs while copying: no constructor, property accessor, Equals, GetHashCode or
     ///     serialization callback.
     ///     This method supports both reference types and value types (no generic constraint).
     ///     An exception thrown by the supplier propagates unchanged. The copy itself throws nothing of its own.
-    ///     Instances of types that wrap an operating system handle, a timer, a callback list or a lazily run factory
-    ///     (for example any <see cref="System.IO.Stream" />, <c>Task</c>, <c>Lazy&lt;T&gt;</c>) and the
-    ///     comparers of the base class library are shared, so state inside them is not snapshotted.
+    ///     The types that this method shares are in two groups.
+    ///     Shared, and its state can change: <see cref="System.IO.Stream" />; <c>Task</c>; <c>Lazy&lt;T&gt;</c>,
+    ///     <c>ThreadLocal&lt;T&gt;</c>, <c>AsyncLocal&lt;T&gt;</c>; <c>CancellationTokenSource</c>;
+    ///     <c>WeakReference</c> and <c>WeakReference&lt;T&gt;</c>; <c>ConditionalWeakTable&lt;TKey, TValue&gt;</c>;
+    ///     <c>Component</c>; <c>HttpClient</c> and <c>HttpMessageHandler</c>; <c>Socket</c>; <c>Thread</c>,
+    ///     <c>System.Threading.Timer</c>, <c>SynchronizationContext</c>; the locks and signals (<c>WaitHandle</c>,
+    ///     <c>SemaphoreSlim</c>, <c>ManualResetEventSlim</c>, <c>CountdownEvent</c>, <c>ReaderWriterLockSlim</c>,
+    ///     <c>Barrier</c>, <c>System.Threading.Lock</c>); handles (<c>SafeHandle</c>, <c>CriticalHandle</c> and
+    ///     every other <c>CriticalFinalizerObject</c>); COM objects and <c>ComObject</c>; and every type derived
+    ///     from them. <c>EnsureAssignable</c> throws <see cref="InvalidOperationException" /> when one such
+    ///     instance is passed as <c>actual</c> and as <c>expected</c>.
+    ///     Shared, and fixed: <see cref="string" />; delegates; <c>Type</c>, <c>MemberInfo</c>, <c>Assembly</c>,
+    ///     <c>Module</c>, <c>Pointer</c>; <c>Regex</c>; and every type derived from them. Also the frozen
+    ///     collections (the types declared in <c>System.Collections.Frozen</c>) and the comparers that the base
+    ///     class library itself declares; a class of yours derived from <c>StringComparer</c> or
+    ///     <c>Comparer&lt;T&gt;</c> is copied.
+    ///     State inside a shared instance is not snapshotted, and state that an instance of the second group
+    ///     refers to (the elements of a frozen collection, the target of a delegate) is not compared.
+    ///     A class that derives from a type of the first group is shared too, so <c>Old(() =&gt; this)</c> in
+    ///     such a class returns <c>this</c>. There, check each state member with
+    ///     <see cref="Ensure(string, Func{bool})" /> and a value taken with this method.
     ///     The copy is a read-only snapshot: delegates are shared, so raising an event on the copy notifies the
     ///     original's subscribers. Everything reachable is copied, so <c>Old(() =&gt; _balance)</c> is cheaper than
     ///     <c>Old(() =&gt; this)</c>.
