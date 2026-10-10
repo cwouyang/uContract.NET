@@ -179,10 +179,17 @@ internal static class MemberComparison
         }
 
         // Values of different runtime types are unequal, and neither is read: the members of one type
-        // cannot be read from the other. Two sequences are still compared element by element.
+        // cannot be read from the other. Two sequences are still compared element by element, unless they
+        // are two arrays of different dimensions (below).
         Type actualType = actual.GetType();
         Type expectedType = expected.GetType();
         if (actualType != expectedType && !(IsSequence(actual) && IsSequence(expected)))
+        {
+            return null;
+        }
+
+        // Decided before any element of either array is read.
+        if (AreArraysOfDifferentDimensions(actual, expected))
         {
             return null;
         }
@@ -213,7 +220,8 @@ internal static class MemberComparison
         }
 
         // Values of different runtime types reach this point only as two non-string sequences (for example
-        // ImmutableArray<T> and ArraySegment<T>, or a value-type sequence and an array); they are compared
+        // ImmutableArray<T> and ArraySegment<T>, or a value-type sequence and an array), and two arrays among
+        // them have the same rank, and the same length and lower bound in every dimension; they are compared
         // element by element below, not field by field.
         if (actualType.IsValueType && actualType == expectedType)
         {
@@ -378,6 +386,35 @@ internal static class MemberComparison
             items = null;
             return false;
         }
+    }
+
+    // Two arrays, of one runtime type or of two, are equal only when they have the same rank, and the same
+    // length and lower bound in every dimension. An array of any rank enumerates as one sequence, so without
+    // this a 1x2 and a 2x1 array of the same elements would compare as equal. No element is read here.
+    private static bool AreArraysOfDifferentDimensions(object actual, object expected)
+    {
+        if (actual is not Array actualArray || expected is not Array expectedArray)
+        {
+            return false;
+        }
+
+        if (actualArray.Rank != expectedArray.Rank)
+        {
+            return true;
+        }
+
+        for (int dimension = 0; dimension < actualArray.Rank; dimension++)
+        {
+            if (
+                actualArray.GetLength(dimension) != expectedArray.GetLength(dimension)
+                || actualArray.GetLowerBound(dimension) != expectedArray.GetLowerBound(dimension)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsSequence(object value)

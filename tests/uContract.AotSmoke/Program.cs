@@ -363,6 +363,11 @@ internal sealed class FrozenLeavesHolder
     public FrozenSet<HiddenLeaf> Leaves = FrozenSet<HiddenLeaf>.Empty;
 }
 
+internal sealed class GridHolder
+{
+    public int[,] Cells = new int[0, 0];
+}
+
 internal sealed unsafe class PointerHolder
 {
     public int* Address;
@@ -1442,6 +1447,37 @@ public static class Program
                 "uContract.AotSmoke.HiddenLeaf",
                 "reached through 'FrozenSet`1[]'"
             ),
+            Expect.Ok
+        );
+
+        // ---- Two arrays are equal only when they have the same rank, and the same length and lower bound in
+        // every dimension (issue #57). ----
+
+        // Mutation: none (a 1x2 and a 2x1 array of the same elements in order). Visibility: T.
+        yield return new Check(
+            80,
+            "Arrays of the same elements and different lengths per dimension",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new GridHolder
+                        {
+                            Cells = new[,]
+                            {
+                                { 1, 2 },
+                            },
+                        },
+                        new GridHolder
+                        {
+                            Cells = new[,]
+                            {
+                                { 1 },
+                                { 2 },
+                            },
+                        }
+                    )
+                ),
+            post,
             Expect.Ok
         );
     }

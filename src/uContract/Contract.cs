@@ -1051,7 +1051,10 @@ public static class Contract
     ///     base class are not compared. The walk goes deeper into nested objects and collection elements
     ///     without recursion, so cycles and deep graphs are safe.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
-    ///     runtime types are unequal, except two sequences, which are compared by element. A member or element of a
+    ///     runtime types are unequal, except two sequences, which are compared element by element. Two arrays, of
+    ///     one runtime type or of two, are equal only when they also have the same rank, and the same length and
+    ///     lower bound in every dimension; an array and a sequence that is not an array are compared by what they
+    ///     enumerate. A member or element of a
     ///     value type, and a nullable value type as <typeparamref name="T" />, is equal when its <c>Equals</c> says so,
     ///     and is otherwise compared by its fields; a value type without <c>?</c> as <typeparamref name="T" /> is
     ///     compared by its members. Dictionaries are compared entry by entry in enumeration order. Delegates are equal
