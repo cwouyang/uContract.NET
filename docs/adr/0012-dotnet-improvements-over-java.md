@@ -563,8 +563,11 @@ The decision is unchanged. [Issue #49](https://github.com/cwouyang/uContract.NET
 **Qualified in the #52 amendment.** Each statement is quoted by its opening words:
 
 - Under "Qualified.": "When `T` is a `string`, a delegate type or a nullable value type, two values that are not `null` are now compared as a whole." The same now holds when `T` is one of the two types. The amendment of ADR-0022 for #49 records that decision.
-- Step 5 of the rule: "Two values that are not `null` are compared with the recursion guard set." That stands, with the exception that the #54 amendment above made. The sentence after it names the amendment of ADR-0022 for #52 as the record of how they are compared. For the two types the record is the amendment of ADR-0022 for #49.
 - The table row that ends "Compared; see the amendment of ADR-0022 for #52". For the two types, see the amendment of ADR-0022 for #49.
+
+**Still true in the #52 amendment.** Each statement is quoted by its opening words:
+
+- Step 5 of the rule: "Two values that are not `null` are compared with the recursion guard set." That stands, with the exception that the #54 amendment above made. The sentence after it names the amendment of ADR-0022 for #52 as the record of how they are compared. For the two types the record is the amendment of ADR-0022 for #49.
 - Release notes: "The CHANGELOG has three entries under Changed, each marked BREAKING:". No entry is added for #49. The entry for a `T` that is compared as a whole now also names the two types. The entry of #45 on what `EnsureAssignable<T>()` reports more now says how two values of the two types that a member or element holds are compared. The state between #45 and this change was never released, so no entry describes it.
 
 **Why an amendment and not a new ADR.** The main decision of this ADR stands. The amendment of ADR-0022 for #49 gives the reasoning for all four amended ADRs.

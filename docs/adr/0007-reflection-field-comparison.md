@@ -502,8 +502,10 @@ change, with its reasons, the measurements and the limits. It qualifies these st
 ADR, each quoted by its opening words:
 
 - The amendment of 2026-10-07: "**Shared types** are compared by" reference (R5). Two values of the
-  two types that a member or element holds are the exception: they are compared by element (R7). Any
-  other type declared in the namespace `System.Collections.Frozen` is still compared by reference.
+  two types that a member or element holds are the exception: they are compared by element (R7). Two
+  instances of one other type declared in the namespace `System.Collections.Frozen` (two arrays of
+  `FrozenSet<T>`, two instances of a class of the caller declared there) are still compared by
+  reference.
 - The third Amendment above: "When `T` is a `string`, a delegate type or a nullable value" type, two
   values that are not `null` are compared as a whole. The same now holds when `T` is one of the two
   types.
@@ -514,6 +516,9 @@ ADR, each quoted by its opening words:
 - The third Amendment: "Each still holds for every other `T` with two values that are not `null`."
   "Every other `T`" no longer includes the two types. The statements that the third Amendment lists
   are qualified for them in the same way.
+
+Still true:
+
 - The fourth Amendment above: "There are now three cases." There are still three. The second case, a
   `T` that is compared as a whole, now also covers the two types.
 

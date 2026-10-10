@@ -1621,6 +1621,9 @@ to F10 so that they are not taken for D1 to D13 of this ADR or for S1 to S10 of 
 | F9 | CHANGELOG | The entries of #45 and #52 are rewritten to state the final behaviour. No entry is added for the state between #45 and this change, which was never released. |
 | F10 | Record | An amendment of ADR-0022, ADR-0012, ADR-0021 and ADR-0007, not a new ADR. See "Why an amendment and not a new ADR" below. |
 
+For F5, "by reference" is R5, which applies to two instances of one runtime type; two sequences of
+different runtime types are compared by R7, as before.
+
 The reasons:
 
 - **F1.** To copy a value of the two types would mean to copy internal structures of the base class
@@ -1683,13 +1686,16 @@ comparison of a member or element and the test on `T` both use it. The helper th
 a program that are not in the repository. Every cell of those two columns is measured unless it says
 otherwise; where the measured input differs from the row, the cell or a note says so. "After" is
 what the design stated before the library changed. The unit tests of this change show it for every
-row except rows 15, 42, 43 and 45, which have no test; the change does not touch the code that
-decides those four (read from the code). Tests that existed before the change show rows 16 and 30.
-Sets and dictionaries of strings hold the three strings `"a"`, `"b"`, `"c"` unless the row says
-otherwise. `H` is a class with one property `Items` of the type that the row names. `Box` is a small
-class with content of its own (in the unit tests: one property, `Value`). "Violation" for a pair
-that a member holds means a `PostconditionViolationException` that names `Items` and its backing
-field. "F8 text" is message C. "(F5)" and "(F7)" name the decision that the row shows.
+row except rows 15, 16, 30, 42, 43 and 45; tests that existed before this change show rows 16 and
+30, and rows 15, 42, 43 and 45 have no test. For those four, the two tests that the change added
+(`IsFrozenSetOrDictionary` on `T` and on the runtime type of a pair) are false or not reached, so
+the path is that of `6b24bee` (read from the code). In the tables, "build order" is the order in
+which the collection was built. Sets and dictionaries of strings hold the three strings `"a"`,
+`"b"`, `"c"` unless the row says otherwise. `H` is a class with one property `Items` of the type
+that the row names. `Box` is a small class with content of its own (in the unit tests: one property,
+`Value`). "Violation" for a pair that a member holds means a `PostconditionViolationException` that
+names `Items` and its backing field. "F8 text" is message C. "(F5)" and "(F7)" name the decision
+that the row shows.
 
 A pair that a member holds:
 
@@ -1875,9 +1881,11 @@ is such a run, and its class is reached through an element of a collection. It s
    When the original objects are not changed, a new collection with other content is reported (row
    28). The same content in a `List<T>` or a `Dictionary<,>` is copied by `Old<T>()`, and there a
    change inside an element is seen.
-4. **Cost.** Two different instances of the two types are enumerated in full. Two sets are each
-   copied into an array, and elements of a value type are boxed. Two dictionaries are enumerated
-   entry by entry, and keys and values of a value type are boxed. This was read from the code and
+4. **Cost.** Two different sets are each enumerated in full (copied into an array) before any
+   element is compared; two dictionaries are enumerated entry by entry up to the first difference. A
+   pair that R1 has already settled is not enumerated again. The array copy boxes elements of a
+   value type. The keys and values of a dictionary are read as `object` through
+   `IDictionaryEnumerator`, so those of a value type are boxed too. This was read from the code and
    was not measured. A member that was not replaced is one instance on both sides and is not
    enumerated.
 5. **The value types of the namespace.** A value type declared in `System.Collections.Frozen` is not
@@ -1905,8 +1913,8 @@ member and as `T`, under the test seam that simulates Native AOT; and an element
 place and whose collection is then replaced. 47 of the 49 are in the new class
 `EnsureAssignableFrozenCollectionTests`, and 2 in `EnsureAssignableWithoutDynamicCodeTests`.
 
-These failing tests were seen before the library was changed, each for the result that "Before"
-gives:
+These failing tests were seen before each of the two changes of the library, each for the result
+that "Before" gives:
 
 - a member that holds two frozen sets of equal content: a violation that names `Items`;
 - a member that holds two frozen dictionaries of equal content: the same;
@@ -1928,8 +1936,8 @@ hand in two ways. Neither change was committed.
   the 17 that expect no exception for such a pair; the test
   `EnsureAssignable_WhenFrozenSetsHaveEqualContent_DoesNotThrow`, which existed before; the 2 tests
   for elements with no visible members; and the test for an element changed in place with a replaced
-  collection. Two tests whose two sets have different runtime types still pass, as they did on
-  `6b24bee`.
+  collection. Two tests whose two sets have different runtime types still pass: their pairs gave the
+  same results on `6b24bee`.
 
 **Measured results, smoke program.** The program had 74 checks in the default build and 73 in the
 variant with the hidden dictionary entry (`-p:AotSmokeHiddenDictionaryEntry=true`). It now has 79
@@ -1958,17 +1966,19 @@ Native AOT. Environment: `win-x64`. Each run used `--assert`, and no publish gav
 
 The four runs were made after the last change to the library and to the tests; the commits of this
 change that follow touch documentation only. These are the twelve lines of the six checks in the
-default publish: six with postconditions on, and six with `DBC_POST=off`. They are given as they
-were recorded. The prefix `on:` or `off:` names the run, and the record cuts off the end of each
-long message:
+default publish: six with postconditions on, and six with `DBC_POST=off`. The prefix `on:` or `off:`
+names the run and is not output of the program. The program prints the first line of a message.
+Every line is given in full, except the lines of checks 78 and 79 with postconditions on: they are
+given up to the closing parenthesis of "(reached through …)", and each message continues as every
+"cannot compare" message does:
 
 ```text
 on:  PASS 50 Frozen set compared by elements expected=no exception got=no exception
 on:  PASS 75 Frozen sets of different content expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: Fields were modified that are not marked as assignable:
 on:  PASS 76 Frozen dictionary compared by entries expected=no exception got=no exception
-on:  PASS 77 EnsureAssignable<FrozenSet<string>> sets of different content expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: actual and expected are not equal. System.Collections.Frozen.FrozenSet`1[System.String] i
-on:  PASS 78 Frozen set of elements with hidden members expected=InvalidOperationException got=InvalidOperationException EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'FrozenLeavesHolder.Leaves[]'): no properties or fields are visib
-on:  PASS 79 EnsureAssignable<FrozenSet<HiddenLeaf>> elements with hidden members expected=InvalidOperationException got=InvalidOperationException EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'FrozenSet`1[]'): no properties or fiel
+on:  PASS 77 EnsureAssignable<FrozenSet<string>> sets of different content expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: actual and expected are not equal. System.Collections.Frozen.FrozenSet`1[System.String] is compared as a whole, so assignable patterns do not apply.
+on:  PASS 78 Frozen set of elements with hidden members expected=InvalidOperationException got=InvalidOperationException EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'FrozenLeavesHolder.Leaves[]')…
+on:  PASS 79 EnsureAssignable<FrozenSet<HiddenLeaf>> elements with hidden members expected=InvalidOperationException got=InvalidOperationException EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'FrozenSet`1[]')…
 off: PASS 50 Frozen set compared by elements expected=no exception got=no exception
 off: PASS 75 Frozen sets of different content expected=no exception got=no exception
 off: PASS 76 Frozen dictionary compared by entries expected=no exception got=no exception
@@ -2006,10 +2016,17 @@ this change when this amendment was written.
 **Measured with the 2.0.0 package.** These results come from a program with the 2.0.0 package that
 is not in the repository:
 
-- `Old<T>()` threw `InvalidOperationException` ("Type H cannot be serialized for Old<T>()") for a
-  value of the two types and for a class with a member of one of them. This was measured with a
-  `FrozenSet<string>`, a `FrozenDictionary<string, int>`, and a class with a member of each. So the
-  pair `EnsureAssignable(this, Contract.Old(() => this))` did not work in such a class.
+- `Old<T>()` threw `InvalidOperationException` for a value of the two types and for a class with a
+  member of one of them. This was measured with a `FrozenSet<string>`, a `FrozenDictionary<string,
+  int>`, and a class with a member of each. So the pair `EnsureAssignable(this, Contract.Old(() =>
+  this))` did not work in such a class. For example, these are three lines of the record: for a
+  class `H` with a frozen set member, for a frozen set itself, and for a frozen dictionary itself.
+
+  ```text
+  old set member: InvalidOperationException: Type H cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.
+  old top set: InvalidOperationException: Type FrozenSet`1 cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.
+  old top dict: InvalidOperationException: Type FrozenDictionary`2 cannot be serialized for Old<T>(). Ensure the type is JSON-serializable.
+  ```
 - Two members of the two types in objects passed directly were compared element by element, in
   enumeration order, by the comparison of 2.0.0. That comparison used reflection; only `Old<T>()`
   used JSON.
@@ -2017,9 +2034,9 @@ is not in the repository:
   (measured with three strings). The violation named `Items`, or `Keys` and `Values`. With those
   names given as patterns the call passed, also for different content.
 
-The table "The 2.0.0 package on the same checks" of this ADR is unchanged. It already says of check
-50 that 2.0.0 gave no exception ("frozen sets compared by element"). No run of the smoke program in
-package mode is recorded for this change.
+The table "The 2.0.0 package on the same checks" of the accepted text is unchanged. It already says
+of check 50 that 2.0.0 gave no exception ("frozen sets compared by element"). No run of the smoke
+program in package mode is recorded for this change.
 
 **Not tested.**
 
@@ -2075,8 +2092,6 @@ package mode is recorded for this change.
   applies the whole "Order for a pair" of this ADR." Each also holds for one of the two types as
   `T`, and "every other `T`" no longer includes the two types. "The rule as it is now" above gives
   the steps, the fourth case of the test and the new row of the table.
-- R1: "Their two values are not tracked as a pair of references." That stands for the three kinds of
-  `T`. The two values of one of the two types are tracked as a pair while they are compared.
 - "A shared type (B3) other than `string` or a delegate as `T`, such as a `Stream`, a `Task` or a"
   frozen collection. "Its members are walked." The members of one of the two types as `T` are not
   walked. Every other type declared in the namespace `System.Collections.Frozen` is still walked as
@@ -2100,15 +2115,16 @@ package mode is recorded for this change.
 The two statements of its Limits about real Native AOT are qualified under "Native AOT, the members
 of an element are not visible" above.
 
+Still true in the #52 amendment:
+
+- R1: "Their two values are not tracked as a pair of references." That stands for the three kinds of
+  `T`. The two values of one of the two types are tracked as a pair while they are compared.
+
 **Qualified in the #54 amendment.** Each statement is quoted by its opening words:
 
 - The steps of a call: "5. When `T` is a `string`, a delegate type or a nullable value type, the two
   values are compared as" a whole. Step 5 also holds for one of the two types as `T`, and step 6
   ("every other `T`") no longer includes them.
-- "**Types compared as a whole.** A `string` and a delegate are fixed shared types." A value of the
-  two types is a fixed shared type too. So its conclusion also holds for one of the two types as
-  `T`: rule S and the comparison as a whole never both apply (read from the code; measured for one
-  frozen set on both sides, row 38).
 - What does not change: "The same instance of a fixed shared type, or of a type that is not shared."
   The entry says that the call behaves as on `71b2e4e`. For one instance of one of the two types as
   `T`, the result is still "no exception" (row 38). But no member is read any more, and the elements
@@ -2138,6 +2154,13 @@ of an element are not visible" above.
   change. "What stays open" below gives what is left.
 - What stays open, on #49, at "proposes to compare them by elements". This change is #49. A value of
   the two types stays a fixed shared type, and the limit about its elements is now limit 3 above.
+
+Still true in the #54 amendment:
+
+- "**Types compared as a whole.** A `string` and a delegate are fixed shared types." A value of the
+  two types is a fixed shared type too. So its conclusion also holds for one of the two types as
+  `T`: rule S and the comparison as a whole never both apply (read from the code; measured for one
+  frozen set on both sides, row 38).
 
 **Superseded in the #54 amendment.** The statement is quoted by its opening words:
 
@@ -2207,6 +2230,7 @@ The amended ADRs (ADR-0022, ADR-0012, ADR-0021 and ADR-0007) are that record, as
 - [Issue #47: `DBC_POST=off` and the `Old` + `EnsureAssignable` pairing](https://github.com/cwouyang/uContract.NET/issues/47)
 - [Issue #52: A `null` `actual` or `expected` in `EnsureAssignable<T>()`](https://github.com/cwouyang/uContract.NET/issues/52)
 - [Issue #54: `Old` + `EnsureAssignable` in a class derived from a shared type](https://github.com/cwouyang/uContract.NET/issues/54)
+- [Issue #49: Compare frozen collections by elements in EnsureAssignable](https://github.com/cwouyang/uContract.NET/issues/49)
 - [`DeepCopier.cs`](../../src/uContract/DeepCopier.cs) — the copy
 - [`SharedTypes.cs`](../../src/uContract/SharedTypes.cs) — B3
 - [`MemberComparison.cs`](../../src/uContract/MemberComparison.cs) — R0–R8 and the walk
