@@ -27,7 +27,7 @@ internal static class SharedTypes
     private static readonly ConcurrentDictionary<Type, bool> Cache = new();
 
     // A listed type matches itself and every type derived from it.
-    private static readonly Type[] Listed =
+    internal static readonly Type[] Listed =
     [
         typeof(string),
         typeof(Delegate),
@@ -57,7 +57,7 @@ internal static class SharedTypes
     ];
 
     // A listed open generic type matches every construction of it and every type derived from one.
-    private static readonly Type[] ListedGenerics =
+    internal static readonly Type[] ListedGenerics =
     [
         typeof(ThreadLocal<>),
         typeof(Lazy<>),
@@ -67,7 +67,7 @@ internal static class SharedTypes
     ];
 
     // A listed type that net8.0 cannot reference, matched by full name; it and every type derived from it.
-    private const string LockFullName = "System.Threading.Lock";
+    internal const string LockFullName = "System.Threading.Lock";
 
     internal static bool IsShared(Type type)
     {
