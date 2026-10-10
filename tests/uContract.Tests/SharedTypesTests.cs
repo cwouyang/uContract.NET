@@ -165,6 +165,7 @@ public sealed class SharedTypesTests
                 Assert.Equal(s_listedTypesThatAreFixed.Contains(type), SharedTypes.DescribeChangingShare(type) is null)
         );
         Assert.All(s_listedTypesThatAreFixed, type => Assert.Contains(type, listed));
+        Assert.All(SharedTypes.ListedWithChangingState, type => Assert.Contains(type, SharedTypes.Listed));
     }
 
     [WindowsFact]

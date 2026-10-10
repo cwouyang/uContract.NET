@@ -396,12 +396,14 @@ public class EnsureAssignableSameSharedInstanceTests
     public void EnsureAssignable_WhenTheSameInstanceIsPassedWhileAnotherContractCheckRuns_DoesNotThrow()
     {
         using Worker worker = new();
+        bool outerRan = false;
 
         Exception? exception = Record.Exception(() =>
             Contract.Ensure(
                 "Outer contract",
                 () =>
                 {
+                    outerRan = true;
                     Contract.EnsureAssignable(worker, worker);
                     return true;
                 }
@@ -409,6 +411,7 @@ public class EnsureAssignableSameSharedInstanceTests
         );
 
         Assert.Null(exception);
+        Assert.True(outerRan);
     }
 
     // ---- A member that holds the shared instance ----
