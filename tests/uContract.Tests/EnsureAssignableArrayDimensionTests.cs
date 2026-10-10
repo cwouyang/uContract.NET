@@ -519,6 +519,33 @@ public class EnsureAssignableArrayDimensionTests
         Assert.Equal(ItemsChanged, exception.Description);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenMemberHoldsEmptyArraysThatDifferInTheLengthOfTheFirstDimension_ReportsTheMember()
+    {
+        Holder<int[,]> actual = new() { Items = Grid(rows: 2, columns: 0) };
+        Holder<int[,]> expected = new() { Items = Grid(rows: 3, columns: 0) };
+        Assert.NotSame(actual.Items, expected.Items);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ItemsChanged, exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOneByTwoAndTwoByOneArraysArePassedAsCollections_DoesNotThrow()
+    {
+        ICollection actual = OneByTwo();
+        ICollection expected = TwoByOne();
+        Assert.NotSame(actual, expected);
+        Assert.Equal(expected.Count, actual.Count);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // Each helper below returns a new array on every call, also for a length of 0.
 
     private static int[,] OneByTwo() =>
