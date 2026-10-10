@@ -10,6 +10,7 @@
 - **Amended**: 2026-10-09 — `EnsureAssignable<T>()` checks `actual` and `expected` for `null` only when it compares them, an exception to "All public contract methods will validate their parameters before any other logic"; see the Amendment under Implementation Notes
 - **Amended**: 2026-10-09 — `EnsureAssignable<T>()` compares a `null` `actual` or `expected` as a value and never rejects it, and `EnsureImmutableCollection<T>()` checks `collection` for `null` only when it checks the collection (#52); this supersedes parts of the #47 amendment; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — in a call that compares, `EnsureAssignable<T>()` does not compare one instance of a shared type whose state can change, passed as `actual` and as `expected`: it throws `InvalidOperationException` (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the third Amendment under Implementation Notes
+- **Amended**: 2026-10-10 — when `T` is a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, `EnsureAssignable<T>()` compares two values that are not `null` as a whole: element by element, in enumeration order, without the patterns (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
 
 ---
 
@@ -555,6 +556,21 @@ The decision is unchanged. [Issue #54](https://github.com/cwouyang/uContract.NET
 
 Unchanged: the main decision of this ADR, the check of the pattern array, the `null` rule and its two messages, `EnsureImmutableCollection<T>()`, and every other `Contract` method. The public signatures do not change.
 
+### Amendment (2026-10-10): A FrozenSet or a FrozenDictionary as T is compared as a whole (#49)
+
+The decision is unchanged. [Issue #49](https://github.com/cwouyang/uContract.NET/issues/49) adds one kind of `T` to those that `EnsureAssignable<T>()` compares as a whole. When the declared `T` is a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` ("the two types" below), two values that are not `null` are compared as one pair: element by element, in enumeration order. No member of `T` is compared, and the assignable patterns do not apply and are not examined. The same change makes `EnsureAssignable<T>()` compare two values of the two types that a member or element holds element by element, where it compared them by reference when their runtime types were equal. `Old<T>()` is unchanged: it still shares such a value with the original instead of copying it. The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #49 records the change, with its reasons, the measurements and the limits.
+
+**Qualified in the #52 amendment.** Each statement is quoted by its opening words:
+
+- Under "Qualified.": "When `T` is a `string`, a delegate type or a nullable value type, two values that are not `null` are now compared as a whole." The same now holds when `T` is one of the two types. The amendment of ADR-0022 for #49 records that decision.
+- Step 5 of the rule: "Two values that are not `null` are compared with the recursion guard set." That stands, with the exception that the #54 amendment above made. The sentence after it names the amendment of ADR-0022 for #52 as the record of how they are compared. For the two types the record is the amendment of ADR-0022 for #49.
+- The table row that ends "Compared; see the amendment of ADR-0022 for #52". For the two types, see the amendment of ADR-0022 for #49.
+- Release notes: "The CHANGELOG has three entries under Changed, each marked BREAKING:". No entry is added for #49. The entry for a `T` that is compared as a whole now also names the two types. The entry of #45 on what `EnsureAssignable<T>()` reports more now says how two values of the two types that a member or element holds are compared. The state between #45 and this change was never released, so no entry describes it.
+
+**Why an amendment and not a new ADR.** The main decision of this ADR stands. The amendment of ADR-0022 for #49 gives the reasoning for all four amended ADRs.
+
+Unchanged: the main decision of this ADR, the check of the pattern array, the `null` rule and its two messages, the rule for one shared instance on both sides (#54), `EnsureImmutableCollection<T>()`, and every other `Contract` method. The public signatures do not change.
+
 ---
 
 ## References
@@ -576,3 +592,4 @@ Unchanged: the main decision of this ADR, the check of the pattern array, the `n
 | 2026-10-09 | Amended     | `EnsureAssignable<T>()` checks `actual` and `expected` for `null` only when it compares them (#47). Decision unchanged. See Implementation Notes > Amendment. |
 | 2026-10-09 | Amended     | `EnsureAssignable<T>()` compares `null` as a value; `EnsureImmutableCollection<T>()` checks `null` only when it checks (#52). Supersedes parts of the #47 amendment. Decision unchanged. See Implementation Notes > second Amendment. |
 | 2026-10-10 | Amended     | One instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: `InvalidOperationException` (#54, rule S of ADR-0022). Qualifies parts of the #52 amendment. Decision unchanged. See Implementation Notes > third Amendment. |
+| 2026-10-10 | Amended     | A `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` as `T` is compared as a whole (#49, ADR-0022). Qualifies parts of the #52 amendment. Decision unchanged. See Implementation Notes > fourth Amendment. |
