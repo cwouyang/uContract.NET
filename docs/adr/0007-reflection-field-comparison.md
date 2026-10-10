@@ -503,9 +503,9 @@ ADR, each quoted by its opening words:
 
 - The amendment of 2026-10-07: "**Shared types** are compared by" reference (R5). Two values of the
   two types that a member or element holds are the exception: they are compared by element (R7). Two
-  instances of one other type declared in the namespace `System.Collections.Frozen` (two arrays of
-  `FrozenSet<T>`, two instances of a class of the caller declared there) are still compared by
-  reference.
+  instances of one runtime type that is another type declared in the namespace
+  `System.Collections.Frozen` (two arrays of `FrozenSet<T>`, two instances of a class of the caller
+  declared there) are still compared by reference.
 - The third Amendment above: "When `T` is a `string`, a delegate type or a nullable value" type, two
   values that are not `null` are compared as a whole. The same now holds when `T` is one of the two
   types.

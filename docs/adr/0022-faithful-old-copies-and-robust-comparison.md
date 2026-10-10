@@ -1689,13 +1689,13 @@ what the design stated before the library changed. The unit tests of this change
 row except rows 15, 16, 30, 42, 43 and 45; tests that existed before this change show rows 16 and
 30, and rows 15, 42, 43 and 45 have no test. For those four, the two tests that the change added
 (`IsFrozenSetOrDictionary` on `T` and on the runtime type of a pair) are false or not reached, so
-the path is that of `6b24bee` (read from the code). In the tables, "build order" is the order in
-which the collection was built. Sets and dictionaries of strings hold the three strings `"a"`,
-`"b"`, `"c"` unless the row says otherwise. `H` is a class with one property `Items` of the type
-that the row names. `Box` is a small class with content of its own (in the unit tests: one property,
-`Value`). "Violation" for a pair that a member holds means a `PostconditionViolationException` that
-names `Items` and its backing field. "F8 text" is message C. "(F5)" and "(F7)" name the decision
-that the row shows.
+the path is that of `6b24bee` (read from the code). In the tables, "build order" is the order of the
+sequence from which the collection was built. Sets and dictionaries of strings hold the three
+strings `"a"`, `"b"`, `"c"` unless the row says otherwise. `H` is a class with one property `Items`
+of the type that the row names. `Box` is a small class with content of its own (in the unit tests:
+one property, `Value`). "Violation" for a pair that a member holds means a
+`PostconditionViolationException` that names `Items` and its backing field. "F8 text" is message C.
+"(F5)" and "(F7)" name the decision that the row shows.
 
 A pair that a member holds:
 
@@ -1802,10 +1802,13 @@ Measured after the design was written, with the same `H`:
 | two `FrozenSet<string?>`, each built from `"a"` and `null` (one internal class, `SmallFrozenSet`; the same enumeration order) | violation | no exception |
 | a `FrozenSet<string?>` built from `"a"` and `null`, and one built from `"a"` and `"b"` (two internal classes, `SmallFrozenSet` and `LengthBucketsFrozenSet`) | violation | violation |
 | `old = Old(() => h)`; change the `Box` inside the set; replace `h.Items` by a frozen set of a new `Box` with the changed content; `EnsureAssignable(h, old)` | not measured on `6b24bee` | no exception |
+| the same steps, but the new `Box` has the content as it was when `Old` ran | not measured on `6b24bee` | violation |
 
-The third example is the limit "Elements are shared" after the collection is replaced: the change is
-missed. Its "After" is a unit test. With the rule of `6b24bee` restored by hand, that test fails
-(see the mutation check under "Measured").
+The third and the fourth example are the two results of the limit "Elements are shared" after the
+collection is replaced. In the third the change is missed. Its "After" is a unit test; with the rule
+of `6b24bee` restored by hand, that test fails (see the mutation check under "Measured"). In the
+fourth a violation is reported although the content is as it was when `Old<T>()` ran. Its "After" is
+a unit test too, which passed on its first run; no change of the library was made for it.
 
 **Native AOT, the members of an element are not visible.** An element, key or value can be of a
 class whose members are not visible to reflection. When that class's `Equals` reports the two values
@@ -1875,8 +1878,8 @@ is such a run, and its class is reached through an element of a collection. It s
      change can then be missed: the original object was changed, and the new object has the changed
      content (the third example under "Measured after the design was written"). And a violation can
      be reported although the content is as it was when `Old<T>()` ran: the original object was
-     changed, and the new object has the earlier content. The second case was read from the code; no
-     test shows it.
+     changed, and the new object has the earlier content (the fourth example there). A unit test
+     shows each of the two cases.
 
    When the original objects are not changed, a new collection with other content is reported (row
    28). The same content in a `List<T>` or a `Dictionary<,>` is copied by `Old<T>()`, and there a
@@ -1906,12 +1909,16 @@ The way out for limit 3: before the change, take each value that must stay with 
 not the element object), and check it afterwards with `Contract.Ensure`.
 
 **Measured results, unit tests.** The suite had 696 tests on `6b24bee`, with 0 failed in the Debug
-and in the Release configuration. After the change it has 745, with 0 failed in both configurations.
-49 were added: 31 for two values of the two types that a member or element holds, 15 for `T` itself,
-and 3 after review. The 3 are: an element class with no visible members below a `FrozenSet<T>`, as a
-member and as `T`, under the test seam that simulates Native AOT; and an element that is changed in
-place and whose collection is then replaced. 47 of the 49 are in the new class
-`EnsureAssignableFrozenCollectionTests`, and 2 in `EnsureAssignableWithoutDynamicCodeTests`.
+and in the Release configuration. After the change it has 746, with 0 failed in both configurations.
+50 were added: 31 for two values of the two types that a member or element holds, 15 for `T` itself,
+and 4 after review. The 4 are: an element class with no visible members below a `FrozenSet<T>`, as a
+member and as `T`, under the test seam that simulates Native AOT (2 tests); an element that is
+changed in place and whose collection is then replaced by one that holds a new object with the new
+content (no exception: the change is missed); and the same with a new object that has the content as
+it was when `Old<T>()` ran (a violation is reported). The last of these,
+`EnsureAssignable_WhenAnElementIsChangedAndItsFrozenSetReplacedByOneWithANewElementAsItWas_ReportsTheMember`,
+passed on its first run, and no change of the library was made for it. 48 of the 50 are in the new
+class `EnsureAssignableFrozenCollectionTests`, and 2 in `EnsureAssignableWithoutDynamicCodeTests`.
 
 These failing tests were seen before each of the two changes of the library, each for the result
 that "Before" gives:
@@ -1926,18 +1933,20 @@ first of the two changes of the library, not with the second: the member walk ov
 of the two sets while it was in progress. The design had read that from the code; the work showed
 it.
 
-**Measured results, mutation check.** After the change, with 745 tests, the library was changed by
-hand in two ways. Neither change was committed.
+**Measured results, mutation check.** At the final state of the library and the tests, with 746
+tests, the library was changed by hand in two ways. Neither change was committed.
 
 - Every pair of two different instances of the two types is forced equal, whatever the runtime
-  types. 20 tests fail: the 18 that expect a violation for such a pair, and the 2 tests for elements
+  types. 21 tests fail: the 19 that expect a violation for such a pair, and the 2 tests for elements
   with no visible members.
 - The rule of `6b24bee` is restored: two instances of one runtime type are unequal. 21 tests fail:
   the 17 that expect no exception for such a pair; the test
   `EnsureAssignable_WhenFrozenSetsHaveEqualContent_DoesNotThrow`, which existed before; the 2 tests
-  for elements with no visible members; and the test for an element changed in place with a replaced
-  collection. Two tests whose two sets have different runtime types still pass: their pairs gave the
-  same results on `6b24bee`.
+  for elements with no visible members; and the test for an element changed in place whose
+  collection is replaced by one that holds a new object with the new content. Two tests whose two
+  sets have different runtime types still pass: their pairs gave the same results on `6b24bee`. The
+  test for a new object with the content as it was still passes too: its pair is a violation either
+  way.
 
 **Measured results, smoke program.** The program had 74 checks in the default build and 73 in the
 variant with the hidden dictionary entry (`-p:AotSmokeHiddenDictionaryEntry=true`). It now has 79
@@ -1964,13 +1973,13 @@ Native AOT. Environment: `win-x64`. Each run used `--assert`, and no publish gav
 | Default | 79 `PASS`, 0 `FAIL` | 79 `PASS`, 0 `FAIL` |
 | Variant with the hidden dictionary entry | 78 `PASS`, 0 `FAIL` | 78 `PASS`, 0 `FAIL` |
 
-The four runs were made after the last change to the library and to the tests; the commits of this
-change that follow touch documentation only. These are the twelve lines of the six checks in the
-default publish: six with postconditions on, and six with `DBC_POST=off`. The prefix `on:` or `off:`
-names the run and is not output of the program. The program prints the first line of a message.
-Every line is given in full, except the lines of checks 78 and 79 with postconditions on: they are
-given up to the closing parenthesis of "(reached through …)", and each message continues as every
-"cannot compare" message does:
+The four runs were made at the final state of the library and of the tests. They repeat four earlier
+runs of this change, with the same results and the same lines for the six checks. These are the
+twelve lines of the six checks in the default publish: six with postconditions on, and six with
+`DBC_POST=off`. The prefix `on:` or `off:` names the run and is not output of the program. The
+program prints the first line of a message. Every line is given in full, except the lines of checks
+78 and 79 with postconditions on: they are given up to the closing parenthesis of "(reached through
+…)", and each message continues as every "cannot compare" message does:
 
 ```text
 on:  PASS 50 Frozen set compared by elements expected=no exception got=no exception
@@ -2050,7 +2059,6 @@ program in package mode is recorded for this change.
   cannot be reproduced.
 - A value type of the namespace that a member holds (F5, limit 5).
 - Limit 4, the cost.
-- The second case of limit 3: a violation for content that is as it was when `Old<T>()` ran.
 - Under Native AOT, an element class with no visible members below a `FrozenDictionary<TKey,
   TValue>`, and an element class with no visible members whose `Equals` reports the two values equal
   below a value of the two types. R8 decides both, and R8 did not change.
@@ -2115,7 +2123,7 @@ program in package mode is recorded for this change.
 The two statements of its Limits about real Native AOT are qualified under "Native AOT, the members
 of an element are not visible" above.
 
-Still true in the #52 amendment:
+**Still true in the #52 amendment.** The statement is quoted by its opening words:
 
 - R1: "Their two values are not tracked as a pair of references." That stands for the three kinds of
   `T`. The two values of one of the two types are tracked as a pair while they are compared.
@@ -2155,7 +2163,7 @@ Still true in the #52 amendment:
 - What stays open, on #49, at "proposes to compare them by elements". This change is #49. A value of
   the two types stays a fixed shared type, and the limit about its elements is now limit 3 above.
 
-Still true in the #54 amendment:
+**Still true in the #54 amendment.** The statement is quoted by its opening words:
 
 - "**Types compared as a whole.** A `string` and a delegate are fixed shared types." A value of the
   two types is a fixed shared type too. So its conclusion also holds for one of the two types as
@@ -2230,7 +2238,7 @@ The amended ADRs (ADR-0022, ADR-0012, ADR-0021 and ADR-0007) are that record, as
 - [Issue #47: `DBC_POST=off` and the `Old` + `EnsureAssignable` pairing](https://github.com/cwouyang/uContract.NET/issues/47)
 - [Issue #52: A `null` `actual` or `expected` in `EnsureAssignable<T>()`](https://github.com/cwouyang/uContract.NET/issues/52)
 - [Issue #54: `Old` + `EnsureAssignable` in a class derived from a shared type](https://github.com/cwouyang/uContract.NET/issues/54)
-- [Issue #49: Compare frozen collections by elements in EnsureAssignable](https://github.com/cwouyang/uContract.NET/issues/49)
+- [Issue #49: Compare frozen collections by elements in `EnsureAssignable`](https://github.com/cwouyang/uContract.NET/issues/49)
 - [`DeepCopier.cs`](../../src/uContract/DeepCopier.cs) — the copy
 - [`SharedTypes.cs`](../../src/uContract/SharedTypes.cs) — B3
 - [`MemberComparison.cs`](../../src/uContract/MemberComparison.cs) — R0–R8 and the walk
