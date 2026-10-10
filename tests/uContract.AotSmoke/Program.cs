@@ -177,7 +177,7 @@ internal sealed class SnapshotCircle : SnapshotShape
 }
 
 // Hidden: never a T, never preserved. It may be a type argument of a T or of a member of a T (the element
-// type of FrozenLeavesHolder.Leaves).
+// type of FrozenLeavesHolder.Leaves), or the element type of an array type that is a T.
 internal sealed class HiddenLeaf
 {
     public int Value;
@@ -466,6 +466,8 @@ public static class Program
 
     private static readonly string[] s_frozenCodes = ["a", "b"];
     private static readonly string[] s_otherFrozenCodes = ["a", "c"];
+    private static readonly int[] s_numbers = [1, 2];
+    private static readonly int[] s_otherNumbers = [1, 3];
 
     public static int Main(string[] args)
     {
@@ -1478,6 +1480,40 @@ public static class Program
                     )
                 ),
             post,
+            Expect.Ok
+        );
+
+        // ---- An array type or System.Array as T is compared as a whole (issue #57). ----
+
+        // Mutation: one element differs. T is the array type itself: the two arrays are compared element by
+        // element, and the violation says that they are compared as a whole.
+        yield return new Check(
+            81,
+            "EnsureAssignable<int[]> arrays with one element differing",
+            static () => NoResult(static () => Contract.EnsureAssignable(s_numbers, s_otherNumbers)),
+            Expect.Throws<PostconditionViolationException>("is compared as a whole"),
+            Expect.Ok
+        );
+
+        // Mutation: none (two arrays, each with its own element of equal Value). Visibility: none for
+        // HiddenLeaf under Native AOT, where its Equals says unequal: the comparison reports that it cannot
+        // compare the elements, and the path to them starts at the parameter. Under the JIT the members of
+        // HiddenLeaf are visible and the elements are equal.
+        yield return new Check(
+            82,
+            "EnsureAssignable<HiddenLeaf[]> elements with hidden members",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new[] { new HiddenLeaf { Value = 1 } },
+                        new[] { new HiddenLeaf { Value = 1 } }
+                    )
+                ),
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare",
+                "uContract.AotSmoke.HiddenLeaf",
+                "reached through 'actual[]'"
+            ),
             Expect.Ok
         );
     }

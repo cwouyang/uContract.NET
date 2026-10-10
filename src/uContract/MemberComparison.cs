@@ -75,11 +75,15 @@ internal static class MemberComparison
         );
     }
 
-    // The comparison of a nullable value type, or of a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, as a
-    // whole met a class whose members are not visible. For one of the last two, wholeType is T itself.
+    // The comparison of a nullable value type, of a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or of an
+    // array type or System.Array, as a whole met a class whose members are not visible. For a nullable value
+    // type, wholeType is the underlying type; for the others it is T itself. The path starts with the name of
+    // wholeType, except below an array type or System.Array, where it starts with the parameter name: the
+    // name of an array type holds brackets of its own ("X[]"), which would read as one more element.
     internal static InvalidOperationException CannotCompareBelowWhole(Type wholeType, HiddenMembers hidden)
     {
-        string path = $"{wholeType.Name}{hidden.PathBelowTopLevelMember}";
+        string start = IsArrayTypeOrSystemArray(wholeType) ? "actual" : wholeType.Name;
+        string path = $"{start}{hidden.PathBelowTopLevelMember}";
 
         return new InvalidOperationException(
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
@@ -89,6 +93,14 @@ internal static class MemberComparison
                 + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
+    }
+
+    // The declared types whose two values EnsureAssignable compares as a whole because they are arrays: an
+    // array type of any rank and element type, and System.Array itself. No other type that can hold an array
+    // (object, an interface that arrays implement) is one of them.
+    internal static bool IsArrayTypeOrSystemArray(Type type)
+    {
+        return type.IsArray || type == typeof(Array);
     }
 
     // Under Native AOT a type whose members were not preserved reflects as having none, which
@@ -245,9 +257,12 @@ internal static class MemberComparison
         }
 
         // Decided before any element of either array is read, and after the lookup above. The lookup knows
-        // only pairs that passed this test, except the top-level pair, which is entered without it: when the
-        // two values of the call are arrays and a member leads back to them (SyncRoot), that member still
-        // counts as equal, whatever their rank, lengths and lower bounds.
+        // only pairs that passed this test, except the top-level pair of a T that is compared by its members,
+        // which is entered without it: when the two values of such a call are arrays (T is ICollection, say)
+        // and a member leads back to them (SyncRoot), that member still counts as equal, whatever their rank,
+        // lengths and lower bounds. Two arrays passed as an array type or System.Array are compared as a whole
+        // and come through here like any other pair. Two arrays of one shared runtime type do not come here:
+        // they are compared by reference (see Start).
         if (ArraysDifferInRankLengthOrLowerBound(actual, expected))
         {
             equal = false;
