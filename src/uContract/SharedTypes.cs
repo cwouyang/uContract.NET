@@ -24,6 +24,8 @@ namespace uContract;
 ///     no getter or factory of theirs runs. <see cref="string" /> is listed too; it is compared by Equals.
 ///     A <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> is shared too, and two of
 ///     them are compared element by element, in enumeration order, also without reading their members.
+///     An array of pointers or of function pointers is never shared, and its namespace is not read:
+///     <c>Old</c> copies it with its addresses, and two of them are compared by address.
 /// </summary>
 internal static class SharedTypes
 {
@@ -112,6 +114,15 @@ internal static class SharedTypes
     }
 
     /// <summary>
+    ///     An array of pointers or of function pointers, of any rank. It is never shared, and two of them are
+    ///     compared by address. Reads the element type only, never the namespace of <paramref name="type" />.
+    /// </summary>
+    internal static bool IsArrayOfPointersOrFunctionPointers(Type type)
+    {
+        return type.IsArray && type.GetElementType() is { IsPointer: true } or { IsFunctionPointer: true };
+    }
+
+    /// <summary>
     ///     Says what <c>Old</c> shares when <paramref name="type" /> is shared, and its state can change: the
     ///     words that follow "Contract.Old shares" in a message. Returns null for a type that is shared, and
     ///     fixed, and for a type that is not shared. Reads only the type: no instance is touched.
@@ -162,6 +173,13 @@ internal static class SharedTypes
 
     private static bool Classify(Type type)
     {
+        // Decided first: the runtime throws BadImageFormatException when the namespace of the type of an
+        // array of function pointers is read, and IsInSharedCategory reads the namespace.
+        if (IsArrayOfPointersOrFunctionPointers(type))
+        {
+            return false;
+        }
+
         return IsInSharedCategory(type)
             || Listed.Any(listed => listed.IsAssignableFrom(type))
             || ListedGenerics.Any(definition => DerivesFromGeneric(type, definition))

@@ -133,6 +133,19 @@ public sealed class SharedTypesTests
     }
 
     [Fact]
+    public unsafe void IsShared_WhenTypeIsAnArrayOfPointers_ReturnsFalse()
+    {
+        Assert.False(SharedTypes.IsShared(typeof(int*[])));
+    }
+
+    // The runtime cannot tell the namespace of this type, so it is not a row of a theory above.
+    [Fact]
+    public unsafe void IsShared_WhenTypeIsAnArrayOfFunctionPointers_ReturnsFalse()
+    {
+        Assert.False(SharedTypes.IsShared(typeof(delegate* <void>[])));
+    }
+
+    [Fact]
     public void IsShared_WhenTypeDerivesFromAListedType_ReturnsTrue()
     {
         Assert.True(SharedTypes.IsShared(typeof(RecordingStream)));

@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace uContract;
@@ -190,6 +191,7 @@ internal static class MemberComparison
         }
 
         // FieldInfo.GetValue boxes a pointer-typed field as a Pointer object, whose Equals compares addresses.
+        // An array of pointers or of function pointers is compared by address too (see StartSequences).
         if (actual is Pointer or string)
         {
             equal = Equals(actual, expected);
@@ -319,6 +321,21 @@ internal static class MemberComparison
             return new DictionaryWalk(actualDictionary, expectedDictionary);
         }
 
+        // Two arrays of pointers or of function pointers are compared by address, whatever the pointers point
+        // to; equal addresses leave nothing to walk. Such an array that has elements is different from anything
+        // that is not an array of pointers or of function pointers, also from an object[] of boxed pointers.
+        bool actualHoldsAddresses = HoldsAddresses(actual);
+        bool expectedHoldsAddresses = HoldsAddresses(expected);
+        if (actualHoldsAddresses && expectedHoldsAddresses)
+        {
+            return HoldSameAddresses((Array)actual, (Array)expected) ? new CollectionWalk([], []) : null;
+        }
+
+        if (actualHoldsAddresses || expectedHoldsAddresses)
+        {
+            return null;
+        }
+
         // Two sequences of different runtime types: one that cannot be enumerated (a default
         // ImmutableArray<T>) is reported as changed rather than letting its exception escape.
         if (actual.GetType() != expected.GetType())
@@ -420,6 +437,29 @@ internal static class MemberComparison
         }
 
         return false;
+    }
+
+    // An array of pointers or of function pointers that has at least one element. With no element there is
+    // nothing to compare by address, and the array is compared as any other sequence is.
+    private static bool HoldsAddresses(object value)
+    {
+        return value is Array { Length: > 0 } && SharedTypes.IsArrayOfPointersOrFunctionPointers(value.GetType());
+    }
+
+    // Both arrays have the same rank, and the same length and lower bound in every dimension (see
+    // StartReferences), so they hold the same number of addresses in the same order.
+    private static bool HoldSameAddresses(Array actual, Array expected)
+    {
+        return Addresses(actual).SequenceEqual(Addresses(expected));
+    }
+
+    // The elements of an array of pointers or of function pointers, of any rank, as the addresses they hold,
+    // in the order of the array's memory. An address is read as a number and never dereferenced. Such an
+    // array cannot be enumerated: the runtime throws NotSupportedException for an element.
+    private static ReadOnlySpan<nint> Addresses(Array array)
+    {
+        ref byte first = ref MemoryMarshal.GetArrayDataReference(array);
+        return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, nint>(ref first), array.Length);
     }
 
     private static bool IsSequence(object value)
