@@ -78,20 +78,22 @@ AOT](README.md#trimming-and-native-aot) in the README.
   key and value with value), as 2.0.0 compared two of them in members of objects passed to it
   directly. Their elements, keys and values follow the rules of this version: two of the
   dictionaries whose values are different objects of equal content were a violation in 2.0.0 and
-  are equal now (#49; see the entry that begins "`EnsureAssignable<T>()` reports less" below). Two
-  instances of one other type declared in `System.Collections.Frozen` (two arrays of `FrozenSet<T>`,
-  two instances of a class of yours declared there) are compared by reference. Members whose runtime
-  types differ are unequal, except two sequences, which are compared element by element; the runtime
-  type decides, not the declared type. Base and derived instances are unequal, with the same
-  exception.
-  A `string` and a `char[]` are unequal. A user-defined struct that implements `IEnumerable`, held
-  in an interface-typed or `object` member, is compared by its fields, so state besides its elements
-  is reported. A change outside the window of a `Memory<T>` or `ReadOnlyMemory<T>` is reported. A
-  dictionary value whose `Equals` ignores the changed content is reported, because values are
-  compared by their members. A member whose declared type is an interface is walked into the members
-  of its runtime type, and their getters run. A getter that throws on a class reached through a
-  struct field propagates. When the two sides of a member have different runtime types, a violation
-  is reported where 2.0.0 threw `ArgumentException` or `TargetException`. (ADR-0022)
+  are equal now (#49; see the entry that begins "`EnsureAssignable<T>()` reports less" below). The
+  limits (order, comparer, shared elements) and the ways out are in [Types that `Old<T>()`
+  shares](docs/examples/API_REFERENCE.md#types-that-oldt-shares). Two instances of one other type
+  declared in `System.Collections.Frozen` (two arrays of `FrozenSet<T>`, two instances of a class of
+  yours declared there) are compared by reference. Members whose runtime types differ are unequal,
+  except two sequences, which are compared element by element; the runtime type decides, not the
+  declared type. Base and derived instances are unequal, with the same exception. A `string` and a
+  `char[]` are unequal (a `string` is not a sequence here). A user-defined struct that implements
+  `IEnumerable`, held in an interface-typed or `object` member, is compared by its fields, so state
+  besides its elements is reported. A change outside the window of a `Memory<T>` or
+  `ReadOnlyMemory<T>` is reported. A dictionary value whose `Equals` ignores the changed content is
+  reported, because values are compared by their members. A member whose declared type is an
+  interface is walked into the members of its runtime type, and their getters run. A getter that
+  throws on a class reached through a struct field propagates. When the two sides of a member have
+  different runtime types, a violation is reported where 2.0.0 threw `ArgumentException` or
+  `TargetException`. (ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` reports less. A back-reference to the compared object (for
   example `Order.Lines[i].Order`) is no longer a difference of the member that holds it; 2.0.0
   overflowed the stack or reported it. A cycle whose shape changed but whose values unroll
