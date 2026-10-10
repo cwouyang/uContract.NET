@@ -15,6 +15,7 @@ public class EnsureAssignableFrozenCollectionTests
     private static readonly string?[] LetterAndNull = ["a", null];
     private static readonly string?[] TwoNullableLetters = ["a", "b"];
     private static readonly int[] Numbers = [1, 2];
+    private static readonly string[] OneNullPattern = [null!];
 
     [Fact]
     public void EnsureAssignable_WhenMemberHoldsTwoFrozenSetsWithEqualElements_DoesNotThrow()
@@ -512,6 +513,218 @@ public class EnsureAssignableFrozenCollectionTests
 
         Assert.Equal(ItemsChanged, exception.Description);
     }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndAPatternNamesAMemberOfIt_StillReportsADifferentElement()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+        Assert.Equal(expected.Count, actual.Count);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "Items")
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndOneElementDiffers_ReportsTheTwoAsNotEqual()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+        Assert.Equal(expected.Count, actual.Count);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndTheCountsDiffer_ReportsTheTwoAsNotEqual()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = Letters.Take(2).ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndTheTwoEnumerateEqualElementsInAnotherOrder_ReportsTheTwoAsNotEqual()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = Letters.Reverse().ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+        Assert.True(actual.SetEquals(expected));
+        Assert.False(actual.SequenceEqual(expected, StringComparer.Ordinal));
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndBothSidesAreOneInstance_DoesNotThrow()
+    {
+        FrozenSet<string> items = Letters.ToFrozenSet(StringComparer.Ordinal);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(items, items));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndAPatternIsNotARegularExpression_DoesNotExamineThePattern()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = Letters.ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+        Assert.True(actual.SequenceEqual(expected, StringComparer.Ordinal));
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "["));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndAPatternIsNull_DoesNotExamineThePattern()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = Letters.ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+        Assert.True(actual.SequenceEqual(expected, StringComparer.Ordinal));
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, OneNullPattern));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenDictionaryAndTheEntriesAreEqual_DoesNotThrow()
+    {
+        FrozenDictionary<string, int> actual = FrozenEntries(("a", 1), ("b", 2), ("c", 3));
+        FrozenDictionary<string, int> expected = FrozenEntries(("a", 1), ("b", 2), ("c", 3));
+        Assert.NotSame(actual, expected);
+        Assert.True(actual.Keys.SequenceEqual(expected.Keys, StringComparer.Ordinal));
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenDictionaryAndOneValueDiffers_ReportsTheTwoAsNotEqual()
+    {
+        FrozenDictionary<string, int> actual = FrozenEntries(("a", 1), ("b", 2), ("c", 3));
+        FrozenDictionary<string, int> expected = FrozenEntries(("a", 1), ("b", 2), ("c", 4));
+        Assert.NotSame(actual, expected);
+        Assert.True(actual.Keys.SequenceEqual(expected.Keys, StringComparer.Ordinal));
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenDictionary<string, int>)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenDictionaryAndTheTwoEnumerateEqualEntriesInAnotherOrder_ReportsTheTwoAsNotEqual()
+    {
+        FrozenDictionary<string, int> actual = FrozenEntries(("a", 1), ("b", 1), ("c", 1));
+        FrozenDictionary<string, int> expected = FrozenEntries(("c", 1), ("b", 1), ("a", 1));
+        Assert.NotSame(actual, expected);
+        Assert.False(actual.Keys.SequenceEqual(expected.Keys, StringComparer.Ordinal));
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenDictionary<string, int>)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndItsElementsReferToTheirOwnSetAndAreEqual_DoesNotThrow()
+    {
+        FrozenSet<Node> actual = SetOfNodeThatRefersToIt(value: 1);
+        FrozenSet<Node> expected = SetOfNodeThatRefersToIt(value: 1);
+        Assert.NotSame(actual, expected);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsFrozenSetAndItsElementsReferToTheirOwnSetAndDiffer_ReportsTheTwoAsNotEqual()
+    {
+        FrozenSet<Node> actual = SetOfNodeThatRefersToIt(value: 1);
+        FrozenSet<Node> expected = SetOfNodeThatRefersToIt(value: 2);
+        Assert.NotSame(actual, expected);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenSet<Node>)), exception.Description);
+    }
+
+    // An interface as T compares only the properties it declares itself, and IReadOnlySet<T> declares none.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndTwoFrozenSetsDifferInOneElement_DoesNotThrow()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+        Assert.Equal(expected.Count, actual.Count);
+
+        Exception? exception = Record.Exception(() =>
+            Contract.EnsureAssignable<IReadOnlySet<string>>(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndTwoFrozenSetsDifferInCount_DoesNotThrow()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = Letters.Take(2).ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+        Assert.NotEqual(expected.Count, actual.Count);
+
+        Exception? exception = Record.Exception(() =>
+            Contract.EnsureAssignable<IReadOnlySet<string>>(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
+    // The declared type decides, and object has no members.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoFrozenSetsDifferInOneElement_DoesNotThrow()
+    {
+        FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        FrozenSet<string> expected = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotSame(actual, expected);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable<object>(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    private static string NotEqual(Type type) =>
+        $"actual and expected are not equal. {type} is compared as a whole, so assignable patterns do not apply.";
 
     // Adds the entries in the order given.
     private static FrozenDictionary<string, int> FrozenEntries(params (string Key, int Value)[] entries)

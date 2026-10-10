@@ -74,7 +74,8 @@ internal static class MemberComparison
         );
     }
 
-    // The comparison of a nullable value type as a whole met a class whose members are not visible.
+    // The comparison of a nullable value type, or of a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, as a
+    // whole met a class whose members are not visible. For one of the last two, underlyingType is T itself.
     internal static InvalidOperationException CannotCompareBelowNullable(Type underlyingType, HiddenMembers hidden)
     {
         string path = $"{underlyingType.Name}{hidden.PathBelowTopLevelMember}";

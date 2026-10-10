@@ -1364,7 +1364,8 @@ public static class Program
         );
 
         // ---- A FrozenSet<T> or a FrozenDictionary<TKey, TValue> that a member holds is compared element by
-        // element, in enumeration order (issue #49). ----
+        // element, in enumeration order, and one passed as T is compared as a whole in the same way
+        // (issue #49). ----
 
         // Mutation: one element replaced (two frozen sets of different content). Visibility: T.
         yield return new Check(
@@ -1390,6 +1391,22 @@ public static class Program
             Expect.Ok
         );
 
+        // Mutation: one element replaced (two frozen sets of different content). T is the FrozenSet<T> itself:
+        // the two sets are compared as a whole, and the violation says so.
+        yield return new Check(
+            77,
+            "EnsureAssignable<FrozenSet<string>> sets of different content",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        s_frozenCodes.ToFrozenSet(StringComparer.Ordinal),
+                        s_otherFrozenCodes.ToFrozenSet(StringComparer.Ordinal)
+                    )
+                ),
+            Expect.Throws<PostconditionViolationException>("is compared as a whole"),
+            Expect.Ok
+        );
+
         // Mutation: none (two frozen sets, each with its own element of equal Value). Visibility: T; none for
         // HiddenLeaf under Native AOT, where its Equals says unequal: the comparison reports that it cannot
         // compare the elements. Under the JIT the members of HiddenLeaf are visible and the elements are equal.
@@ -1404,6 +1421,27 @@ public static class Program
                     )
                 ),
             Expect.Throws<InvalidOperationException>("cannot compare", "uContract.AotSmoke.HiddenLeaf"),
+            Expect.Ok
+        );
+
+        // The same two sets, with the FrozenSet<T> itself as T: the sets are compared as a whole, so the path
+        // to the elements that cannot be compared starts at the set and names no member. Under the JIT the
+        // members of HiddenLeaf are visible and the elements are equal.
+        yield return new Check(
+            79,
+            "EnsureAssignable<FrozenSet<HiddenLeaf>> elements with hidden members",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new[] { new HiddenLeaf { Value = 1 } }.ToFrozenSet(),
+                        new[] { new HiddenLeaf { Value = 1 } }.ToFrozenSet()
+                    )
+                ),
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare",
+                "uContract.AotSmoke.HiddenLeaf",
+                "reached through 'FrozenSet`1[]'"
+            ),
             Expect.Ok
         );
     }

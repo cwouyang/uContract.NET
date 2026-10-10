@@ -1948,7 +1948,7 @@ public class EnsureAssignableTests
         Assert.Equal(NotEqual(typeof(Action)), exception.Description);
     }
 
-    // A frozen set is a shared type, and it is still compared member by member.
+    // A FrozenSet<T> passed as T is compared as a whole: element by element, in enumeration order.
     [Fact]
     public void EnsureAssignable_WhenFrozenSetsHaveEqualContent_DoesNotThrow()
     {
