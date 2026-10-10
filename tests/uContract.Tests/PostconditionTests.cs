@@ -1955,6 +1955,7 @@ public class EnsureAssignableTests
         FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
         FrozenSet<string> expected = Letters.ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actual, expected);
+        Assert.True(actual.SequenceEqual(expected, StringComparer.Ordinal));
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 

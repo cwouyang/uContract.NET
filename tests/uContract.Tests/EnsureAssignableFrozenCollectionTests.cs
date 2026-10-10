@@ -53,6 +53,11 @@ public class EnsureAssignableFrozenCollectionTests
         FrozenSet<string> actualItems = Letters.ToFrozenSet(StringComparer.Ordinal);
         FrozenSet<string> expectedItems = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actualItems, expectedItems);
+        Assert.Equal(expectedItems.Count, actualItems.Count);
+        Assert.Single(
+            actualItems.Zip(expectedItems),
+            pair => !string.Equals(pair.First, pair.Second, StringComparison.Ordinal)
+        );
         Holder<FrozenSet<string>> actual = new() { Items = actualItems };
         Holder<FrozenSet<string>> expected = new() { Items = expectedItems };
 
@@ -69,6 +74,7 @@ public class EnsureAssignableFrozenCollectionTests
         FrozenDictionary<string, int> actualItems = FrozenEntries(("a", 1), ("b", 2), ("c", 3));
         FrozenDictionary<string, int> expectedItems = FrozenEntries(("a", 1), ("b", 2), ("c", 4));
         Assert.NotSame(actualItems, expectedItems);
+        Assert.True(actualItems.Keys.SequenceEqual(expectedItems.Keys, StringComparer.Ordinal));
         Holder<FrozenDictionary<string, int>> actual = new() { Items = actualItems };
         Holder<FrozenDictionary<string, int>> expected = new() { Items = expectedItems };
 
@@ -85,6 +91,12 @@ public class EnsureAssignableFrozenCollectionTests
         FrozenDictionary<string, int> actualItems = FrozenEntries(("a", 1), ("b", 2), ("c", 3));
         FrozenDictionary<string, int> expectedItems = FrozenEntries(("a", 1), ("b", 2), ("d", 3));
         Assert.NotSame(actualItems, expectedItems);
+        Assert.Equal(expectedItems.Count, actualItems.Count);
+        Assert.Single(
+            actualItems.Keys.Zip(expectedItems.Keys),
+            pair => !string.Equals(pair.First, pair.Second, StringComparison.Ordinal)
+        );
+        Assert.True(actualItems.Values.SequenceEqual(expectedItems.Values));
         Holder<FrozenDictionary<string, int>> actual = new() { Items = actualItems };
         Holder<FrozenDictionary<string, int>> expected = new() { Items = expectedItems };
 
