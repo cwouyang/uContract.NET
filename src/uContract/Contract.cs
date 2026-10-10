@@ -373,9 +373,11 @@ public static class Contract
     ///     collections (the types declared in <c>System.Collections.Frozen</c>) and the comparers that the base
     ///     class library itself declares; a class of yours derived from <c>StringComparer</c> or
     ///     <c>Comparer&lt;T&gt;</c> is copied.
-    ///     State inside a shared instance is not snapshotted. The target of a delegate is not compared. The
-    ///     elements of a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> are shared
-    ///     with it, so a change inside one of them is not seen while both sides hold the same object.
+    ///     State inside a shared instance is not snapshotted. The target of a delegate is not compared. The copy
+    ///     of a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> holds the same set or
+    ///     dictionary as the original, so its elements, keys and values are the original objects: a change inside
+    ///     one of them is not seen while both sides hold that same element object, and is seen once the new
+    ///     collection holds another object in that place.
     ///     A class that derives from a type of the first group is shared too, so <c>Old(() =&gt; this)</c> in
     ///     such a class returns <c>this</c>. There, check each state member with
     ///     <see cref="Ensure(string, Func{bool})" /> and a value taken with this method.
@@ -1093,9 +1095,10 @@ public static class Contract
     ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class compares the
     ///     members it declares or inherits, and an interface only the properties it declares itself; in
     ///     neither case what the runtime type adds, even if the values are strings. Two different instances
-    ///     of a type that <see cref="Old{T}" /> shares, other than a string or a delegate (two <c>Stream</c>s),
-    ///     are still compared member by member, and so is a type that is shared, and fixed (a <c>Regex</c>),
-    ///     also for one instance on both sides.
+    ///     of a type that <see cref="Old{T}" /> shares, other than a string, a delegate, or a
+    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> (two <c>Stream</c>s are still
+    ///     compared member by member), and so is a type that is shared, and fixed (a <c>Regex</c>), also for one
+    ///     instance on both sides.
     ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
     ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
     ///     in a class derived from <c>Stream</c>, <c>Task</c> or <c>Component</c> compares the object with

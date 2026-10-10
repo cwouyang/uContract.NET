@@ -100,10 +100,12 @@ internal static class SharedTypes
         return Cache.GetOrAdd(type, Classify);
     }
 
-    // The shared types of which two instances are compared element by element, in enumeration order, and not
-    // by reference: every construction of FrozenSet<T> or FrozenDictionary<TKey, TValue> and every type
-    // derived from one. No other type declared in System.Collections.Frozen matches, and an array of them
-    // does not.
+    /// <summary>
+    ///     The shared types of which two instances are compared element by element, in enumeration order, and
+    ///     not by reference: every construction of <c>FrozenSet&lt;T&gt;</c> or
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and every type derived from one. No other type declared
+    ///     in <c>System.Collections.Frozen</c> matches, and an array of them does not.
+    /// </summary>
     internal static bool IsFrozenSetOrDictionary(Type type)
     {
         return DerivesFromGeneric(type, typeof(FrozenSet<>)) || DerivesFromGeneric(type, typeof(FrozenDictionary<,>));
