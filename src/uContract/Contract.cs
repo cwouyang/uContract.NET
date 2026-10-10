@@ -1015,9 +1015,9 @@ public static class Contract
     ///     Thrown, in every build, when one instance is passed as <paramref name="actual" /> and as
     ///     <paramref name="expected" /> and its runtime type is a type that <see cref="Old{T}" /> shares, and its
     ///     state can change (a <c>Stream</c>, a <c>Task</c>, a <c>Component</c>, a class derived from one of them,
-    ///     ...). <see cref="Old{T}" /> returned the original and not a copy, so there is no earlier state to compare
-    ///     with; the message names the shared base type. This holds for every <typeparamref name="T" />,
-    ///     <see cref="object" /> included, and no member is compared.
+    ///     ...). <see cref="Old{T}" /> returns such an instance itself, not a copy, so there is no earlier state to
+    ///     compare with; the message names the shared base type, or says that the instance is a COM object. This
+    ///     holds for every <typeparamref name="T" />, <see cref="object" /> included, and no member is compared.
     ///     Also thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to reflection and
     ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
     ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to

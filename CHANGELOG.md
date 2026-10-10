@@ -15,24 +15,24 @@ types, shared references and cycles. Code that relied on the lossy JSON copy cha
 state you need, for example `Old(() => _balance)`), an `object` member holds the boxed value instead
 of a `JsonElement`, and a lazily evaluated sequence is cloned as an iterator instead of being
 materialized (capture it with `.ToList()`). `EnsureAssignable<T>()` now reports some differences it
-missed and no longer reports some it raised wrongly; each case is listed under Changed. In a
-class that derives from a type that `Old<T>()` shares, replace the pair on `this` by
-`Contract.Ensure` checks of the state members. Code that catches the
-`InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or the `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. A `null`
-test or an `ArgumentNullException` handler around the `Old` + `EnsureAssignable` pair is no longer
-needed for the case that postconditions are off. Removing a `null` test changes the result for a
-member that can be `null`: going from `null` to a value, or back, is now a violation that the
-assignable patterns cannot excuse, so keep the test where that change is allowed. Code that caught
-`ArgumentNullException` or `ArgumentException` from `EnsureAssignable<T>()` for a `null` value gets
-`PostconditionViolationException` for one `null` and nothing for two. For a `string`, a delegate or
-a nullable value type as `T`, a pattern no longer allows a change, so do not call the method for a
-value that may change; a test that matched "Fields were modified" for such a `T` sees another
-message; a `string` is compared by ordinal `Equals`, so a change of letter case is a violation; a
-delegate's target is no longer compared. An `Old` result taken while another contract check is
-running gave `ArgumentNullException` in 2.x; it now gives a violation that did not happen, or none.
-`EnsureImmutableCollection<T>()` is no longer a `null` guard with postconditions off. For trimmed
-and Native AOT applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) in the
-README.
+missed and no longer reports some it raised wrongly; each case is listed under Changed. In a class
+that derives from a type that `Old<T>()` shares, replace the pair on `this` by `Contract.Ensure`
+checks of the state members. Code that catches the `InvalidOperationException` that `Old<T>()` threw
+for a type it could not serialize, or the `JsonException` for a deep graph, can drop that handler:
+`Old<T>()` throws neither. A `null` test or an `ArgumentNullException` handler around the `Old` +
+`EnsureAssignable` pair is no longer needed for the case that postconditions are off. Removing a
+`null` test changes the result for a member that can be `null`: going from `null` to a value, or
+back, is now a violation that the assignable patterns cannot excuse, so keep the test where that
+change is allowed. Code that caught `ArgumentNullException` or `ArgumentException` from
+`EnsureAssignable<T>()` for a `null` value gets `PostconditionViolationException` for one `null` and
+nothing for two. For a `string`, a delegate or a nullable value type as `T`, a pattern no longer
+allows a change, so do not call the method for a value that may change; a test that matched "Fields
+were modified" for such a `T` sees another message; a `string` is compared by ordinal `Equals`, so a
+change of letter case is a violation; a delegate's target is no longer compared. An `Old` result
+taken while another contract check is running gave `ArgumentNullException` in 2.x; it now gives a
+violation that did not happen, or none. `EnsureImmutableCollection<T>()` is no longer a `null` guard
+with postconditions off. For trimmed and Native AOT applications, see [Trimming and Native
+AOT](README.md#trimming-and-native-aot) in the README.
 
 ### Changed
 
@@ -130,7 +130,7 @@ README.
   (#40), as is a type that is shared, and fixed (a frozen collection, a `Regex`), also for one
   instance on both sides. One instance of a shared type whose state can change, passed as `actual`
   and as `expected`, is not compared, whatever `T` is, `object` included: the method throws
-  `InvalidOperationException`; the next entry gives the ways out. (#52; ADR-0022)
+  `InvalidOperationException`; the entry for #54 below gives the ways out. (#52; ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` throws `InvalidOperationException` when one instance of a
   shared type whose state can change is passed as `actual` and as `expected`. `Old<T>()` shares such
   an instance (a `Stream`, a `Task`, a `CancellationTokenSource`, a class derived from `Component`,
