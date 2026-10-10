@@ -1801,7 +1801,7 @@ Measured after the design was written, with the same `H`:
 |---|---|---|
 | two `FrozenSet<string?>`, each built from `"a"` and `null` (one internal class, `SmallFrozenSet`; the same enumeration order) | violation | no exception |
 | a `FrozenSet<string?>` built from `"a"` and `null`, and one built from `"a"` and `"b"` (two internal classes, `SmallFrozenSet` and `LengthBucketsFrozenSet`) | violation | violation |
-| `old = Old(() => h)`; change the `Box` inside the set; replace `h.Items` by a frozen set of a new `Box` with the changed content; `EnsureAssignable(h, old)` | not measured on `6b24bee` | no exception |
+| `old = Old(() => h)`; change the `Box` inside the set; replace `h.Items` by a frozen set of a new `Box` with the changed content; `EnsureAssignable(h, old)` | violation (`Items` and its backing field, by reference; measured on `6b24bee`) | no exception |
 | the same steps, but the new `Box` has the content as it was when `Old` ran | not measured on `6b24bee` | violation |
 
 The third and the fourth example are the two results of the limit "Elements are shared" after the
@@ -1905,8 +1905,11 @@ The way out for limits 1 and 2: list the member as assignable, and state the con
 unchanged", () => _tags.SetEquals(oldTags))` with `oldTags = Contract.Old(() => _tags)`. `Old<T>()`
 returns the earlier instance itself, which is what the condition needs. When `T` itself is one of
 the two types there is no member to list: use `Contract.Ensure` in place of `EnsureAssignable<T>()`.
-The way out for limit 3: before the change, take each value that must stay with `Old<T>()` (a value,
-not the element object), and check it afterwards with `Contract.Ensure`.
+The way out for limit 3: before the change, take each value that must stay with `Old<T>()`, and
+check it afterwards with `Contract.Ensure`. An element taken on its own is copied by `Old<T>()`,
+unless its own type is one that `Old<T>()` shares (a nested `FrozenSet<T>` is shared again); compare
+it afterwards with `EnsureAssignable<T>()`. Taking a value that holds no reference, such as a
+number, or a `string`, always works: `Old<T>()` copies such a value, and a `string` cannot change.
 
 **Measured results, unit tests.** The suite had 696 tests on `6b24bee`, with 0 failed in the Debug
 and in the Release configuration. After the change it has 746, with 0 failed in both configurations.
