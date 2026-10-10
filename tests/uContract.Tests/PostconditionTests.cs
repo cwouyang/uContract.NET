@@ -2576,7 +2576,8 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
 
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(same, same));
 
-        Assert.IsType<InvalidOperationException>(exception);
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains("no properties or fields are visible", cannotCompare.Message);
     }
 
     [Fact]
