@@ -574,22 +574,23 @@ public unsafe class EnsureAssignablePointerArrayTests
     }
 
     [Fact]
-    public void Old_WhenObjectHoldsAnArrayOfFunctionPointers_ReturnsACopyWithAnotherArray()
+    public void Old_WhenObjectHoldsAnArrayOfFunctionPointers_DoesNotThrow()
+    {
+        FunctionPointerArrayHolder holder = new() { Items = [&FirstFunction] };
+
+        Exception? exception = Record.Exception(() => Contract.Old(() => holder));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void Old_WhenObjectHoldsAnArrayOfFunctionPointers_CopiesTheArrayWithItsAddress()
     {
         FunctionPointerArrayHolder holder = new() { Items = [&FirstFunction] };
 
         FunctionPointerArrayHolder old = Contract.Old(() => holder);
 
         Assert.NotSame(holder.Items, old.Items);
-    }
-
-    [Fact]
-    public void Old_WhenObjectHoldsAnArrayOfFunctionPointers_CopiesTheAddress()
-    {
-        FunctionPointerArrayHolder holder = new() { Items = [&FirstFunction] };
-
-        FunctionPointerArrayHolder old = Contract.Old(() => holder);
-
         Assert.Equal((nint)holder.Items[0], (nint)old.Items[0]);
     }
 
@@ -674,9 +675,112 @@ public unsafe class EnsureAssignablePointerArrayTests
         Assert.Equal(ItemsPropertyChanged, exception.Description);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenMemberHoldsArraysOfUnmanagedFunctionPointersToTheSameFunction_DoesNotThrow()
+    {
+        delegate* unmanaged<void>[] actualItems = [&UnmanagedFunction];
+        delegate* unmanaged<void>[] expectedItems = [&UnmanagedFunction];
+        ArrayHolder actual = new() { Items = actualItems };
+        ArrayHolder expected = new() { Items = expectedItems };
+        Assert.NotSame(actual.Items, expected.Items);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberHoldsArraysOfPointersToPointersAtTheSameAddress_DoesNotThrow()
+    {
+        int target = 1;
+        int* pointer = &target;
+        int**[] actualItems = [&pointer];
+        int**[] expectedItems = [&pointer];
+        ArrayHolder actual = new() { Items = actualItems };
+        ArrayHolder expected = new() { Items = expectedItems };
+        Assert.NotSame(actual.Items, expected.Items);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberHoldsArraysOfPointersToPointersAtDifferentAddresses_ReportsTheMember()
+    {
+        int target = 1;
+        int* first = &target;
+        int* second = &target;
+        int**[] actualItems = [&first];
+        int**[] expectedItems = [&second];
+        ArrayHolder actual = new() { Items = actualItems };
+        ArrayHolder expected = new() { Items = expectedItems };
+        Assert.NotSame(actual.Items, expected.Items);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ItemsFieldChanged, exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberHoldsTwoDimensionalArraysOfFunctionPointersToTheSameFunctions_DoesNotThrow()
+    {
+        ArrayHolder actual = new() { Items = OneByTwo(&FirstFunction, &SecondFunction) };
+        ArrayHolder expected = new() { Items = OneByTwo(&FirstFunction, &SecondFunction) };
+        Assert.NotSame(actual.Items, expected.Items);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberHoldsTwoDimensionalArraysOfFunctionPointersWhoseSecondFunctionDiffers_ReportsTheMember()
+    {
+        ArrayHolder actual = new() { Items = OneByTwo(&FirstFunction, &SecondFunction) };
+        ArrayHolder expected = new() { Items = OneByTwo(&FirstFunction, &FirstFunction) };
+        Assert.NotSame(actual.Items, expected.Items);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ItemsFieldChanged, exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnElementOfATwoDimensionalArrayOfPointersIsSetToAnotherAddressSinceOld_ReportsTheMember()
+    {
+        int first = 1;
+        int second = 1;
+        PointerGridHolder holder = new() { Items = OneByTwo(&first, &second) };
+        PointerGridHolder old = Contract.Old(() => holder);
+        Assert.NotSame(holder.Items, old.Items);
+        holder.Items[0, 1] = &first;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(holder, old)
+        );
+
+        Assert.Equal(ItemsFieldChanged, exception.Description);
+    }
+
     private static void FirstFunction() { }
 
     private static void SecondFunction() { }
+
+    [UnmanagedCallersOnly]
+    private static void UnmanagedFunction() { }
+
+    private static delegate* <void>[,] OneByTwo(delegate* <void> first, delegate* <void> second)
+    {
+        delegate* <void>[,] grid = new delegate* <void>[1, 2];
+        grid[0, 0] = first;
+        grid[0, 1] = second;
+        return grid;
+    }
 
     private static delegate* <void>[] ArrayOfFunctionPointers(delegate* <void> function) => [function];
 

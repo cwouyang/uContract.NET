@@ -153,6 +153,12 @@ public sealed class SharedTypesTests
     }
 
     [Fact]
+    public unsafe void IsShared_WhenTypeIsAnArrayOfUnmanagedFunctionPointers_ReturnsFalse()
+    {
+        Assert.False(SharedTypes.IsShared(typeof(delegate* unmanaged<void>[])));
+    }
+
+    [Fact]
     public void IsShared_WhenTypeDerivesFromAListedType_ReturnsTrue()
     {
         Assert.True(SharedTypes.IsShared(typeof(RecordingStream)));
