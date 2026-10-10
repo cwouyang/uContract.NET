@@ -71,7 +71,7 @@ internal static class SharedTypes
 
     // The listed types whose state can change, in the order in which a type is matched against them. The
     // other listed types are fixed: a string, a delegate, the reflection objects and a Regex.
-    private static readonly Type[] ListedWithChangingState =
+    internal static readonly Type[] ListedWithChangingState =
     [
         typeof(Stream),
         typeof(WaitHandle),
@@ -107,13 +107,20 @@ internal static class SharedTypes
     /// </summary>
     internal static string? DescribeChangingShare(Type type)
     {
-        Type? listed =
-            ListedWithChangingState.FirstOrDefault(candidate => candidate.IsAssignableFrom(type))
-            ?? ListedGenerics.FirstOrDefault(definition => DerivesFromGeneric(type, definition));
-
-        if (listed is not null)
+        foreach (Type candidate in ListedWithChangingState)
         {
-            return InstanceOf(listed.ToString());
+            if (candidate.IsAssignableFrom(type))
+            {
+                return InstanceOf(candidate.ToString());
+            }
+        }
+
+        foreach (Type definition in ListedGenerics)
+        {
+            if (DerivesFromGeneric(type, definition))
+            {
+                return InstanceOf(definition.ToString());
+            }
         }
 
         if (DerivesFromNamed(type, LockFullName))
