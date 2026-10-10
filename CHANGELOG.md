@@ -78,10 +78,12 @@ AOT](README.md#trimming-and-native-aot) in the README.
   key and value with value), as 2.0.0 compared two of them in members of objects passed to it
   directly. Their elements, keys and values follow the rules of this version: two of the
   dictionaries whose values are different objects of equal content were a violation in 2.0.0 and
-  are equal now. Any other type declared in `System.Collections.Frozen` (an array of `FrozenSet<T>`,
-  a class of yours declared there) is compared by reference (#49). Members whose runtime types
-  differ are unequal; the runtime type decides, not the declared type. Base and derived instances
-  are unequal.
+  are equal now (#49; see the entry that begins "`EnsureAssignable<T>()` reports less" below). Two
+  instances of one other type declared in `System.Collections.Frozen` (two arrays of `FrozenSet<T>`,
+  two instances of a class of yours declared there) are compared by reference. Members whose runtime
+  types differ are unequal, except two sequences, which are compared element by element; the runtime
+  type decides, not the declared type. Base and derived instances are unequal, with the same
+  exception.
   A `string` and a `char[]` are unequal. A user-defined struct that implements `IEnumerable`, held
   in an interface-typed or `object` member, is compared by its fields, so state besides its elements
   is reported. A change outside the window of a `Memory<T>` or `ReadOnlyMemory<T>` is reported. A
