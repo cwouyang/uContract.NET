@@ -351,8 +351,11 @@ public class EnsureAssignableFrozenCollectionTests
     [Fact]
     public void EnsureAssignable_WhenMemberHoldsTwoEqualSequencesOfAnotherTypeInTheFrozenNamespace_ReportsTheMember()
     {
-        Holder<FrozenNamespaceSequence> actual = new() { Items = new FrozenNamespaceSequence(1, 2) };
-        Holder<FrozenNamespaceSequence> expected = new() { Items = new FrozenNamespaceSequence(1, 2) };
+        FrozenNamespaceSequence actualItems = new(1, 2);
+        FrozenNamespaceSequence expectedItems = new(1, 2);
+        Assert.NotSame(actualItems, expectedItems);
+        Holder<FrozenNamespaceSequence> actual = new() { Items = actualItems };
+        Holder<FrozenNamespaceSequence> expected = new() { Items = expectedItems };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -366,6 +369,7 @@ public class EnsureAssignableFrozenCollectionTests
     {
         using FrozenNamespaceComponentSequence actualItems = new(1, 2);
         using FrozenNamespaceComponentSequence expectedItems = new(1, 2);
+        Assert.NotSame(actualItems, expectedItems);
         Holder<FrozenNamespaceComponentSequence> actual = new() { Items = actualItems };
         Holder<FrozenNamespaceComponentSequence> expected = new() { Items = expectedItems };
 
@@ -379,8 +383,11 @@ public class EnsureAssignableFrozenCollectionTests
     [Fact]
     public void EnsureAssignable_WhenMemberHoldsTwoEqualObjectsOfAnotherTypeInTheFrozenNamespace_ReportsTheMember()
     {
-        Holder<FrozenNamespaceValue> actual = new() { Items = new FrozenNamespaceValue { Value = 1 } };
-        Holder<FrozenNamespaceValue> expected = new() { Items = new FrozenNamespaceValue { Value = 1 } };
+        FrozenNamespaceValue actualItems = new() { Value = 1 };
+        FrozenNamespaceValue expectedItems = new() { Value = 1 };
+        Assert.NotSame(actualItems, expectedItems);
+        Holder<FrozenNamespaceValue> actual = new() { Items = actualItems };
+        Holder<FrozenNamespaceValue> expected = new() { Items = expectedItems };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -679,7 +686,7 @@ public class EnsureAssignableFrozenCollectionTests
         Assert.Equal(NotEqual(typeof(FrozenSet<Node>)), exception.Description);
     }
 
-    // An interface as T compares only the properties it declares itself, and IReadOnlySet<T> declares none.
+    // An interface as T compares only the properties it declares itself, and IReadOnlySet<T> declares no property itself.
     [Fact]
     public void EnsureAssignable_WhenTIsAnInterfaceAndTwoFrozenSetsDifferInOneElement_DoesNotThrow()
     {
