@@ -462,6 +462,28 @@ public class EnsureAssignableFrozenCollectionTests
         Assert.Null(exception);
     }
 
+    // Old shares the FrozenSet<T>, so the elements of the old value are the original objects as they are now,
+    // not as they were when Old ran. The new element is compared with the changed original, so a violation is
+    // reported although the content is as it was when Old ran.
+    [Fact]
+    public void EnsureAssignable_WhenAnElementIsChangedAndItsFrozenSetReplacedByOneWithANewElementAsItWas_ReportsTheMember()
+    {
+        Box box = new() { Value = 1 };
+        Holder<FrozenSet<Box>> actual = new() { Items = new[] { box }.ToFrozenSet() };
+        Holder<FrozenSet<Box>>? old = Contract.Old(() => actual);
+        Assert.NotNull(old);
+        Assert.Same(old.Items, actual.Items);
+        box.Value = 2;
+        actual.Items = new[] { new Box { Value = 1 } }.ToFrozenSet();
+        Assert.NotSame(old.Items, actual.Items);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, old)
+        );
+
+        Assert.Equal(ItemsChanged, exception.Description);
+    }
+
     [Fact]
     public void EnsureAssignable_WhenFrozenSetIsReplacedByOneWithADifferentElementAfterOld_ReportsTheMember()
     {
