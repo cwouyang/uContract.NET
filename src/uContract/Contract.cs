@@ -963,6 +963,10 @@ public static class Contract
     ///     underlying type may not be preserved. <see cref="object" /> compares nothing beyond null; a base
     ///     class compares the members it declares or inherits, and an interface only the properties it
     ///     declares itself.
+    ///     Whatever it is, <see cref="object" /> included, nothing is compared and the method throws
+    ///     <see cref="InvalidOperationException" /> when one instance is passed as <paramref name="actual" />
+    ///     and as <paramref name="expected" /> and its runtime type is a type that <see cref="Old{T}" />
+    ///     shares, and its state can change: see the remarks.
     /// </typeparam>
     /// <param name="actual">The current state of the object. Null is compared as a value: see the remarks.</param>
     /// <param name="expected">
@@ -975,8 +979,9 @@ public static class Contract
     ///     and as its backing field <c>&lt;Email&gt;k__BackingField</c>, so a pattern anchored with <c>^</c> and
     ///     <c>$</c> must cover both, for example <c>^(Email|&lt;Email&gt;k__BackingField)$</c>.
     ///     Examples: "Email", ".*Timestamp", "^_.*"
-    ///     The patterns do not apply, and are not examined, when one of the two values is null or when the two
-    ///     values are compared as a whole.
+    ///     The patterns do not apply, and are not examined, when one of the two values is null, when the two
+    ///     values are compared as a whole, or when one instance passed as <paramref name="actual" /> and as
+    ///     <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can change.
     /// </param>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="assignableFieldPatterns" /> is null.
@@ -987,13 +992,20 @@ public static class Contract
     ///     no value). Also thrown when the two values are compared as a whole and are not equal.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    ///     Thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to reflection and
+    ///     Thrown, in every build, when one instance is passed as <paramref name="actual" /> and as
+    ///     <paramref name="expected" /> and its runtime type is a type that <see cref="Old{T}" /> shares, and its
+    ///     state can change (a <c>Stream</c>, a <c>Task</c>, a <c>Component</c>, a class derived from one of them,
+    ///     ...). <see cref="Old{T}" /> returned the original and not a copy, so there is no earlier state to compare
+    ///     with; the message names the shared base type. This holds for every <typeparamref name="T" />,
+    ///     <see cref="object" /> included, and no member is compared.
+    ///     Also thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to reflection and
     ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
     ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to
     ///     be compared has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c>
     ///     override this only means they are different instances). Below a nullable value type, the same holds for a
     ///     class with no visible members whose <c>Equals</c> reports the values unequal.
-    ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt.
+    ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
+    ///     from this rule (no members visible) only, not from the rule for one shared instance above.
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method
     ///     visible through the compared type: a write-only property, or one whose getter was removed by trimming.
     ///     This applies to properties of <typeparamref name="T" />, of nested members, of collection elements and
@@ -1022,7 +1034,9 @@ public static class Contract
     ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
     ///     When <typeparamref name="T" /> itself has no visible members, the method throws and does not ask
     ///     <c>Equals</c>, unless <paramref name="actual" /> or <paramref name="expected" /> is null or
-    ///     <typeparamref name="T" /> is compared as a whole.
+    ///     <typeparamref name="T" /> is compared as a whole. When one instance passed as <paramref name="actual" />
+    ///     and as <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can
+    ///     change, the method throws the message of that case instead, in every build.
     ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
@@ -1050,8 +1064,17 @@ public static class Contract
     ///     For every other <typeparamref name="T" /> the members visible through it are compared:
     ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class compares the
     ///     members it declares or inherits, and an interface only the properties it declares itself; in
-    ///     neither case what the runtime type adds, even if the values are strings. A shared type other than
-    ///     a string or a delegate (a <c>Stream</c>, a frozen collection) is still compared member by member.
+    ///     neither case what the runtime type adds, even if the values are strings. Two different instances
+    ///     of a type that <see cref="Old{T}" /> shares, other than a string or a delegate (two <c>Stream</c>s),
+    ///     are still compared member by member, and so is a type that is shared, and fixed (a frozen
+    ///     collection, a <c>Regex</c>), also for one instance on both sides.
+    ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
+    ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
+    ///     in a class derived from <c>Stream</c>, <c>Task</c> or <c>Component</c> compares the object with
+    ///     itself, because <see cref="Old{T}" /> returns the original. The method then throws
+    ///     <see cref="InvalidOperationException" />, whatever <typeparamref name="T" /> is,
+    ///     <see cref="object" /> included, and the patterns do not apply. Check each state member with
+    ///     <see cref="Ensure(string, Func{bool})" /> and a value taken with <see cref="Old{T}" /> instead.
     ///     Native AOT: for a nullable value type the fields of the underlying type may not be preserved. If it holds a
     ///     reference, the comparison can then report a difference for an unchanged value or, with an
     ///     <see cref="Old{T}" /> snapshot, miss a change inside the object it refers to. Preserve the underlying type
@@ -1096,7 +1119,19 @@ public static class Contract
             return;
         }
 
-        // Step 4: Execute with guard. A string, a delegate type or a nullable value type is compared as one pair,
+        // Step 4: Report one instance passed as actual and as expected when its type is one that Old<T>() shares
+        // and its state can change: there is no earlier state to compare with. This comes before the guard is
+        // set, and reads no member of the value and no pattern. A value type is never one instance twice.
+        if (
+            !typeof(T).IsValueType
+            && ReferenceEquals(actual, expected)
+            && SharedTypes.DescribeChangingShare(actual!.GetType()) is { } shared
+        )
+        {
+            throw _CannotCompareOneSharedInstance(actual.GetType(), shared);
+        }
+
+        // Step 5: Execute with guard. A string, a delegate type or a nullable value type is compared as one pair,
         // without the patterns and without the member metadata of T; any other T is compared member by member.
         try
         {
@@ -1145,6 +1180,18 @@ public static class Contract
                 ? "expected is null and actual is not. If expected came from Contract.Old, null can also mean "
                     + "that no snapshot was taken: Old returns default while another contract check is running."
                 : "actual is null and expected is not."
+        );
+    }
+
+    private static InvalidOperationException _CannotCompareOneSharedInstance(Type runtimeType, string shared)
+    {
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {runtimeType}: actual and expected are the same instance. "
+                + $"Contract.Old shares {shared} with the original instead of copying it, so there is no earlier "
+                + "state to compare with. Assignable patterns do not apply: no member was compared. "
+                + "Ways out: check each state member with Contract.Ensure and a value taken with Contract.Old; "
+                + "to check only that a reference was not replaced, use Contract.Ensure with ReferenceEquals; "
+                + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }
 

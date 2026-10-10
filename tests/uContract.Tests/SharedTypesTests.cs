@@ -138,6 +138,41 @@ public sealed class SharedTypesTests
         Assert.True(SharedTypes.IsShared(typeof(RecordingStream)));
     }
 
+    // The listed types that are shared, and fixed. Every other listed type is shared, and its state can change.
+    // A type added to SharedTypes must be put on one side: this test fails until it is.
+    private static readonly Type[] s_listedTypesThatAreFixed =
+    [
+        typeof(string),
+        typeof(Delegate),
+        typeof(Type),
+        typeof(MemberInfo),
+        typeof(Assembly),
+        typeof(Module),
+        typeof(Pointer),
+        typeof(Regex),
+    ];
+
+    [Fact]
+    public void DescribeChangingShare_ForEveryListedType_IsNullForTheFixedOnesOnly()
+    {
+        Type named = typeof(System.Threading.Lock);
+        Assert.Equal(SharedTypes.LockFullName, named.FullName);
+        Type[] listed = [.. SharedTypes.Listed, .. SharedTypes.ListedGenerics, named];
+
+        Assert.All(
+            listed,
+            type =>
+                Assert.Equal(s_listedTypesThatAreFixed.Contains(type), SharedTypes.DescribeChangingShare(type) is null)
+        );
+        Assert.All(s_listedTypesThatAreFixed, type => Assert.Contains(type, listed));
+    }
+
+    [WindowsFact]
+    public void DescribeChangingShare_WhenTypeIsAComImport_ReturnsAComObject()
+    {
+        Assert.Equal("a COM object", SharedTypes.DescribeChangingShare(typeof(ImportedComClass)));
+    }
+
     // The comparer a HashSet<string> stores is an internal CoreLib type, distinct from what its Comparer property returns.
     private static object StoredStringSetComparer()
     {

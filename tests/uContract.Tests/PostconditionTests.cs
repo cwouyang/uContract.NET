@@ -2581,6 +2581,23 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenOneSharedInstanceWhoseStateCanChangeIsOnBothSides_ReportsTheSameInstance()
+    {
+        using Connection same = new();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable<IDisposable>(same, same));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            EnsureAssignableSameSharedInstanceTests.ExpectedMessage(
+                typeof(Connection),
+                typeof(System.ComponentModel.Component)
+            ),
+            cannotCompare.Message
+        );
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenANullableStructHoldsATypeWithNoVisibleMembers_ThrowsInvalidOperation()
     {
         TagSlot? actual = new TagSlot { Tag = new NoVisibleMembers() };
@@ -2611,6 +2628,8 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
     }
 
     private sealed class NoVisibleMembers;
+
+    private sealed class Connection : System.ComponentModel.Component;
 
     private struct TagSlot
     {
