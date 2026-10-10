@@ -377,9 +377,12 @@ public static class Contract
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> that the copy holds is the
     ///     original's own set or dictionary, so its elements, keys and values are the original objects, as they are
     ///     when the comparison runs and not as they were when this method ran. A change inside one of them is
-    ///     therefore not seen while both sides hold that object. After the collection is replaced, an object that
-    ///     the new collection holds in that place is compared with the original object as it is now, so a change can
-    ///     still be missed, and a violation can be reported for content that is as it was when this method ran.
+    ///     therefore not seen while both sides hold that object at the same place in the enumeration order. After
+    ///     the collection is replaced, an object that the new collection holds at that place is compared with the
+    ///     original object as it is now, so a change can still be missed, and a violation can be reported for
+    ///     content that is as it was when this method ran. To check the state of an element, take its values with
+    ///     this method before the change and compare them afterwards with
+    ///     <see cref="Ensure(string, Func{bool})" />.
     ///     A class that derives from a type of the first group is shared too, so <c>Old(() =&gt; this)</c> in
     ///     such a class returns <c>this</c>. There, check each state member with
     ///     <see cref="Ensure(string, Func{bool})" /> and a value taken with this method.
@@ -1099,7 +1102,7 @@ public static class Contract
     ///     neither case what the runtime type adds, even if the values are strings. Two different instances
     ///     of a type that <see cref="Old{T}" /> shares (two <c>Stream</c>s) are still compared member by member,
     ///     and so is a type that is shared, and fixed (a <c>Regex</c>), also for one instance on both sides; in
-    ///     both cases unless <typeparamref name="T" /> is a string, a delegate, or a <c>FrozenSet&lt;T&gt;</c> or a
+    ///     both cases unless <typeparamref name="T" /> is a string, a delegate type, or a <c>FrozenSet&lt;T&gt;</c> or a
     ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, which are compared as a whole.
     ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
     ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
