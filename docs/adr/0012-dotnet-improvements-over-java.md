@@ -9,6 +9,7 @@
 - **Status Date**: 2025-10-19
 - **Amended**: 2026-10-09 — `EnsureAssignable<T>()` checks `actual` and `expected` for `null` only when it compares them, an exception to "All public contract methods will validate their parameters before any other logic"; see the Amendment under Implementation Notes
 - **Amended**: 2026-10-09 — `EnsureAssignable<T>()` compares a `null` `actual` or `expected` as a value and never rejects it, and `EnsureImmutableCollection<T>()` checks `collection` for `null` only when it checks the collection (#52); this supersedes parts of the #47 amendment; see the second Amendment under Implementation Notes
+- **Amended**: 2026-10-10 — in a call that compares, `EnsureAssignable<T>()` does not compare one instance of a shared type whose state can change, passed as `actual` and as `expected`: it throws `InvalidOperationException` (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the third Amendment under Implementation Notes
 
 ---
 
@@ -540,6 +541,20 @@ The library cannot tell such a `null` from an old value that really was `null`. 
 
 Unchanged: the main decision of this ADR, `RequireNotEmpty` (it checks its data argument in every configuration, is a precondition helper and takes no `Old` result), and every other `Contract` method. The public signatures do not change.
 
+### Amendment (2026-10-10): One shared instance passed as actual and as expected is not compared (#54)
+
+The decision is unchanged. [Issue #54](https://github.com/cwouyang/uContract.NET/issues/54) adds one case to `EnsureAssignable<T>()`. A shared type is a type that `Old<T>()` shares with the original instead of copying it. In a call that compares, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: the method throws `InvalidOperationException`. A `Stream`, a `Task`, a `Component` and the classes derived from them are examples of such types. The rule is rule S of ADR-0022. The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #54 records it, with its reasons, the list of the types, the message, the measurements and the limits.
+
+**Qualified in the #52 amendment.** Each statement is quoted by its opening words:
+
+- Step 5 of the rule: "Two values that are not `null` are compared with the recursion guard set." One instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared. The test for it comes after the `null` rule and before the recursion guard is set. It reads no member of `T` and no member of the value, it runs no user code, and it does not examine the patterns.
+- The table row that ends "Compared; see the amendment of ADR-0022 for #52". For such an instance on both sides the result is `InvalidOperationException`; see the amendment of ADR-0022 for #54. The exception is not a `PostconditionViolationException`, because nothing was compared.
+- The pair on a member that can be `null`: "For `EnsureAssignable(_address, Contract.Old(() => _address))`:". The table there has no row for a member that keeps its value. When the value of the member is an instance of a shared type whose state can change, for example for a `CancellationTokenSource? _cts`, the pair throws `InvalidOperationException` when the member was not replaced: `Old<T>()` returns the instance itself, so `actual` and `expected` are one instance. The three rows of that table still hold for such a member. To check that a method does not replace such a member, write `Contract.Ensure(() => ReferenceEquals(_cts, old))`.
+
+**Why an amendment and not a new ADR.** The main decision of this ADR stands. The amendment of ADR-0022 for #54 gives the reasoning for all four amended ADRs.
+
+Unchanged: the main decision of this ADR, the check of the pattern array, the `null` rule and its two messages, `EnsureImmutableCollection<T>()`, and every other `Contract` method. The public signatures do not change.
+
 ---
 
 ## References
@@ -560,3 +575,4 @@ Unchanged: the main decision of this ADR, `RequireNotEmpty` (it checks its data 
 | 2025-10-19 | Accepted    | Decision finalized after analyzing Java implementation |
 | 2026-10-09 | Amended     | `EnsureAssignable<T>()` checks `actual` and `expected` for `null` only when it compares them (#47). Decision unchanged. See Implementation Notes > Amendment. |
 | 2026-10-09 | Amended     | `EnsureAssignable<T>()` compares `null` as a value; `EnsureImmutableCollection<T>()` checks `null` only when it checks (#52). Supersedes parts of the #47 amendment. Decision unchanged. See Implementation Notes > second Amendment. |
+| 2026-10-10 | Amended     | One instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: `InvalidOperationException` (#54, rule S of ADR-0022). Qualifies parts of the #52 amendment. Decision unchanged. See Implementation Notes > third Amendment. |

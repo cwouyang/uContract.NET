@@ -10,6 +10,7 @@
 - **Amended**: 2026-10-04 — an exception thrown by the `Old<T>()` supplier now propagates unchanged, which supersedes one Known Limitation; three statements are qualified; see the Amendment under Implementation Notes
 - **Amended**: 2026-10-07 — the `Old<T>()` decisions are superseded by [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), and the open statements on value types, boxed values and framework types are settled there; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-09 — the "no members visible" check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type (#52); see the third Amendment under Implementation Notes
+- **Amended**: 2026-10-10 — the "no members visible" check for `T` also does not run when one instance of a shared type whose state can change is passed as `actual` and as `expected` (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
 
 ---
 
@@ -419,6 +420,18 @@ The decision is unchanged. [Issue #52](https://github.com/cwouyang/uContract.NET
 
 Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
 
+### Amendment (2026-10-10): The "no members visible" check for T does not run for one shared instance on both sides (#54)
+
+The decision is unchanged. [Issue #54](https://github.com/cwouyang/uContract.NET/issues/54) adds one case in which `EnsureAssignable<T>()` enumerates no member of `T`. A shared type is a type that `Old<T>()` shares with the original instead of copying it. In a call that compares, when one instance of a shared type whose state can change is passed as `actual` and as `expected`, the method throws `InvalidOperationException` before any member of `T` is enumerated. The runtime type of the instance decides that, not `T`, and not which members are visible to reflection. So in such a call a `T` with no visible members gets the message of that rule, not the "no members visible" message. The rule is rule S of ADR-0022. The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #54 records it, with its reasons, the list of the types, the message, the measurements and the limits. This amendment adds the case to three statements of the #52 amendment (its Status line and two sentences of its section). Each is quoted by its opening words:
+
+- The Status line of 2026-10-09: "the "no members visible" check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type". It also does not run when one instance of a shared type whose state can change is passed as `actual` and as `expected`. The Revision History row of 2026-10-09 states the same in other words, and the same case is added to it.
+- "The check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type." It also does not run when one instance of a shared type whose state can change is passed as `actual` and as `expected`. The members of `T` are not enumerated in that call.
+- "That does not hold for the three kinds of `T`: no member of `T` is compared." It does not hold either when one instance of a shared type whose state can change is passed as `actual` and as `expected`: no member of `T` is compared, whatever `T` is.
+
+Still true: when both sides are one instance of a type that is not shared, a `T` with no visible members still throws the "no members visible" message. A unit test pins that under a simulated Native AOT runtime.
+
+Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
+
 ---
 
 ## References
@@ -448,3 +461,4 @@ Unchanged: the "no members visible" rule itself, its message when the type is `T
 | 2026-10-04 | Amended     | Supplier exceptions in `Old<T>()` propagate unchanged (supersedes one Known Limitation). Corrections: unit-test figures are a snapshot; an inherited auto-property is compared once; the second `Accepted` row was a wording revision. See Implementation Notes > Amendment. |
 | 2026-10-07 | Amended     | `Old<T>()` decisions and the `[RequiresDynamicCode]` statement superseded by ADR-0022; value-type, boxed-value and framework-type statements settled there. `EnsureAssignable<T>()` decisions and measurements unchanged. See Implementation Notes > second Amendment. |
 | 2026-10-09 | Amended     | The check for `T` does not run for a `null` argument or for a `T` that is compared as a whole (#52); decisions in ADR-0012 and ADR-0022. Decision unchanged. See Implementation Notes > third Amendment. |
+| 2026-10-10 | Amended     | The check for `T` also does not run for one instance of a shared type whose state can change, passed as `actual` and as `expected` (#54); decision in ADR-0022. Decision unchanged. See Implementation Notes > fourth Amendment. |

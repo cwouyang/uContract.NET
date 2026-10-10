@@ -408,6 +408,19 @@ internal sealed class RingNode
     public RingNode? Next;
 }
 
+// Old shares an instance of this class with the original: it derives from CancellationTokenSource (issue #54).
+internal sealed class CountingTokenSource : CancellationTokenSource
+{
+    public int Uses;
+
+    public void Use()
+    {
+        var old = Contract.Old(() => this);
+        Uses++;
+        Contract.EnsureAssignable(this, old);
+    }
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -1309,6 +1322,44 @@ public static class Program
             Expect.Value("violation"),
             Expect.Value("none")
         );
+
+        // ---- One instance of a type that Old shares, and its state can change, passed as actual and as
+        // expected: nothing is compared and the call says so (issue #54). ----
+        Expect sameSharedInstance = Expect.Throws<InvalidOperationException>(
+            "uContract.AotSmoke.CountingTokenSource",
+            "the same instance",
+            "System.Threading.CancellationTokenSource",
+            "DBC_POST=off"
+        );
+        yield return new Check(
+            73,
+            "Old and EnsureAssignable on this in a class derived from CancellationTokenSource",
+            SharedInstanceComparedWithOld,
+            sameSharedInstance,
+            Expect.Ok
+        );
+
+        // IDisposable declares no property, so under Native AOT T has no visible members: this case is
+        // reported first.
+        yield return new Check(
+            74,
+            "EnsureAssignable<IDisposable> one CancellationTokenSource-derived instance",
+            SharedInstanceThroughAnInterface,
+            sameSharedInstance,
+            Expect.Ok
+        );
+    }
+
+    private static object? SharedInstanceComparedWithOld()
+    {
+        using CountingTokenSource source = new();
+        return NoResult(source.Use);
+    }
+
+    private static object? SharedInstanceThroughAnInterface()
+    {
+        using CountingTokenSource source = new();
+        return NoResult(() => Contract.EnsureAssignable<IDisposable>(source, source));
     }
 
     private static string? OldList()

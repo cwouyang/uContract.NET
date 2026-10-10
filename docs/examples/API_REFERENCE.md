@@ -14,6 +14,7 @@ Complete reference for all 17 public methods in uContract.NET.
 - [Exception Hierarchy](#exception-hierarchy)
 - [Best Practices](#best-practices)
 - [Performance Considerations](#performance-considerations)
+- [Types that `Old<T>()` shares](#types-that-oldt-shares)
 - [Trimming and Native AOT](#trimming-and-native-aot)
 - [See Also](#see-also)
 
@@ -171,16 +172,83 @@ var oldBalance = Contract.Old(() => _balance);  // ❌ Too late!
 
 ---
 
+## Types that `Old<T>()` shares
+
+`Old<T>()` copies everything reachable from the value, except an instance of one of the types below. It returns such an instance itself, not a copy, at the top level and behind every field that refers to one. State inside a shared instance is not snapshotted. There are two groups.
+
+**Shared, and its state can change.** `EnsureAssignable<T>()` throws `InvalidOperationException` when one such instance is passed as `actual` and as `expected`.
+
+- `Stream`
+- `Task`
+- `Lazy<T>`, `ThreadLocal<T>`, `AsyncLocal<T>`
+- `CancellationTokenSource`
+- `WeakReference` and `WeakReference<T>`
+- `ConditionalWeakTable<TKey, TValue>`
+- `Component`
+- `HttpClient` and `HttpMessageHandler`
+- `Socket`
+- `Thread`, `Timer` (`System.Threading.Timer`), `SynchronizationContext`
+- The locks and signals: `WaitHandle`, `SemaphoreSlim`, `ManualResetEventSlim`, `CountdownEvent`, `ReaderWriterLockSlim`, `Barrier`, `System.Threading.Lock`
+- Handles: `SafeHandle`, `CriticalHandle` and every other `CriticalFinalizerObject`
+- COM objects and `ComObject`
+- Every type derived from the types above
+
+**Shared, and fixed.** `EnsureAssignable<T>()` does not throw that exception for them.
+
+- `string`
+- Delegates (`Delegate`)
+- `Type`, `MemberInfo`, `Assembly`, `Module`, `Pointer`
+- `Regex`
+- Every type derived from the types above
+- The frozen collections: the types declared in `System.Collections.Frozen`
+- The comparers: those that the base class library itself declares; a class of yours derived from `StringComparer` or `Comparer<T>` is copied
+
+State that an instance of the second group refers to (the elements of a frozen collection, the target of a delegate) is not compared.
+
+**One instance passed as `actual` and as `expected`.** For the first group there is no earlier state to compare with, so `EnsureAssignable<T>()` compares no member and throws `InvalidOperationException`. The message names the shared base type, or says "a COM object". This holds in every kind of build, whatever `T` is, `object` included, and whatever the assignable patterns are. Two different instances of such a type as `T` are still compared member by member. With postconditions off, or in a call made while another contract check is running, the method returns without comparing, as in every other case.
+
+**A class that derives from a type of the first group** is shared too, so `Old(() => this)` in such a class returns `this`, and `EnsureAssignable(this, Contract.Old(() => this))` throws. Check each state member with `Contract.Ensure` and a value taken with `Old`:
+
+```csharp
+public class Worker : Component
+{
+    private int _processed;
+
+    public void Process()
+    {
+        var oldProcessed = Contract.Old(() => _processed);
+
+        _processed++;
+
+        Contract.Ensure("One more processed", () => _processed == oldProcessed + 1);
+    }
+}
+```
+
+**A member of a type of the first group**, for example `CancellationTokenSource? _cts`: `EnsureAssignable(_cts, Contract.Old(() => _cts))` throws when the member was not replaced, because both sides are then the same instance. It passes when the member stays `null`, and it compares the members that the declared type shows when the member was replaced by another instance. To check that the member was not replaced, use `Contract.Ensure` with `ReferenceEquals`:
+
+```csharp
+var oldCts = Contract.Old(() => _cts);
+
+// ...
+
+Contract.Ensure("Token source not replaced", () => ReferenceEquals(_cts, oldCts));
+```
+
+Inside a compared object, a member or element that holds a shared instance is compared by reference; a `string` is compared with `Equals` and a delegate by its methods.
+
+---
+
 ## Trimming and Native AOT
 
 `Old<T>()` and `EnsureAssignable<T>()` have limited support in trimmed and Native AOT applications. `DBC_POST=off` turns off every postcondition check, these two helpers included. With it, `Old<T>()` returns `default` and `EnsureAssignable<T>()` returns without comparing, so the documented `Old` + `EnsureAssignable` pair does nothing.
 
-- `Old<T>()` copies field by field with reflection and needs no JSON setup. A field that the trimmer removed from reflection keeps its bitwise value, so the object it refers to is shared with the original. Preserve such types with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]` on `Main` or any method that runs. A caller that forwards its own generic parameter to it gets trim warning `IL2091` unless it carries `[RequiresUnreferencedCode]` or the same `[DynamicallyAccessedMembers]` annotation on that parameter.
-- `EnsureAssignable<T>()` compares the members of `T` in every kind of build, except when `T` is a `string`, a delegate type or a nullable value type: those are compared as a whole (a `string` with `Equals`, a delegate by its methods, a nullable value type with `Equals` and then by its fields), and nothing needs to be preserved for `T` = `string`, `int?` or `DateTime?`. `T` = `object` compares nothing beyond `null`; a base class compares the members it declares or inherits, an interface only its own properties. A caller that forwards its own generic parameter to it gets trim warning `IL2091` until that parameter has the same `[DynamicallyAccessedMembers]` annotation.
+- `Old<T>()` copies field by field with reflection and needs no JSON setup. A field that the trimmer removed from reflection keeps its bitwise value, so the object it refers to is shared with the original. Preserve such types with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]` on `Main` or any method that runs. In every kind of build, an instance of a type that `Old<T>()` shares is returned itself, not copied; see [Types that `Old<T>()` shares](#types-that-oldt-shares). A caller that forwards its own generic parameter to it gets trim warning `IL2091` unless it carries `[RequiresUnreferencedCode]` or the same `[DynamicallyAccessedMembers]` annotation on that parameter.
+- `EnsureAssignable<T>()` compares the members of `T` in every kind of build, except when `T` is a `string`, a delegate type or a nullable value type: those are compared as a whole (a `string` with `Equals`, a delegate by its methods, a nullable value type with `Equals` and then by its fields), and nothing needs to be preserved for `T` = `string`, `int?` or `DateTime?`. `T` = `object` compares nothing beyond `null`; a base class compares the members it declares or inherits, an interface only its own properties. One instance of a type that `Old<T>()` shares, and its state can change (a `Stream`, a `Task`, a class derived from `Component`), passed as `actual` and as `expected` is not compared: the method throws `InvalidOperationException` in every kind of build, whatever `T` is, `object` included. Check each state member with `Contract.Ensure` and a value taken with `Old`; to check only that a reference was not replaced, use `Contract.Ensure` with `ReferenceEquals`. See [Types that `Old<T>()` shares](#types-that-oldt-shares). A caller that forwards its own generic parameter to it gets trim warning `IL2091` until that parameter has the same `[DynamicallyAccessedMembers]` annotation.
 - Under Native AOT, when it reaches a nested class or collection element whose members are not preserved, it asks that class's `Equals`: `true` means equal, `false` throws `InvalidOperationException`. List the top-level member as assignable (plain member name; patterns are regular expressions matched against top-level member names) or preserve the type with `DynamicDependency` (below a nullable value type as `T` there is no member to list: preserve the type, or test both values for `null` and pass the unwrapped values).
 - Blind spot: a nested class whose `Equals` ignores state (for example entity equality by ID) compares equal when it has no visible members, so a change to it passes silently. Preserve the type with `DynamicDependency` to compare it member by member.
-- A member or element of a value type, and a nullable value type as `T`, is equal when its `Equals` says so; otherwise its visible fields are compared. Types that `Old<T>()` shares (`Lazy<T>`, `Task`, streams and similar) are compared by reference when a member or element holds them; as `T` they are still compared member by member (a `string` and a delegate type excepted). Under Native AOT, for a nullable value type as `T`, the fields of the underlying type may not be preserved: for a nullable struct that holds a reference, the comparison can then report a difference for an unchanged value or, with an `Old` snapshot, miss a change inside the object it refers to. Preserve the struct with `DynamicDependency`, or test both values for `null` and pass the unwrapped values.
-- Assignable patterns are unanchored regular expressions: `Customer` also exempts `CustomerId`. To exempt exactly one member, anchor the pattern. An auto-property declared on the compared type is also compared as its backing field, so the pattern must cover that too: `^(Customer|<Customer>k__BackingField)$`. An inherited auto-property is compared only as the property, so `^Customer$` is enough. The patterns do not apply, and are not examined, when exactly one of the two values is `null` or when `T` is a `string`, a delegate type or a nullable value type.
+- A member or element of a value type, and a nullable value type as `T`, is equal when its `Equals` says so; otherwise its visible fields are compared. Types that `Old<T>()` shares (`Lazy<T>`, `Task`, streams and similar) are compared by reference when a member or element holds them; as `T`, two different instances are still compared member by member (a `string` and a delegate type excepted), and so is a type that is shared, and fixed (a frozen collection, a `Regex`), also for one instance on both sides. One instance of a type that is shared, and its state can change, on both sides is not compared: the method throws, as said above. Under Native AOT, for a nullable value type as `T`, the fields of the underlying type may not be preserved: for a nullable struct that holds a reference, the comparison can then report a difference for an unchanged value or, with an `Old` snapshot, miss a change inside the object it refers to. Preserve the struct with `DynamicDependency`, or test both values for `null` and pass the unwrapped values.
+- Assignable patterns are unanchored regular expressions: `Customer` also exempts `CustomerId`. To exempt exactly one member, anchor the pattern. An auto-property declared on the compared type is also compared as its backing field, so the pattern must cover that too: `^(Customer|<Customer>k__BackingField)$`. An inherited auto-property is compared only as the property, so `^Customer$` is enough. The patterns do not apply, and are not examined, when exactly one of the two values is `null`, when `T` is a `string`, a delegate type or a nullable value type, or when one instance of a type that `Old<T>()` shares, and its state can change, is passed as `actual` and as `expected`.
 - In a trimmed app without Native AOT, a nested type whose property getter was removed by the trimmer makes it throw `InvalidOperationException` naming the property ("… no get method is visible through the compared type"); the same two ways out apply (below a nullable value type as `T` there is no member to list: preserve the type, or pass the unwrapped values).
 - Not detected: a type with only some members preserved, and, in a trimmed app without Native AOT, a nested type whose members were removed entirely. A `null` member, the same instance on both sides, or an empty collection is not inspected.
 

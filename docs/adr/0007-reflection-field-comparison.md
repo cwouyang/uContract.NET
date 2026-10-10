@@ -10,6 +10,7 @@
 - **Amended**: 2026-10-04 — behaviour under trimming and Native AOT, and for a property with no get method, is added by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
 - **Amended**: 2026-10-07 — the comparison rules are replaced by rules R0–R8 of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), and the walk is iterative; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-09 — at the top level a `null` is compared as a value, and a `string`, a delegate type and a nullable value type are compared as a whole, without the patterns (#52, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the third Amendment under Implementation Notes
+- **Amended**: 2026-10-10 — at the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared member by member: the call throws `InvalidOperationException`, and the patterns do not apply (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
 
 ---
 
@@ -460,6 +461,30 @@ qualify these statements of this ADR, each quoted by its opening words:
 Each still holds for every other `T` with two values that are not `null`. This amendment adds no
 decision. It is the record that this ADR was considered for #52.
 
+### Amendment (2026-10-10): The top level for one shared instance on both sides (#54)
+
+The decision is unchanged. The third Amendment above records two cases in which the top level does
+not compare the members of `T` one by one.
+[Issue #54](https://github.com/cwouyang/uContract.NET/issues/54) adds a third case. A shared type is
+a type that `Old<T>()` shares with the original instead of copying it (B3 of ADR-0022). In a call
+that compares, when one instance of a shared type whose state can change is passed as `actual` and
+as `expected`, the method throws `InvalidOperationException`. No member of `T` is compared, and the
+patterns do not apply and are not examined.
+
+The rule is rule S of ADR-0022. The amendment of
+[ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #54 records it, with its reasons,
+the list of the types, the message, the measurements and the limits. It qualifies these statements
+of the third Amendment above, each quoted by its opening words:
+
+- "changes that shape in two cases." There are now three cases.
+- "In both cases no member of `T` is compared, and the patterns do not apply and are not examined."
+  The same holds in the third case.
+- "Each still holds for every other `T` with two values that are not `null`." There is one more
+  exception, and it is for every `T`: one instance of a shared type whose state can change, passed
+  as `actual` and as `expected`.
+
+This amendment adds no decision. It is the record that this ADR was considered for #54.
+
 ---
 
 ## References
@@ -479,3 +504,4 @@ decision. It is the record that this ADR was considered for #52.
 | 2026-10-04 | Amended     | Annotation on `T`, the "no members visible" rule and the unreadable-property rule added by ADR-0021. Comparison strategy unchanged. See Implementation Notes > Amendment. |
 | 2026-10-07 | Amended     | Comparison rules replaced by R0–R8 of ADR-0022; the walk is iterative (explicit stack). Members compared and patterns unchanged. See Implementation Notes > second Amendment. |
 | 2026-10-09 | Amended     | The top level compares `null` as a value and three kinds of `T` as a whole (#52, ADR-0022). Decision unchanged. See Implementation Notes > third Amendment. |
+| 2026-10-10 | Amended     | At the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: `InvalidOperationException` (#54, ADR-0022). Decision unchanged. See Implementation Notes > fourth Amendment. |

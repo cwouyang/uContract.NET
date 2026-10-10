@@ -9,6 +9,7 @@
 - **Status Date**: 2026-10-07
 - **Amended**: 2026-10-09 — the `DBC_POST=off` pairing limitation under "What the measurements add or correct" is superseded (#47), and the smoke program gains checks 58 to 62; see the Amendment under Implementation Notes
 - **Amended**: 2026-10-09 — at the top level a `string`, a delegate type and a nullable value type are compared as one pair by R0–R8, and a `null` side is decided first for every `T` (#52); the smoke program has 72 checks; see the second Amendment under Implementation Notes
+- **Amended**: 2026-10-10 — at the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: the call throws `InvalidOperationException` (rule S, #54); the smoke program has 74 checks; see the third Amendment under Implementation Notes
 
 ---
 
@@ -1075,6 +1076,445 @@ source. `linux-x64` was not measured locally; CI publishes and runs the smoke pr
 
 **Unchanged.** Every other decision of this ADR.
 
+### Amendment (2026-10-10): One shared instance on both sides is reported, not compared (#54)
+
+This amendment follows the #52 amendment above. It records what `EnsureAssignable<T>()` does after
+[issue #54](https://github.com/cwouyang/uContract.NET/issues/54) when `actual` and `expected` are
+one instance of a type that `Old<T>()` shares. `Old<T>()` does not copy an instance of a B3 type,
+and B3 matches a listed type and every type derived from it. So in a user class that derives from
+`Component`, `Stream` or `Task`, the pair `EnsureAssignable(this, Contract.Old(() => this))`
+compared the object with itself. For most such classes the call passed, whatever the method changed.
+For the shared types whose state can change, the call now throws `InvalidOperationException`.
+`Old<T>()` and B3 do not change. The amendments of 2026-10-10 of
+[ADR-0012](0012-dotnet-improvements-over-java.md),
+[ADR-0021](0021-postconditions-under-trimming-and-aot.md) and
+[ADR-0007](0007-reflection-field-comparison.md) point here.
+
+**Terms.** This amendment uses these terms:
+
+- **A call that compares**: a call of `EnsureAssignable<T>()` with postconditions on that is not
+  made while another contract check is running.
+- **Same instance**: `ReferenceEquals(actual, expected)` is true, and neither is `null`.
+- **Shared type**: a type that B3 names, by category, by list, by open generic definition or by full
+  name. `Old<T>()` returns an instance of a shared type itself, not a copy.
+- **State-holding entry**: one of the six entries of B3 that are listed under "The state-holding
+  entries" below.
+- **State-holding shared type**: a type that matches at least one state-holding entry.
+- **Matched entry**: the first state-holding entry that a state-holding shared type matches, in the
+  order of that list.
+- **Fixed shared type**: a shared type that matches no state-holding entry.
+- **Rule S**: the rule that this amendment adds. It is given under "The rule" below.
+- **Message D**: the message of the exception that rule S throws. It is given under "Message D"
+  below. The letter follows messages A and B (the amendment of ADR-0012 for #52) and message C (the
+  #52 amendment above). The user documentation gives the message no letter.
+- **`71b2e4e`**: the commit of `master` on which the design was measured, before the library
+  changed.
+
+**The rule.** One rule is added, rule S:
+
+> In a call that compares, when `actual` and `expected` are the same instance and its runtime type
+> is a state-holding shared type, the call throws `InvalidOperationException` with message D.
+
+The steps of a call, in order. Rule S is step 4. Steps 1 to 3 are steps 1 to 3 of the #52 amendment
+above. Steps 5 and 6 are the two branches of its step 4. Its step 5 is unchanged and follows: the
+recursion guard is cleared.
+
+1. The pattern array is checked for `null`. A `null` array throws `ArgumentNullException`, in every
+   call.
+2. A call that does not compare returns.
+3. The `null` rule. Two `null`s are equal, and the method returns. Exactly one `null` is a
+   violation.
+4. Rule S.
+5. When `T` is a `string`, a delegate type or a nullable value type, the two values are compared as
+   a whole.
+6. For every other `T`, the members of `typeof(T)` are walked.
+
+What holds for rule S:
+
+- **Position against the guard.** Rule S is evaluated before the recursion guard is set, as the
+  `null` rule is. It runs no user code, so the position cannot be observed.
+- **Two different instances.** Rule S does not apply. The call behaves as on `71b2e4e`.
+- **Patterns.** Rule S applies with any patterns, a pattern that matches every member included. The
+  elements of the pattern array are not examined, so a `null` element or an invalid regular
+  expression is not reported in such a call. On `71b2e4e` the pattern `"["` gave a
+  `RegexParseException` and a `null` element an `ArgumentNullException` for `pattern` (both
+  measured, see "Measured" below).
+- **Declared type.** `T` does not matter for rule S. `EnsureAssignable<object>(worker, worker)` and
+  `EnsureAssignable<IDisposable>(worker, worker)` throw the same way.
+- **Types compared as a whole.** A `string` and a delegate are fixed shared types. The two sides of
+  a nullable value type are two boxes, and never the same instance. So rule S and the comparison as
+  a whole never both apply, and their relative order cannot be observed. The unit tests of #52 for
+  the same `string` and the same delegate on both sides stay as they are.
+- **Value types.** When `T` is a value type, each side is boxed separately, so the two are never the
+  same instance. The implementation skips rule S for such a `T`. When `T` is `object` or an
+  interface, one box can be passed on both sides. Its runtime type is a value type, and no
+  state-holding shared type is a value type: every state-holding entry is a class, or a test that
+  only a class satisfies. The shared value types (enumerators in `System.Collections.Frozen`) are
+  fixed. So rule S never applies to a value.
+- **User code.** Rule S reads the runtime type and classifies it from data of the `Type` object
+  (`IsAssignableFrom`, `BaseType`, `FullName`, `IsCOMObject`). It reads no member of the value and
+  runs no user code. A getter that throws and a `Lazy<T>` factory are no longer reached in such a
+  call. The classification adds no cache keyed by `Type` and no mutable static state.
+- **Native AOT.** Rule S does not depend on which members are visible to reflection. It comes before
+  the rule "no members visible" for `T`: with the same instance of a state-holding shared type on
+  both sides, a `T` with no visible members gets message D. `Type.IsCOMObject` is false under Native
+  AOT and off Windows (B3). A COM object is state-holding wherever one can exist.
+
+What does not change:
+
+- The same instance of a fixed shared type, or of a type that is not shared. The call behaves as on
+  `71b2e4e`. For most `T` that is "no exception". For `T` = `Type` it is a
+  `TargetInvocationException` from a getter (measured). A `T` with no visible members under Native
+  AOT still throws "no members visible" when both sides are the same instance of a type that is not
+  shared. A unit test pins that.
+- Two different instances of a shared type as `T`. Their members are walked, as on `71b2e4e`.
+- A member, an element or a field that holds a shared instance. R5 compares it by reference and
+  reads none of its members (a `string` and a delegate excepted: `Equals` and R4). State inside it
+  is not compared.
+- `Old<T>()`. It shares the same types as before, and it throws nothing of its own while copying.
+
+**Decisions and reasons.** The maintainer decided S1 to S3 on 2026-10-10, before the design was
+written, and S9 and S10 on 2026-10-10, after the design review. S4 to S8 follow from them and from
+the code. The maintainer approved S4 to S8 with the design. The decisions are numbered S1 to S10 so
+that they are not taken for D1 to D13 of this ADR.
+
+| # | Question | Decision |
+|---|----------|----------|
+| S1 | Approach | Option 3 of the issue together with option 1: `EnsureAssignable<T>()` reports the case, and the documentation gives the full list. Option 2 is rejected for this change (see below). |
+| S2 | Which types | Only a state-holding shared type is reported. For a fixed shared type the call behaves as on `71b2e4e`. |
+| S3 | Exception | `InvalidOperationException`, as for the other "cannot compare" results. Nothing was compared, so it is not a violation. |
+| S4 | Which type decides | The runtime type of the value decides whether rule S applies. The declared `T` still decides how two values are compared. |
+| S5 | Where | At the top level only, in a call that compares, after the `null` rule and before any member of `T` is read. |
+| S6 | Patterns | The assignable patterns do not excuse it, and their elements are not examined. No member was compared, so no pattern can apply. |
+| S7 | `Old<T>()` | Unchanged. It shares the same types as before and throws nothing of its own while copying. |
+| S8 | `SharedTypes.IsShared` | Unchanged. B3 and R5 stand. |
+| S9 | A member of a state-holding shared type passed at the top level | Accepted and documented: `EnsureAssignable(_cts, Contract.Old(() => _cts))` throws when the member was not replaced. See "The member idiom" below. |
+| S10 | Message | It names the matched entry, so that the author of `class OrderForm : Form` reads which base class causes the result. |
+
+"Option 1", "option 2" and "option 3" are the three options that issue #54 lists. Option 2 and the
+other rejected alternatives are under "Rejected alternatives" below.
+
+**The state-holding entries.** In this order:
+
+1. the listed types `Stream`, `WaitHandle`, `CancellationTokenSource`, `Thread`, `Timer`
+   (`System.Threading`), `SynchronizationContext`, `SemaphoreSlim`, `ManualResetEventSlim`,
+   `CountdownEvent`, `ReaderWriterLockSlim`, `Barrier`, `Task`, `WeakReference`, `Component`,
+   `HttpMessageHandler`, `HttpClient`, `Socket`;
+2. the listed open generic types `ThreadLocal<>`, `Lazy<>`, `WeakReference<>`,
+   `ConditionalWeakTable<,>`, `AsyncLocal<>`;
+3. `System.Threading.Lock`, matched by full name;
+4. `CriticalFinalizerObject`;
+5. `ComObject`;
+6. a COM object (`Type.IsCOMObject`).
+
+A type matches an entry as B3 matches it. Entries 1, 4 and 5: the type is the entry or derives from
+it. Entry 2: the type is a construction of the definition, or derives from one, along `BaseType`.
+Entry 3: the full name, along `BaseType`. Entry 6: `Type.IsCOMObject` is true. The matched entry is
+the first one that the type matches in this order. For entries 1 and 2, the matched entry is the
+listed type or the definition that matched, the first in the order of the list.
+
+**The fixed shared types.** With B3 as it is on `71b2e4e`, these are: `string`; `Delegate`, `Type`,
+`MemberInfo`, `Assembly`, `Module`, `Pointer`, `Regex` and the types derived from them; the types in
+the namespace `System.Collections.Frozen`; and the CoreLib comparers. A type that matches a
+state-holding entry is state-holding, also when it belongs to one of these categories. "Fixed" means
+that the instance holds no state that a caller sets: which elements a frozen collection holds, which
+methods a delegate calls. A `Regex` caches a runner when it is used (B3). A caller does not set or
+read that.
+
+An entry added to B3 later is a fixed shared type until it is added to the state-holding entries. A
+unit test fails when a listed type, a listed open generic type or the type matched by full name is
+in neither list, so the choice is made when such an entry is added. The category tests of B3 are
+code, not data. A category added later is classified by review, and a comment at the method that
+holds the category tests says so.
+
+**Message D.** For every matched entry except "a COM object":
+
+```text
+EnsureAssignable cannot compare {runtime type}: actual and expected are the same instance. Contract.Old shares an instance of {matched entry} or of a type derived from it with the original instead of copying it, so there is no earlier state to compare with. Assignable patterns do not apply: no member was compared. Ways out: check each state member with Contract.Ensure and a value taken with Contract.Old; to check only that a reference was not replaced, use Contract.Ensure with ReferenceEquals; or set DBC_POST=off (disables all postcondition checks).
+```
+
+For the entry "a COM object", the second sentence begins "Contract.Old shares a COM object with the
+original instead of copying it, so". The rest is the same.
+
+- `{runtime type}` and `{matched entry}` are formatted with `Type.ToString()`, as the existing
+  "cannot compare" messages format their type. For example
+  `uContract.Tests.EnsureAssignableSameSharedInstanceTests+Worker` and
+  `System.ComponentModel.Component`. An open generic entry reads ``System.Lazy`1[T]``.
+  `System.Threading.Lock` is written as that name.
+- The message begins "EnsureAssignable cannot compare", as the three existing messages of this kind
+  do.
+- The message makes no statement about what the caller did before the call. Every sentence holds
+  when the caller never used `Old`.
+- The first way out names `Contract.Ensure`, not `EnsureAssignable`. For a member typed as `object`,
+  as an interface or as a base class, `EnsureAssignable` on the member compares little or nothing.
+
+**The member idiom.** The #52 amendments of ADR-0012 and of this ADR document the pair on a member
+that can be `null`: `EnsureAssignable(_address, Contract.Old(() => _address))` in ADR-0012, and the
+same with `_name` above. For a member whose value is of a state-holding shared type, for example
+`CancellationTokenSource? _cts`, that call now gives:
+
+| `_cts` before | `_cts` after | On `71b2e4e` | After this change |
+|---|---|---|---|
+| `null` | `null` | passes | passes |
+| an instance | the same instance | passes; no state was compared | **message D** |
+| an instance | another instance | members walked (#40) | members walked (#40) |
+| one of them `null` | | violation | violation |
+
+When the member is declared as `object` or as an interface without properties, the third row is "no
+exception" before and after: such a `T` has no members to walk. So for such a member the call throws
+when the reference was kept and passes when it was replaced. The call never checked the state of the
+instance. After this change it says so in the one case where it can tell.
+
+The top level and a member now differ, and that is decided (S9). Inside a holder, the same shared
+instance is "equal" (R5), because the holder has other members that are compared. At the top level
+the shared instance is the whole comparison.
+
+Rule S also applies to an instance that cannot change any more, such as `Task.CompletedTask`.
+"Cannot compare" is still true for it: nothing was compared.
+
+The documentation tells the user to write `Contract.Ensure(() => ReferenceEquals(_cts, old))` for
+"this method does not replace `_cts`".
+
+**Measured on `71b2e4e`.** These were measured on 2026-10-10, while the change was designed, with
+throwaway tests in a separate checkout. There were two runs, of 25 and of 14 test methods. None
+timed out. "The call" is `EnsureAssignable(x, Contract.Old(() => x))` unless a line says otherwise:
+
+| Case | Result |
+|---|---|
+| `Worker : Component`, field changed or not | `Old` returns the same instance; no exception |
+| a class derived from `Task`, `DelegatingHandler`, `CancellationTokenSource`, `SynchronizationContext`, `WeakReference`, `Lazy<int>` | the same instance; no exception |
+| a class derived from `MemoryStream`; `new MemoryStream()` | `TargetInvocationException`, inner `InvalidOperationException` "Timeouts are not supported on this stream." |
+| `EnsureAssignable<object>(worker, worker)`, `<IDisposable>`, and with the pattern `".*"` | no exception |
+| `new CancellationTokenSource()`, `Task.CompletedTask`, `new Lazy<int>(…)` on both sides | no exception; the `Lazy<int>` factory ran |
+| `FrozenSet<int>`, `Regex`, `StringComparer.Ordinal`, a `string` as `object`, on both sides | no exception |
+| `typeof(string)` on both sides, `T` = `Type` | `TargetInvocationException`, inner `InvalidOperationException` "Method may only be called on a Type for which Type.IsGenericParameter is true." |
+| an ordinary class, the same instance | no exception |
+| `Holder { Worker W }`, `W.State` changed | the holder is copied, `W` is shared; no exception |
+| two different `Worker`s, `State` differs | violation: "Fields were modified that are not marked as assignable:\n  - State" |
+| `Worker` pair under the simulated Native AOT runtime | no exception |
+| a class with no members, the same instance, simulated Native AOT | "EnsureAssignable cannot compare …: no properties or fields are visible to reflection under Native AOT. …" |
+| `Worker` pair in a process started with `DBC_POST=off` | `Old` returns `null`; no exception |
+| `EnsureAssignable(worker, worker)` inside the condition of `Contract.Ensure` | no exception |
+| `EnsureAssignable<IDisposable>(worker, worker)` under the simulated Native AOT runtime | `InvalidOperationException` "EnsureAssignable cannot compare System.IDisposable: no properties or fields are visible to reflection under Native AOT. …" |
+| `EnsureAssignable<object>(x, x)` for an instance of each state-holding listed and open generic type, a `SafeFileHandle`, the `Lock` stand-in (27 instances) | `IsShared` is true; no exception |
+| the same for a `FrozenSet<int>`, a `Regex`, a `Type`, a `MethodInfo`, `StringComparer.Ordinal`, an `Action`, a `string` | no exception |
+| `EnsureAssignable(worker, worker, "[")` | `RegexParseException` "Invalid pattern '[' at offset 1. Unterminated [] set." |
+| `EnsureAssignable(worker, worker, new string[] { null! })` | `ArgumentNullException` for `pattern` |
+| `EnsureAssignable(worker, worker, null!)` | `ArgumentNullException` for `assignableFieldPatterns` |
+| a class in the namespace `System.Collections.Frozen` that derives from `Component` | it compiles (one suppression, as `LockStandIn.cs`); `IsShared` is true; no exception |
+| a `CancellationTokenSource?` member, the pair: both `null`; the same instance; two instances | no exception; no exception; a violation that names `Token` |
+| a class derived from `Regex`, a field changed, the pair | the same instance; no exception |
+| two different `Worker`s as `<object>` and as `<IDisposable>` | no exception |
+| `object box = 5; EnsureAssignable(box, box)` | no exception |
+| the value factory of a class derived from `Lazy<int>`, the pair | the factory ran |
+
+Also measured on `71b2e4e`:
+
+- `Thread` derives from `CriticalFinalizerObject`, and it is the only state-holding listed or open
+  generic type that does.
+- `Dispose()` on a `Task` that was not started throws `InvalidOperationException`.
+- A `[ComImport]` class that is not registered cannot be instantiated (`COMException` 0x80040154).
+- `RuntimeHelpers.GetUninitializedObject(typeof(ComObject))` gives an instance of `ComObject`. This
+  was measured on Windows only. CI runs the unit-test row that uses it on Linux.
+- No unit test and no smoke check passed the same instance of a state-holding shared type as both
+  top-level values. Two calls passed one variable twice, neither with a shared type.
+
+**Measured results, unit tests.** The suite had 629 tests on `71b2e4e` and has 696 after the change:
+67 were added. With the library changed, 0 of the 696 tests fail, in the Debug and in the Release
+configuration.
+
+The new tests were run before the library changed. 47 of them failed. 45 failed for the result that
+the table above lists for their case, so those results were observed again. The other two are the
+two examples that are not in the table, and they failed as predicted. Both gave no exception before
+the change: the pair in a class two levels below `Component`, and a call that forwards its own
+generic parameter.
+
+**Measured results, smoke program.** The program has 74 checks in the default build and 73 in the
+variant with the hidden dictionary entry, which has no check 35. Two checks are new:
+
+| Check | Call | With postconditions on | With `DBC_POST=off` |
+|---|---|---|---|
+| 73 | the pair on `this` in a class derived from `CancellationTokenSource` | `InvalidOperationException` | no exception |
+| 74 | `EnsureAssignable<IDisposable>` with one such instance on both sides | `InvalidOperationException` | no exception |
+
+Native AOT. Environment: `win-x64`, 2026-10-10. Both publishes ran with `-warnaserror` and gave no
+diagnostic:
+
+| Publish | With postconditions on | With `DBC_POST=off` |
+|---|---|---|
+| Default | 74 `PASS`, no `FAIL` | 74 `PASS`, no `FAIL` |
+| Variant with the hidden dictionary entry | 73 `PASS`, no `FAIL` | 73 `PASS`, no `FAIL` |
+
+Checks 73 and 74 gave the results of the table above in both publishes. Under Native AOT the message
+begins "EnsureAssignable cannot compare uContract.AotSmoke.CountingTokenSource: actual and expected
+are the same instance. Contract.Old shares an instance of System.Threading.CancellationTokenSource".
+So `Type.ToString()` gives full names there for these two types.
+
+Under the JIT, the smoke program was run in its `--report` mode. Checks 73 and 74 showed the same
+results there.
+
+CI publishes the default build for `linux-x64` and runs the smoke program there. It had not run for
+this change when this amendment was written.
+
+**Qualified in the accepted text.** Each statement is quoted by its opening words:
+
+- Known Limitations: "**Shared types** (B3, D7). State inside them is not snapshotted and compares
+  by reference." The entry does not name the case of a derived class. B3 matches a listed type and
+  every type derived from it, so a user class that derives from a shared type is shared as a whole,
+  with the fields that the user class adds. `Old(() => this)` in such a class returns `this`. At the
+  top level, the same instance of a state-holding shared type on both sides now throws message D.
+  Below the top level, and for a fixed shared type, the limitation stands: see "Limits" below.
+- "Unchanged: which members are compared (D9), the top level comparing the members of `typeof(T)`,
+  the assignable patterns, and the violation message format." When rule S applies, the top level
+  compares no member of `typeof(T)`, and the patterns do not apply. Message D is not a violation
+  message: the exception is an `InvalidOperationException`.
+- "R8 applies to the nested walk only. When `T` itself has no visible members, the top-level message
+  of ADR-0021 is unchanged." The message is unchanged. It is not reached when rule S applies: such a
+  call gets message D.
+
+**Qualified in the #52 amendment.** Each statement is quoted by its opening words:
+
+- "At the top level a test on the declared `T` comes first." The #52 amendment says it of the
+  Decision and of R0. For two values that are not `null`, a test on the runtime type now comes
+  before the test on `T`: rule S.
+- "The top-level message of ADR-0021 is not reached when `actual` or `expected` is `null`, or for
+  the three kinds of `T`." It is not reached either when rule S applies.
+- The steps of a call, at "4. The recursion guard is set. Then:". Rule S is a new step after the
+  `null` rule and before that step. "The rule" above gives the steps as they are now.
+- "It does not apply "same reference": two references to one object are still walked member by
+  member." That holds for a fixed shared type and for a type that is not shared. For the same
+  instance of a state-holding shared type, no member is walked: rule S throws. Rule S does not apply
+  "same reference" either: it does not report the two values as equal.
+- "Nothing changes when `T` is any other type and both values are not `null`:" and the fourth entry
+  of its list, "A shared type (B3) other than `string` or a delegate as `T`, such as a `Stream`, a
+  `Task` or a frozen collection. Its members are walked." The entries of that list hold for two
+  different instances, and for the same instance of a fixed shared type or of a type that is not
+  shared. For the same instance of a state-holding shared type the call throws message D, whether
+  `T` is `object`, a base class, an interface or a shared type.
+- "Other shared types are not compared as a whole." and, in the same entry, "keep the member walk at
+  the top level". They are still not compared as a whole. They keep the member walk for two
+  different instances, and a fixed shared type keeps it for the same instance too. The same instance
+  of a state-holding shared type is not walked.
+- "No shortcut for the same reference is added for other types." with "When `T` is not one of the
+  three kinds and both values are not `null`, nothing changes." and "A shortcut would stop a call
+  with one instance on both sides from reaching the rule "no members visible"". Rule S is not a
+  shortcut to "equal", and it does not hide #54: it reports the case. But for the same instance of a
+  state-holding shared type, the rule "no members visible" is no longer reached: message D replaces
+  it. The unit test that the entry names still passes, because its type is not shared.
+- The rejected alternative "Decide on the runtime type at the top level." Rule S decides on the
+  runtime type for one question only: whether the call can compare anything. It does not select how
+  two values are compared. `T` still selects that, and `EnsureAssignable<object>("a", "b")` does not
+  change.
+- Relation to #40 and #54, the entry "Left in #40": "the rest of item 2." and, in the same entry, "A
+  shared type other than `string` or a delegate as `T` walks its members." It does not walk them for
+  the same instance of a state-holding shared type. "What stays open" below gives what is left in
+  #40 now.
+- The same part, on issue #54: "A class derived from a shared type (`Component`, `Stream`, `Task`)
+  is not copied by `Old`, so the pair never fails in it." Such a class is still not copied. The pair
+  now throws message D in it.
+
+**Superseded in the #52 amendment.** The statement is quoted by its opening words:
+
+- "The program has 72 checks in the default build and 71 in the" variant. It has 74 and 73. The
+  Status line of that amendment ("the smoke program has 72 checks") and its Revision History row
+  ("72 smoke checks") state the same count and are superseded with it.
+
+Its result tables, its unit-test figures and its other statements are the dated record of #52 and
+stay.
+
+**Rejected alternatives.**
+
+- **Copy the user-derived class (option 2 of the issue).** A class that derives from a listed type
+  would be copied field by field, and only the fields that the framework base declares would be
+  shared. Two reasons are against it:
+  - The base class chain does not tell a user class from a framework class. `Task<T>` derives from
+    `Task`, `MemoryStream` from `Stream`, `BackgroundWorker` from `Component`; all of them must stay
+    shared. To tell them apart needs a test on the assembly or the namespace of the user's type. D3
+    rejected namespace heuristics for third-party types as fragile. B3 uses such tests only for two
+    categories of the base class library (frozen collections, CoreLib comparers).
+  - The comparison would then read the public properties of the framework base on the copy and on
+    the original. `Control.Handle` creates a window handle, and a `Stream` getter throws. To avoid
+    that needs fields-only comparison ([#46](https://github.com/cwouyang/uContract.NET/issues/46)),
+    and a rule that leaves out the fields of the framework base.
+
+  It is deferred to #46, not closed.
+- **Documentation only (option 1 alone).** The pair would still pass in silence. A postcondition
+  that cannot fail is the defect.
+- **Report every shared type other than `string` and delegates.** The rule would be shorter. But
+  `EnsureAssignable(_lookup, Contract.Old(() => _lookup))` for a frozen collection passes today, and
+  the collection cannot be given other elements. The call would start to throw.
+- **`PostconditionViolationException`.** No change was detected. A caller that catches violations
+  would take "cannot compare" for "the state changed".
+- **Report it in `Old<T>()`.** `Old(() => _stream)` is a valid way to keep a reference for
+  `Contract.Ensure(() => ReferenceEquals(_stream, old))`. B7 says that `Old` throws nothing of its
+  own while copying.
+- **Tell a user class derived from a fixed shared type from a framework class.** A user class
+  derived from `Regex`, `Type` or `MemberInfo` that adds mutable fields still passes in silence. A
+  class that `[GeneratedRegex]` emits also derives from `Regex` and also lives in the user assembly,
+  so no test on the base class chain or on the assembly separates the two. With `Type` or
+  `MemberInfo` among the state-holding entries, a pair of `typeof(X)` would throw. This stays a
+  documented limit.
+- **Report only when the declared `T` is a state-holding shared type.**
+  `EnsureAssignable<object>(worker, worker)` and a pair taken through an interface would keep
+  passing in silence. That repairs half of the defect.
+- **Also compare two different instances of a state-holding shared type by reference.** The top
+  level would then agree with R5 for a member: a replaced reference is a violation. It takes more of
+  item 2 of #40 than this issue needs, and with it the call
+  `EnsureAssignable(_cts, Contract.Old(() => _cts))` could never pass. It stays with #40.
+
+**Limits.** Each of these passes in silence before and after this change:
+
+- A shared instance below the top level. A holder whose member is a `Worker` passes when the
+  `Worker` changed inside (measured, see the table above). This is the Known Limitation "**Shared
+  types** (B3, D7)."
+- State that a fixed shared instance refers to: a mutable element or value of a frozen collection,
+  the target of a delegate, an object that a comparer wraps.
+- A user class derived from a fixed shared type, and the framework's own mutable reflection types
+  (`System.Reflection.Emit` builders, `DynamicMethod`, `TypeDelegator`), which derive from `Type` or
+  `MemberInfo`. A user type declared in the namespace `System.Collections.Frozen` is fixed too.
+- The same instance of a type that is not shared: `var old = this;` without `Old`. `Old` never
+  returns the same instance for such a type, so this comes from the caller. A held reference to an
+  immutable object is a valid use, so it cannot be reported.
+- Two different instances at the top level when `T` is `object` or an interface without properties
+  (#40).
+
+Also not done by this change: it does not check the state of a class derived from a shared type. The
+pair now fails with message D there, and it still cannot compare. And it does not change which types
+are shared.
+
+Not tested:
+
+- The throw and the message for a real COM object.
+- `System.Threading.Lock` itself. The measurements above used a stand-in.
+- The names of other types under Native AOT. Only the two types of checks 73 and 74 were read there.
+- That rule S runs before the recursion guard is set. It runs no user code, so the position cannot
+  be observed. It was read from the code.
+
+**Why an amendment and not a new ADR.** B3 and R0–R8 stand. Rule S adds one case in which a call
+reports that it cannot compare. It does not change how any two values are compared. It takes one
+part of the rest of item 2 of #40. It does not do what the #52 amendment reserved for a new ADR,
+which is to change what every top-level comparison does. `docs/adr/README.md` lists breaking changes
+under "Requires ADR". The amended ADRs (ADR-0022, ADR-0012, ADR-0021 and ADR-0007) are that record,
+as for #52.
+
+**What stays open.**
+
+- **#54** is closed by this change, with the limits above.
+- **[#40](https://github.com/cwouyang/uContract.NET/issues/40)**: this change takes one part of the
+  rest of item 2. Left in #40 of item 2: two different instances of a shared type as `T`; the same
+  instance of a fixed shared type; and `T` = `object`, a base class or an interface for two
+  different instances. The change also touches item 6 at the top level: for the same instance of a
+  state-holding shared type, the rule "no members visible" is not reached. The rest of item 6 stays
+  in #40.
+- **[#46](https://github.com/cwouyang/uContract.NET/issues/46)** (fields-only comparison) receives
+  option 2 of #54 as a deferred alternative.
+- **[#49](https://github.com/cwouyang/uContract.NET/issues/49)** (frozen collections by elements)
+  proposes to compare them by elements "while still sharing them in the copy". So a frozen
+  collection stays a fixed shared type, and the limit above about its elements stays until #49 or a
+  later change removes it.
+
+**Unchanged.** Every other decision of this ADR.
+
 ---
 
 ## References
@@ -1115,3 +1555,4 @@ source. `linux-x64` was not measured locally; CI publishes and runs the smoke pr
 | 2026-10-07 | Accepted    | Decision recorded after implementation (issue #45). Supersedes ADR-0006 and the `Old` parts of ADR-0021; amends ADR-0007, ADR-0016, ADR-0020, ADR-0001 and ADR-0005. |
 | 2026-10-09 | Amended     | The `DBC_POST=off` pairing limitation is superseded (#47); checks 58 to 62 added. Decision unchanged. See Implementation Notes > Amendment. |
 | 2026-10-09 | Amended     | The top level decides a `null` side first and compares a `string`, a delegate type and a nullable value type as one pair (#52); 72 smoke checks. Decision unchanged. See Implementation Notes > second Amendment. |
+| 2026-10-10 | Amended     | One instance of a shared type whose state can change, passed as `actual` and as `expected`, throws `InvalidOperationException` (rule S, #54); 74 smoke checks. Decision unchanged. See Implementation Notes > third Amendment. |
