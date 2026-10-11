@@ -112,9 +112,13 @@ internal static class SharedTypes
     ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>. Two instances of such a type are compared element by
     ///     element, in enumeration order, and not by reference, and
     ///     <c>Contract.EnsureImmutableCollection</c> accepts an instance of it. No other type declared
-    ///     in <c>System.Collections.Frozen</c> matches. An array of them does not match either, and it is
-    ///     not shared: two such arrays are compared element by element, as any two arrays are.
+    ///     in <c>System.Collections.Frozen</c> matches. An array of them does not match either: the type of an
+    ///     array is not a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and does
+    ///     not derive from one.
     /// </summary>
+    // Contract.EnsureImmutableCollection calls this helper, so a type added to it is accepted by that method too.
+    // The helper reads no static field of this class: an explicit static constructor on the class, or a static
+    // field read here, would make that method run the initialiser of the class.
     internal static bool IsFrozenSetOrDictionary(Type type)
     {
         return DerivesFromGeneric(type, typeof(FrozenSet<>)) || DerivesFromGeneric(type, typeof(FrozenDictionary<,>));

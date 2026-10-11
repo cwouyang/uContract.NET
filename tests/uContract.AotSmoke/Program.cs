@@ -1583,8 +1583,9 @@ public static class Program
             Expect.Ok
         );
 
-        // An array of function pointers: under the JIT, reading its namespace ended in
-        // BadImageFormatException before this change.
+        // An array of function pointers: the method reports it as mutable from the fact that it is an array and
+        // reads nothing else from its type. Under the JIT, reading its namespace throws BadImageFormatException and
+        // reading its interfaces throws ArgumentException; the check shows that the method makes neither read.
         yield return new Check(
             86,
             "EnsureImmutableCollection array of function pointers",
@@ -1593,7 +1594,9 @@ public static class Program
             Expect.Ok
         );
 
-        // A FrozenSet<T> is accepted.
+        // ---- EnsureImmutableCollection accepts a frozen set by its type. ----
+
+        // A FrozenSet<T> passes.
         yield return new Check(
             87,
             "EnsureImmutableCollection frozen set of strings",
@@ -1626,6 +1629,8 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // ---- EnsureImmutableCollection accepts a read-only wrapper by its type. ----
 
         // A ReadOnlyCollection<T> is a view of the list that it wraps, and it passes although that list can change.
         yield return new Check(

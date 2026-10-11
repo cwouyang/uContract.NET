@@ -864,13 +864,18 @@ public static class Contract
     }
 
     /// <summary>
-    ///     Ensures that the specified collection is immutable in postconditions.
-    ///     Returns the collection if its runtime type is one of the types that the remarks list, or throws
+    ///     Ensures in postconditions that the runtime type of the specified collection is one that this method
+    ///     accepts: a type that implements an immutable collection interface, a frozen collection type or a
+    ///     read-only wrapper type, as the remarks define them. Returns the collection if its runtime type is accepted, or throws
     ///     <see cref="PostconditionViolationException" /> if it is not.
     ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
-    /// <typeparam name="T">The type of the collection</typeparam>
-    /// <param name="collection">The collection to verify for immutability</param>
+    /// <typeparam name="T">
+    ///     The declared type of the argument. It plays no part: the runtime type of the argument decides, so a
+    ///     <c>FrozenSet&lt;int&gt;</c> declared as <c>IReadOnlySet&lt;int&gt;</c> or as <c>object</c> gets the
+    ///     answer of <c>FrozenSet&lt;int&gt;</c>.
+    /// </typeparam>
+    /// <param name="collection">The collection whose runtime type is checked</param>
     /// <returns>
     ///     The original collection if its runtime type passes. In a call that does not check it, the argument as it
     ///     is, null included: see the remarks.
@@ -879,13 +884,13 @@ public static class Contract
     ///     Thrown when <paramref name="collection" /> is null and the method checks the collection
     /// </exception>
     /// <exception cref="PostconditionViolationException">
-    ///     Thrown when the runtime type of the collection is an array or is not one of the types that the remarks
-    ///     list, and the method checks the collection
+    ///     Thrown when the runtime type of the collection is an array or meets none of the conditions of the
+    ///     remarks, and the method checks the collection
     /// </exception>
     /// <remarks>
-    ///     This method checks the runtime type of <paramref name="collection" /> against the types listed here.
+    ///     This method checks the runtime type of <paramref name="collection" /> against the conditions given here.
     ///     That type decides: no element of the collection is read, and neither is the state of the instance.
-    ///     An array is reported as mutable, whatever its element type. A type that is not an array passes when
+    ///     An array type is reported as mutable, whatever its element type. A type that is not an array passes when
     ///     it implements <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
     ///     <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>, <c>IImmutableStack&lt;T&gt;</c> or
     ///     <c>IImmutableQueue&lt;T&gt;</c>, whether the type or a base class declares the interface and whether
@@ -893,15 +898,18 @@ public static class Contract
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, and when it is or
     ///     derives from a <c>ReadOnlyCollection&lt;T&gt;</c> or a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c>,
     ///     or from a generic type whose definition has the full name
-    ///     <c>System.Collections.ObjectModel.ReadOnlySet`1</c>. The framework declares that type, a read-only view
-    ///     of a set, from .NET 9; this library is built for .NET 8, so it matches the type by that full name.
-    ///     A <c>ReadOnlyCollection&lt;T&gt;</c>, a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c>, a
-    ///     <c>ReadOnlySet`1</c> and a class derived from one of them are views of the collection that they wrap:
-    ///     they pass although that collection can change.
-    ///     A type that is none of these is reported as mutable: neither the namespace nor the name of the type is
-    ///     read, except that full name. So the <c>ImmutableList&lt;T&gt;.Builder</c> of an immutable list is
-    ///     reported as mutable, and so is a class whose name starts with "Immutable" or "ReadOnly" and that is none
-    ///     of the types above.
+    ///     <c>System.Collections.ObjectModel.ReadOnlySet`1</c>. The framework declares <c>ReadOnlySet&lt;T&gt;</c>,
+    ///     a read-only wrapper of a set, from .NET 9; this library is built for .NET 8, so it matches that type by
+    ///     the full name of the generic definition. It compares that full name only: a generic type declared in
+    ///     another assembly whose definition has the same full name passes too.
+    ///     A <c>ReadOnlyCollection&lt;T&gt;</c> and a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> are views of the
+    ///     collection that they wrap, as is the <c>ReadOnlySet&lt;T&gt;</c> of .NET 9. An instance of such a type,
+    ///     or of a class derived from one, passes although the wrapped collection can change.
+    ///     A type that is not an array and meets none of these conditions is reported as mutable: neither the
+    ///     namespace nor the name of the type is read, except the full name given above. So the
+    ///     <c>ImmutableList&lt;T&gt;.Builder</c> of an immutable list is reported as mutable, and so is a class or
+    ///     a value type, such as <c>ReadOnlyMemory&lt;T&gt;</c>, whose name starts with "Immutable" or "ReadOnly"
+    ///     and that meets none of the conditions.
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
@@ -941,15 +949,18 @@ public static class Contract
 
             Type collectionType = collection.GetType();
 
-            // An array is mutable whatever its element type; nothing else is read from its type.
+            // An array type is reported as mutable, whatever its element type, and the test for it comes first so
+            // that nothing else is read from an array type: under the JIT, reading the interfaces of the type
+            // delegate*<void>[] throws ArgumentException, and reading its namespace throws BadImageFormatException.
             // A type that is not an array passes when it implements IImmutableList<T>, IImmutableSet<T>,
             // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
             // from a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or it is or derives from a
             // ReadOnlyCollection<T>, a ReadOnlyDictionary<TKey, TValue> or a generic type whose definition has the
-            // full name System.Collections.ObjectModel.ReadOnlySet`1 (the views of a collection). A type that is
-            // none of these is a violation, whatever its name. Neither the namespace nor the name of the type is
-            // read, except that full name. No element and no state of the instance is read.
-            bool isImmutable =
+            // full name System.Collections.ObjectModel.ReadOnlySet`1 (the read-only wrappers). A type that is not
+            // an array and meets none of these conditions is a violation, whatever its name. Neither the
+            // namespace nor the name of the type is read, except that full name. No element and no state of the
+            // instance is read.
+            bool typePasses =
                 !collectionType.IsArray
                 && (
                     _ImplementsImmutableCollectionInterface(collectionType)
@@ -957,7 +968,7 @@ public static class Contract
                     || _IsReadOnlyWrapper(collectionType)
                 );
 
-            if (!isImmutable)
+            if (!typePasses)
             {
                 throw new PostconditionViolationException("Ensure resultingCollection is an immutable collection");
             }
@@ -1608,7 +1619,7 @@ public static class Contract
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are fixed, and an annotation on it would move this warning to each caller of a method that only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. Check 89 of the smoke program (tests/uContract.AotSmoke) exercises this read for a class of that program, and the program is published with Native AOT and, once, trimmed without it. If an interface were missing from what the runtime returns here, this method would answer false: a type that passes by nothing else would be reported as a violation, not accepted."
+        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are fixed, and an annotation on that method would give each caller a different diagnostic (the one for a call to a method marked [RequiresUnreferencedCode], or for a type argument that lacks the [DynamicallyAccessedMembers] annotation), although the method only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. Check 89 of the smoke program (tests/uContract.AotSmoke) exercises this read for a class of that program. The continuous integration of the repository publishes the smoke program with Native AOT and runs it. A publish trimmed without Native AOT was made and run by hand while this change was developed; continuous integration does not repeat it. In both, check 89 showed no exception. If one of the five interfaces were missing from what the runtime returns here, a type that implements only that interface among the five and passes by no other condition would be reported as a violation, not accepted."
     )]
     private static bool _ImplementsImmutableCollectionInterface(Type type)
     {
