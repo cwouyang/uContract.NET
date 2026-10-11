@@ -370,7 +370,10 @@ public static class Contract
     ///     instance is passed as <c>actual</c> and as <c>expected</c>.
     ///     Shared, and fixed: <see cref="string" />; delegates; <c>Type</c>, <c>MemberInfo</c>, <c>Assembly</c>,
     ///     <c>Module</c>, <c>Pointer</c>; <c>Regex</c>; and every type derived from them. Also the frozen
-    ///     collections (the types declared in <c>System.Collections.Frozen</c>) and the comparers that the base
+    ///     collections (<c>FrozenSet&lt;T&gt;</c>, <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and every other
+    ///     class declared in <c>System.Collections.Frozen</c>; a value type declared in
+    ///     <c>System.Collections.Frozen</c> and an array whose element type is declared in
+    ///     <c>System.Collections.Frozen</c> are copied) and the comparers that the base
     ///     class library itself declares; a class of yours derived from <c>StringComparer</c> or
     ///     <c>Comparer&lt;T&gt;</c> is copied.
     ///     State inside a shared instance is not snapshotted. The target of a delegate is not compared. A
@@ -1103,8 +1106,7 @@ public static class Contract
     ///     of the underlying type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
     ///     element by element, in enumeration order, two arrays element by element, each element as a member or
     ///     element is, under the rule for two arrays above (two arrays of pointers or of function pointers are
-    ///     compared by address; two arrays of one runtime type whose element type is declared in
-    ///     <c>System.Collections.Frozen</c> are compared by reference). The patterns do not apply.
+    ///     compared by address). The patterns do not apply.
     ///     A nullable value type can therefore be compared less strictly than the same type without <c>?</c>
     ///     (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of it
     ///     cannot be listed as assignable. To compare it by its members, test both values for null first and pass the

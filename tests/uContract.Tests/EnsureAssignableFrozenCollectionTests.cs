@@ -344,7 +344,7 @@ public class EnsureAssignableFrozenCollectionTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenMemberHoldsTwoArraysOfOneFrozenSet_ReportsTheMember()
+    public void EnsureAssignable_WhenMemberHoldsTwoArraysOfOneFrozenSet_DoesNotThrow()
     {
         FrozenSet<int> numbers = Numbers.ToFrozenSet();
         FrozenSet<int>[] actualItems = [numbers];
@@ -353,11 +353,9 @@ public class EnsureAssignableFrozenCollectionTests
         Holder<FrozenSet<int>[]> actual = new() { Items = actualItems };
         Holder<FrozenSet<int>[]> expected = new() { Items = expectedItems };
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
-            Contract.EnsureAssignable(actual, expected)
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
-        Assert.Equal(ItemsChanged, exception.Description);
+        Assert.Null(exception);
     }
 
     [Fact]

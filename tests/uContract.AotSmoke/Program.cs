@@ -368,6 +368,16 @@ internal sealed class GridHolder
     public int[,] Cells = new int[0, 0];
 }
 
+internal sealed class FrozenSetListHolder
+{
+    public List<FrozenSet<string>> Sets = [];
+}
+
+internal sealed class FrozenSetEnumeratorHolder
+{
+    public FrozenSet<string>.Enumerator Position;
+}
+
 internal sealed unsafe class PointerHolder
 {
     public int* Address;
@@ -1516,6 +1526,30 @@ public static class Program
             ),
             Expect.Ok
         );
+
+        // ---- Old copies an array whose element type is declared in System.Collections.Frozen, and a value
+        // type declared in System.Collections.Frozen (issue #57). ----
+
+        // Mutation: an element of the list is replaced through the indexer by a set of different content.
+        // Visibility: DynamicDependency(All) on List<FrozenSet<string>>. The list keeps its elements in an
+        // array of frozen sets: Old copies that array, so the copy still holds the first set.
+        yield return new Check(
+            83,
+            "List of frozen sets with one element replaced",
+            FrozenSetListElementReplaced,
+            post,
+            Expect.Ok
+        );
+
+        // Mutation: none. The enumerator of a FrozenSet<T> is a value type declared in
+        // System.Collections.Frozen: it is copied and compared like any other value type.
+        yield return new Check(
+            84,
+            "Enumerator of a frozen set unchanged",
+            FrozenSetEnumeratorUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
     }
 
     private static object? FrozenDictionariesOfEqualContent()
@@ -1863,6 +1897,25 @@ public static class Program
         TaggedDerived original = new() { Tags = ["a"] };
         TaggedDerived copy = Contract.Old(() => original);
         original.Tags = ["z"];
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(List<FrozenSet<string>>))]
+    private static object? FrozenSetListElementReplaced()
+    {
+        FrozenSetListHolder original = new() { Sets = [s_frozenCodes.ToFrozenSet(StringComparer.Ordinal)] };
+        FrozenSetListHolder copy = Contract.Old(() => original);
+        original.Sets[0] = s_otherFrozenCodes.ToFrozenSet(StringComparer.Ordinal);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? FrozenSetEnumeratorUnchanged()
+    {
+        FrozenSetEnumeratorHolder original = new()
+        {
+            Position = s_frozenCodes.ToFrozenSet(StringComparer.Ordinal).GetEnumerator(),
+        };
+        FrozenSetEnumeratorHolder copy = Contract.Old(() => original);
         return NoResult(() => Contract.EnsureAssignable(original, copy));
     }
 

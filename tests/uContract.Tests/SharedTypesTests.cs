@@ -158,6 +158,60 @@ public sealed class SharedTypesTests
         Assert.False(SharedTypes.IsShared(typeof(delegate* unmanaged<void>[])));
     }
 
+    // Of the types declared in System.Collections.Frozen, the classes that are not array types are shared: a
+    // value type declared there is not, and an array whose element type is declared there is not. An array
+    // of a type that another rule shares is not shared either.
+    [Theory]
+    [InlineData("FrozenSet<int>[]", typeof(FrozenSet<int>[]), false)]
+    [InlineData("FrozenSet<int>[][]", typeof(FrozenSet<int>[][]), false)]
+    [InlineData("FrozenSet<int>[,]", typeof(FrozenSet<int>[,]), false)]
+    [InlineData("FrozenDictionary<string, int>[]", typeof(FrozenDictionary<string, int>[]), false)]
+    [InlineData("FrozenSet<int>.Enumerator", typeof(FrozenSet<int>.Enumerator), false)]
+    [InlineData("FrozenDictionary<string, int>.Enumerator", typeof(FrozenDictionary<string, int>.Enumerator), false)]
+    [InlineData("FrozenSet<int>.Enumerator[]", typeof(FrozenSet<int>.Enumerator[]), false)]
+    [InlineData("FrozenNamespaceValue[]", typeof(FrozenNamespaceValue[]), false)]
+    [InlineData("FrozenNamespaceStruct", typeof(FrozenNamespaceStruct), false)]
+    [InlineData("FrozenNamespaceStruct[]", typeof(FrozenNamespaceStruct[]), false)]
+    [InlineData("FrozenNamespaceEnum", typeof(FrozenNamespaceEnum), false)]
+    [InlineData("FrozenNamespaceEnum[]", typeof(FrozenNamespaceEnum[]), false)]
+    [InlineData("int[]", typeof(int[]), false)]
+    [InlineData("Stream[]", typeof(Stream[]), false)]
+    [InlineData("Task[]", typeof(Task[]), false)]
+    [InlineData("StringComparer[]", typeof(StringComparer[]), false)]
+    [InlineData("Regex[]", typeof(Regex[]), false)]
+    [InlineData("FrozenNamespaceValue", typeof(FrozenNamespaceValue), true)]
+    [InlineData("FrozenSet<int>", typeof(FrozenSet<int>), true)]
+    public void IsShared_WhenTypeIsAnArrayOrIsDeclaredInTheFrozenNamespace_SharesOnlyAClassThatIsNotAnArray(
+        string typeName,
+        Type type,
+        bool expected
+    )
+    {
+        bool shared = SharedTypes.IsShared(type);
+
+        Assert.True(expected == shared, $"{typeName}: IsShared is {shared}");
+    }
+
+    [Fact]
+    public void IsFrozenSetOrDictionary_WhenTypeIsAnArrayOfFrozenSets_ReturnsFalse()
+    {
+        Assert.False(SharedTypes.IsFrozenSetOrDictionary(typeof(FrozenSet<int>[])));
+    }
+
+    [Fact]
+    public unsafe void IsShared_WhenTypeIsAnArrayOfPointersToAStructInTheFrozenNamespace_ReturnsFalse()
+    {
+        Assert.False(SharedTypes.IsShared(typeof(FrozenNamespaceStruct*[])));
+    }
+
+    // The runtime looks for the namespace of an array type in its innermost element type, which is the
+    // struct here.
+    [Fact]
+    public unsafe void IsShared_WhenTypeIsAnArrayOfArraysOfPointersToAStructInTheFrozenNamespace_ReturnsFalse()
+    {
+        Assert.False(SharedTypes.IsShared(typeof(FrozenNamespaceStruct*[][])));
+    }
+
     [Fact]
     public void IsShared_WhenTypeDerivesFromAListedType_ReturnsTrue()
     {

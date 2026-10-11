@@ -261,8 +261,7 @@ internal static class MemberComparison
         // which is entered without it: when the two values of such a call are arrays (T is ICollection, say)
         // and a member leads back to them (SyncRoot), that member still counts as equal, whatever their rank,
         // lengths and lower bounds. Two arrays passed as an array type or System.Array are compared as a whole
-        // and come through here like any other pair. Two arrays of one shared runtime type do not come here:
-        // they are compared by reference (see Start).
+        // and come through here like any other pair.
         if (ArraysDifferInRankLengthOrLowerBound(actual, expected))
         {
             equal = false;

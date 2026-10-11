@@ -24,8 +24,12 @@ namespace uContract;
 ///     no getter or factory of theirs runs. <see cref="string" /> is listed too; it is compared by Equals.
 ///     A <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> is shared too, and two of
 ///     them are compared element by element, in enumeration order, also without reading their members.
-///     An array of pointers or of function pointers is never shared, and its namespace is not read:
-///     <c>Old</c> copies it with its addresses, and two of them are compared by address.
+///     Every other class declared in <c>System.Collections.Frozen</c> is shared and compared by reference.
+///     A value type declared in <c>System.Collections.Frozen</c> is not shared, and an array whose element
+///     type is declared in <c>System.Collections.Frozen</c> is not: <c>Old</c> copies them, and two of them
+///     are compared like any other two values or arrays.
+///     An array of pointers or of function pointers is never shared: <c>Old</c> copies it with its
+///     addresses, and two of them are compared by address. The namespace of an array type is never read.
 /// </summary>
 internal static class SharedTypes
 {
@@ -106,7 +110,8 @@ internal static class SharedTypes
     ///     The shared types of which two instances are compared element by element, in enumeration order, and
     ///     not by reference: every construction of <c>FrozenSet&lt;T&gt;</c> or
     ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and every type derived from one. No other type declared
-    ///     in <c>System.Collections.Frozen</c> matches, and an array of them does not.
+    ///     in <c>System.Collections.Frozen</c> matches. An array of them does not match either, and it is
+    ///     not shared: two such arrays are compared element by element, as any two arrays are.
     /// </summary>
     internal static bool IsFrozenSetOrDictionary(Type type)
     {
@@ -173,9 +178,9 @@ internal static class SharedTypes
 
     private static bool Classify(Type type)
     {
-        // Decided first, because IsInSharedCategory reads the namespace: an array of pointers or of function
-        // pointers is never shared, and a type whose namespace the runtime cannot tell is in no namespace
-        // that is shared.
+        // Decided first: an array of pointers or of function pointers is never shared, and neither is an
+        // array type whose namespace the runtime cannot tell. No test below reads the namespace of an array
+        // type (see IsClassOfTheFrozenNamespace), so each of them answers false for these types too.
         if (IsArrayOfPointersOrFunctionPointers(type) || NamespaceCannotBeRead(type))
         {
             return false;
@@ -201,17 +206,32 @@ internal static class SharedTypes
         return innermost.IsFunctionPointer;
     }
 
-    // Handles (SafeHandle, CriticalHandle), COM objects, frozen collections and CoreLib comparers.
+    // Handles (SafeHandle, CriticalHandle), COM objects, the classes declared in System.Collections.Frozen
+    // and CoreLib comparers.
     // A category added here must be classified too: DescribeChangingShare names it when its state can
-    // change, as it does for the handles and the COM objects; otherwise it is fixed, as the frozen
-    // collections and the CoreLib comparers are. The same holds for a type added to a list above.
+    // change, as it does for the handles and the COM objects; otherwise it is fixed, as the classes declared
+    // in System.Collections.Frozen and the CoreLib comparers are. The same holds for a type added to a list
+    // above.
     private static bool IsInSharedCategory(Type type)
     {
         return typeof(CriticalFinalizerObject).IsAssignableFrom(type)
             || type.IsCOMObject
             || typeof(ComObject).IsAssignableFrom(type)
-            || string.Equals(type.Namespace, "System.Collections.Frozen", StringComparison.Ordinal)
+            || IsClassOfTheFrozenNamespace(type)
             || IsCoreLibComparer(type);
+    }
+
+    // A FrozenSet<T>, a FrozenDictionary<TKey, TValue> and every other class declared in
+    // System.Collections.Frozen. A value type declared there (a struct, an enum, an enumerator of a frozen
+    // collection) is not one of them, and neither is an array, whatever its element type: the runtime
+    // reports the namespace of an array type as that of its innermost element type, so that namespace is
+    // not read. The exclusion is made here only; the other rules are asked about arrays and value types as
+    // before.
+    private static bool IsClassOfTheFrozenNamespace(Type type)
+    {
+        return !type.IsArray
+            && !type.IsValueType
+            && string.Equals(type.Namespace, "System.Collections.Frozen", StringComparison.Ordinal);
     }
 
     private static bool IsCoreLibComparer(Type type)
