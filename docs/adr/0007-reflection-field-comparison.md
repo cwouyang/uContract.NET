@@ -536,7 +536,10 @@ declared in the namespace `System.Collections.Frozen`. There are four points for
   `T` is compared, and the patterns do not apply and are not examined.
 - Two arrays that the comparison meets as a pair are equal only when they have the same rank, and
   the same length and lower bound in every dimension. That holds for two arrays that a member or an
-  element holds, and for the two values of an array type or `System.Array` as `T`.
+  element holds, and for the two values of an array type or `System.Array` as `T`. It does not hold
+  for two arrays that are passed as a `T` that is neither an array type nor `System.Array`, such as
+  `object` or an interface: there only the members that are visible through `T` are compared, and a
+  member that leads back to the two values counts as equal.
 - Two arrays of pointers or of function pointers are compared by the addresses that they hold.
 - `Old<T>()` no longer shares an array whose element type is declared in that namespace, or a value
   of a value type that is declared there. So the comparison no longer decides two of them by
