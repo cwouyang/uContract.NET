@@ -386,6 +386,13 @@ public static class Contract
     ///     content that is as it was when this method ran. To check the state of an element, take its values with
     ///     this method before the change and compare them afterwards with
     ///     <see cref="Ensure(string, Func{bool})" />.
+    ///     An enumerator of a frozen collection is a value type declared in <c>System.Collections.Frozen</c>, so
+    ///     this method copies it as it copies a value of any other value type. Measured on .NET 8, for an object
+    ///     that holds a <c>FrozenSet&lt;T&gt;</c> of a class and an enumerator of that set: after a change inside
+    ///     an element of the set, with the enumerator not moved, <c>EnsureAssignable</c> reported a violation that
+    ///     names the member that holds the enumerator. The result depends on the runtime. Keep no enumerator of a
+    ///     frozen collection in the state that is compared, or, when <c>EnsureAssignable</c> compares the members
+    ///     of the type that holds it, list that member as assignable.
     ///     A class that derives from a type of the first group is shared too, so <c>Old(() =&gt; this)</c> in
     ///     such a class returns <c>this</c>. There, check each state member with
     ///     <see cref="Ensure(string, Func{bool})" /> and a value taken with this method.

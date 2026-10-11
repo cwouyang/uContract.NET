@@ -2770,8 +2770,14 @@ named. "Read from the code" marks a limit that no test or measurement shows.
     (limit 3 of the #49 amendment), and with the enumerator member and no change the call gives no
     exception. Why the enumerator member differs was not measured: the fields of the enumerator are
     private to the runtime and were not read. So the result depends on the runtime. The design
-    leaves the private fields of the enumerators without a rule, and this amendment decides nothing
-    about them.
+    leaves the private fields of the enumerators without a rule. The maintainer decided to state
+    this as a limit, in the XML remarks of `Old<T>()` and in the API reference, and not to treat
+    `FrozenSet<T>.Enumerator` and `FrozenDictionary<TKey, TValue>.Enumerator` differently from the
+    other value types of the namespace: the code is not changed. Both texts say what to do: keep no
+    enumerator of a frozen collection in the state that is compared, or, when `EnsureAssignable<T>()`
+    compares the members of the type that holds it, list that member as assignable (read from the
+    code: a member whose name a pattern matches is not compared; not measured for this case). The
+    limit was measured for a `FrozenSet<T>` only.
 18. **Another method still reads the namespace.** `Contract.EnsureImmutableCollection<T>()`
     reads `Type.Namespace` of the runtime type of its argument, and so throws
     `BadImageFormatException` for an array of function pointers (measured). This change does not
