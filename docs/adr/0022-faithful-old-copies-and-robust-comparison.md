@@ -11,6 +11,7 @@
 - **Amended**: 2026-10-09 — at the top level a `string`, a delegate type and a nullable value type are compared as one pair by R0–R8, and a `null` side is decided first for every `T` (#52); the smoke program has 72 checks; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — at the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: the call throws `InvalidOperationException` (rule S, #54); the smoke program has 74 checks; see the third Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared element by element, in enumeration order (R7), not by reference (R5), and one of the two types as `T` is compared as a whole; `Old<T>()` and B3 are unchanged (#49); the smoke program has 79 checks; see the fourth Amendment under Implementation Notes
+- **Amended**: 2026-10-11 — `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there (B3 shares the classes of that namespace that are not array types); `EnsureAssignable<T>()` compares an array type or `System.Array` as `T` as a whole, finds two arrays equal only when they have the same rank, and the same length and lower bound in every dimension, and compares two arrays of pointers or of function pointers by address (#57); the smoke program has 84 checks; see the fifth Amendment under Implementation Notes
 
 ---
 
@@ -2230,6 +2231,1021 @@ The amended ADRs (ADR-0022, ADR-0012, ADR-0021 and ADR-0007) are that record, as
 
 **Unchanged.** Every other decision of this ADR.
 
+### Amendment (2026-10-11): Arrays and the value types of System.Collections.Frozen are copied and compared like other arrays and values (#57)
+
+This amendment follows the #49 amendment above. It records five changes that were made together for
+[issue #57](https://github.com/cwouyang/uContract.NET/issues/57). #57 was filed for one defect, which
+the #49 amendment names: `Old<T>()` shared an array of `FrozenSet<T>` with the original instead of
+copying it. The measurements for #57 found four more defects on the same paths of the copy and of
+the comparison, and the maintainer decided to repair all five in one change. `Old<T>()` now copies
+an array whose element type is declared in `System.Collections.Frozen`, and a value of a value type
+declared there. `EnsureAssignable<T>()` now compares two arrays that are passed as an array type or
+as `System.Array` as a whole; it finds two arrays equal only when they have the same rank, and the
+same length and lower bound in every dimension; and it compares two arrays of pointers or of
+function pointers by address. `Old<T>()` still shares a `FrozenSet<T>`, a
+`FrozenDictionary<TKey, TValue>` and every other class declared in that namespace. The amendments of
+2026-10-11 of [ADR-0012](0012-dotnet-improvements-over-java.md),
+[ADR-0021](0021-postconditions-under-trimming-and-aot.md) and
+[ADR-0007](0007-reflection-field-comparison.md) point here.
+
+**Terms.** This amendment uses these terms:
+
+- **The namespace**: `System.Collections.Frozen`.
+- **The two types**: `FrozenSet<T>` and `FrozenDictionary<TKey, TValue>`, as the #49 amendment
+  defines them.
+- **An array of the namespace**: an array whose element type is declared in the namespace, or whose
+  innermost element type is: a `FrozenSet<int>[]`, a `FrozenSet<int>[][]`, a `FrozenSet<int>[,]`.
+  `Type.Namespace` of such an array type is the namespace (measured for these three array types and
+  for four more).
+- **A value type of the namespace**: a struct or an enum declared in the namespace. The base class
+  library declares the enumerators `FrozenSet<T>.Enumerator` and
+  `FrozenDictionary<TKey, TValue>.Enumerator` there. An assembly of the caller can declare a type in
+  that namespace too.
+- **A class of the caller in the namespace**: a class that an assembly of the caller declares in the
+  namespace. F5 of the #49 amendment names it.
+- **An array as `T`**: the declared `T` is an array type, of any rank and with any element type, or
+  it is `System.Array`.
+- **Rank, lengths and lower bounds**: the rank of an array, and its length and its lower bound in
+  every dimension. This amendment does not call them the "shape" of an array, because B1 uses
+  "shape" for the object graph.
+- **The dimension test**: the rule that this amendment adds for two arrays. They are different when
+  their ranks differ, or when a length or a lower bound differs in any dimension.
+- **Compared as a whole** and **message C**: as the #52 amendment and the #49 amendment define them.
+- **Violation**: a `PostconditionViolationException` whose description begins "Fields were modified
+  that are not marked as assignable" and names a member.
+- **`82c6255`**: the commit of `master` on which the design was measured, before the library
+  changed. "Before" in this amendment is the result there, under the JIT, on .NET 8.0.16. "2.0.0" is
+  the result with the 2.0.0 package. "After" is the result on the library as this change leaves it.
+  "Measured" below says where each result comes from.
+- **Dynamic code off**: a unit test or a measurement that runs under the test seam that simulates
+  Native AOT. Under the seam a type counts as having no visible members only when it reflects with
+  no member at all.
+
+**What changed.** There are five changes. The first two are one change of one test in the code.
+
+1. **`Old<T>()` copies an array of the namespace.** B3 shares a type "in the
+   `System.Collections.Frozen` namespace". On `82c6255` the code tested `Type.Namespace` alone, and
+   the runtime reports the namespace of an array type as that of its innermost element type. So an
+   array of the namespace was shared: the copy of an object held the original's own array (rows 1,
+   4, 16 and 17 below). The copy of a `List<FrozenSet<int>>` kept the original's storage: an element
+   that was replaced afterwards was replaced in the copy too (row 8), and after `Clear` the copy
+   still counted two elements and held `null` (row 9). The namespace category of B3 now matches a
+   type that is neither an array type nor a value type. An array of the namespace is copied by B5,
+   as every other array is. Each element keeps its own rule: an element of the two types, or of a
+   class of the caller in the namespace, is still the original's instance.
+2. **A value of a value type of the namespace is copied and compared like a value of any other
+   value type.** The same test no longer matches a value type. On `82c6255` `Old<T>()` returned a
+   boxed value of such a type as it was (row 39), with the references inside it (rows 43 to 45), and
+   R5 compared two values of such a type by reference. Each side of a member of such a type is boxed
+   separately, so the member was never equal, also to its own copy (rows 30, 33, 34, 40 and 47;
+   limit 5 of the #49 amendment). Now B2 applies to a boxed value, and R3 compares two values:
+   `Equals` first, and then the visible fields.
+3. **An array as `T` is compared as a whole.** `actual` and `expected` are one pair. The pair is
+   compared element by element, and each element by the rules for a member or an element. No member
+   of `T` is compared, the assignable patterns do not apply, and their elements are not examined. A
+   difference is a `PostconditionViolationException` with message C. On `82c6255` the members of the
+   array type were walked. Two arrays of different lengths were reported through `Length` and
+   `LongLength` (row 52). A different element was not reported at all (rows 51 and 53 to 57, 64 and
+   65). The design gives the cause, which was read from the code of `82c6255` and was not measured:
+   of the members of an array, only `SyncRoot` leads to its elements, and it returns the array
+   itself; the two arrays are the top-level pair, which is in progress for the whole call (R1), so
+   the pair counted as equal when `SyncRoot` reached it again.
+4. **Two arrays are equal only when they have the same rank, lengths and lower bounds** (the
+   dimension test). The test applies to two arrays wherever the comparison meets them as a pair: the
+   two values of a member or of a field of a struct, two elements, two keys or two values of a
+   dictionary, and the two values of an array as `T`. The runtime types of the two arrays need not
+   be equal. The test does not apply to an array and a sequence that is not an array. On `82c6255`
+   an array of any rank was compared as the one sequence that it enumerates, so an `int[,]` of 1 by
+   2 equalled one of 2 by 1 with the same elements in the same order (row 83).
+5. **Two arrays of pointers or of function pointers are compared by address.** After the dimension
+   test, the addresses that the two arrays hold are compared in the order of the memory of the
+   arrays. The types that the pointers point to are not compared, and no address is dereferenced. An
+   array of pointers or of function pointers that has at least one element is different from every
+   value that is not such an array. One that has no element is compared as any other sequence is.
+   Limit 8 below gives the one case in which neither the dimension test nor the comparison by
+   address decides: such an array as one of the two values of a call whose `T` is compared by its
+   members.
+   `Old<T>()` copies such an array with its addresses; for an array of pointers it did so before
+   (row 101). In the cases that were measured on `82c6255`, the comparison threw
+   `NotSupportedException` when a member held an array of pointers with an element and the other
+   side held another array or sequence (rows 102, 103, 107, 109, 110, 112 and 114). `Old<T>()` and
+   the comparison threw `BadImageFormatException` for an object that holds an array of function
+   pointers, and the comparison threw it for such an array as `T` (rows 108, 116 and 117): the
+   classification of B3 read `Type.Namespace` of the array type, and the runtime throws when the
+   innermost element type of an array type is a function pointer.
+
+**In the code.** `SharedTypes.IsClassOfTheFrozenNamespace` is the namespace category of B3: the type
+is not an array type, it is not a value type, and its `Type.Namespace` is the namespace. The two
+tests on the kind of type come first, so `Type.Namespace` of an array type is not read.
+`SharedTypes.Classify` answers "not shared" before it asks any category about an array of pointers
+or of function pointers, and about a type whose innermost element type is a function pointer.
+`MemberComparison.ArraysDifferInRankLengthOrLowerBound` is the dimension test. It reads `Rank`,
+`GetLength` and `GetLowerBound`, and no element. `MemberComparison.TryGetAddresses` gives the
+addresses of an array of pointers or of function pointers that has an element. It reads the memory
+of the array as native integers through `MemoryMarshal.GetArrayDataReference`,
+`MemoryMarshal.CreateReadOnlySpan` and `Unsafe.As`, after it has tested the element type.
+`MemberComparison.IsArrayTypeOrSystemArray` is the test for an array as `T`: the type is an array
+type, or it is `typeof(Array)`. The helper `CannotCompareBelowWhole` now also serves an array as
+`T`.
+
+**The rule as it is now.** The steps of a call are those of the #49 amendment. Step 5 gains the
+arrays:
+
+1. The pattern array is checked for `null`.
+2. A call that does not compare returns.
+3. The `null` rule.
+4. Rule S.
+5. When `T` is a `string`, a delegate type, a nullable value type, one of the two types, or an array
+   type or `System.Array`, the two values are compared as a whole.
+6. For every other `T`, the members of `typeof(T)` are walked.
+
+The test of the #52 amendment on the declared `T` gains a fifth case: `typeof(T)` is an array type,
+or it is `System.Array`. The table of that amendment ("What R0–R8 give for two values that are not
+`null`") gains this row:
+
+| `T` | Compared by | Rule |
+|---|---|---|
+| an array type or `System.Array` | The same instance is equal. Otherwise the dimension test comes first. Then two arrays of pointers or of function pointers that have elements are compared by address, and such an array against an array that is not one is different (change 5 above); any other two arrays are compared element by element, in the order in which they enumerate, each element by R0–R8 | the dimension test, then R7; R6 leads to them when the runtime types of the two arrays differ |
+
+The "Order for a pair" of the accepted text, as the #49 amendment and this amendment leave it:
+
+same reference or a `null` side → R6 → pointer and `string` → R4 → R5 (not for two values of the two
+types) → R3 → R1 memo → the dimension test (for two arrays) → R7 or R8 → member walk.
+
+What holds for the comparison of an array as `T` as a whole:
+
+- It runs with the recursion guard set. It can run the property getters, enumerators and `Equals` of
+  the elements and of what they refer to, as the member walk can (read from the code; measured for a
+  getter of an element that throws: the call ends in a `TargetInvocationException`).
+- The pair of the two arrays is tracked by R1 while it is compared. An element that leads back to
+  its array counts as equal (measured: rows 70 and 71 below).
+- The patterns are not used, and the elements of the pattern array are not examined (measured: rows
+  59 and 60). The array itself is still checked for `null` first (row 61).
+- No member metadata of `T` is read. So the rule "no members visible" of ADR-0021 is not reached for
+  `T` (read from the code). The class of an element is still checked where the comparison reaches it
+  (rows 79 to 82).
+- The declared type decides. A value that is not `null` and whose declared type is an array type or
+  `System.Array` is an array, so the declared type and the runtime type cannot disagree about the
+  kind. Two arrays that are passed as `object` or as an interface are not compared as a whole: the
+  members that are visible through that `T` are compared (row 77; #40). A collection class as `T`,
+  such as a `List<int>`, is compared by its members as before (row 78).
+
+**Decisions and reasons.** The design records that the maintainer made these decisions on
+2026-10-10. They are numbered A1 to A12 so that they are not taken for D1 to D13 of this ADR, for S1
+to S10 of the #54 amendment or for F1 to F10 of the #49 amendment.
+
+| # | Question | Decision |
+|---|----------|----------|
+| A1 | Scope | All five changes are made in one change: the arrays of the namespace (the defect that #57 was filed for), the value types of the namespace, an array as `T` (an array type and `System.Array`), the dimension test, and the arrays of pointers and of function pointers. |
+| A2 | Where an array type and a value type leave B3 | In the namespace category only. The other categories and the lists of B3 are asked about an array type and about a value type as before. An array of pointers or of function pointers, and a type whose innermost element type is a function pointer, are answered "not shared" before any category is asked. |
+| A3 | What stays shared | A value of the two types (F1 of the #49 amendment), and a class of the caller in the namespace, which is still compared by reference (F5). |
+| A4 | A lower bound | It counts. A one-dimensional array with lower bound 1 and an `int[]` of the same elements are different. |
+| A5 | Element types | Two arrays that pass the dimension test and have different element types are compared element by element. An array of pointers or of function pointers that has elements is the exception: A9 and change 5 above give its rule. |
+| A6 | An array against a sequence that is not an array | Compared by what the two enumerate, as before. The dimension test is for two arrays. |
+| A7 | The message for an array as `T` | Message C, with the declared `T`. No message is added or changed. Neither message C nor a violation says that a rank, a length or a lower bound differs. |
+| A8 | The path of the "cannot compare" message below an array as `T` | It starts with the parameter name `actual`, not with `typeof(T).Name`. Below that the path is built as before. The path below one of the two types as `T` and below a nullable value type as `T` does not change. |
+| A9 | A pointer or a function pointer as an element | Compared by its address only, as a pointer field is. An array of pointers or of function pointers that has no element follows the rules for other sequences. |
+| A10 | CHANGELOG | For the arrays and the value types of the namespace, existing entries are rewritten and none is added. An array as `T` goes into the existing entry on a `T` that is compared as a whole. The dimension test gets an entry of its own, marked BREAKING. The arrays of pointers and of function pointers get an entry under Fixed. The amendment of ADR-0012 for #57 records what the CHANGELOG holds. |
+| A11 | Unit tests of `SharedTypes.IsShared` and `SharedTypes.IsFrozenSetOrDictionary` | Direct tests are added. They pin two internal methods on purpose. |
+| A12 | Smoke checks | Five are added, checks 80 to 84. No smoke check covers an array of pointers or of function pointers. |
+
+The reasons, as far as the design gives them:
+
+- **A1.** The four further defects were found on the paths that the first one uses. Six rows of the
+  tables below reach their result only with two of the changes together (rows 18, 58, 99, 100, 105
+  and 117).
+- **A2.** For the array types and the value types that were measured, no test can tell this
+  placement from an exclusion ahead of every rule: on `82c6255`, no other rule of B3 matched one of
+  them (see "Measured, other results"). An array of pointers or of function pointers is never
+  shared, and the code gives that answer before it asks any rule, so that no rule has to be shown
+  not to throw and not to match for such a type; the comment at that place says so. On `82c6255`
+  the namespace category threw for an array of function pointers. At the final state it reads the
+  namespace of no array type, and the early answer is kept (see "Where the work differs from the
+  design").
+- **A4.** The design records the decision and its known cost, and no reason beyond that. The cost: a
+  one-based array against a zero-based array of the same elements is a violation, for example an
+  `object[,]` that was read from a spreadsheet against an expected array written in C#. `Old<T>()`
+  keeps the lower bounds of an array that it copies (B5; row 98), so the dimension test adds no
+  violation to the pair of `Old<T>()` and `EnsureAssignable<T>()` when nothing changed.
+- **A5.** This is what R6 and R7 already did for two sequences of different runtime types. An
+  `int[] {1, 2}` and an `object[] {1, 2}` are equal. An `int[] {1, 2}` and a `long[] {1, 2}` are
+  not, because the boxed elements have different runtime types (rows 74 and 93).
+- **A6.** This is R6 and R7 as they were. It has one consequence: across kinds of sequence, equality
+  is not transitive (row 94, and the limits below).
+- **A7.** Message C is true of the case as it stands, as F8 of the #49 amendment says for the two
+  types.
+- **A8.** The name of an array type holds brackets of its own. With `typeof(T).Name`, the path to an
+  element of a `HiddenLeaf[]` would read `HiddenLeaf[][]`, as if there were one more level of
+  elements, and for `System.Array` it would read `Array[]`. A prototype that was measured for the
+  design printed a path of that form (``Empty57[][]`` for an element of an `Empty57[]`).
+- **A9.** A pointer field is compared by its address (R3; row 115), and an element follows the same
+  rule. With no element there is no address to compare.
+- **A10.** The design gives this reason for adding no entry for the arrays and the value types of
+  the namespace: against 2.0.0 they bring nothing that the existing entries do not already state.
+  2.0.0 threw from `Old<T>()` for these types (rows 1, 8, 17, 30 and 37). 2.0.0 found two arrays of
+  frozen sets of equal content equal (rows 20 and 21). A struct of the caller in the namespace
+  behaved in 2.0.0 as it does now (rows 34 to 36). Two enumerators of two sets of equal content were
+  a violation in 2.0.0 and are equal now (row 32); the existing entry on what is reported less
+  covers that with its sentence on structs of equal content. #49 was handled in the same way (F9).
+- **A12.** The design fixed the expected result of each check before the publish. For checks 82 and
+  84 it also fixed that a publish with another result stops the work and goes back to the
+  maintainer. Both gave the expected result (see "Measured results, smoke program"). That no check
+  covers an array of pointers or of function pointers is a decision; "Not covered by a measurement"
+  below lists it.
+
+Two more points of the design are about words and not about behaviour. The documents say "rank,
+lengths and lower bounds" and not "shape". And the unit tests state "dynamic code off" only for a
+type that reflects with no member at all; every other statement about Native AOT rests on the smoke
+program or is marked as not measured.
+
+**Behaviour.** "2.0.0" was measured with the 2.0.0 package and "Before" on `82c6255`, with tests and
+programs that are not in the repository. "After" was measured in the same way on the library as this
+change leaves it, and unit tests of this change show it (see "Measured"). "Not measured" means that
+no measurement exists for the cell. In the tables:
+
+- `h` is a holder whose member `Items` has the type that the row names, and `old` is
+  `Contract.Old(() => h)`. "Two holders" are two such objects that are passed to
+  `EnsureAssignable<T>()` directly, without `Old<T>()`.
+- s1 and s1b are two frozen sets of equal content that enumerate in one order. s2 is a frozen set of
+  other content.
+- "—" means no exception. "V" means a violation that names `Items` (and the backing field of
+  `Items`, when it is an auto-property), or the member that the cell gives. "C" means a
+  `PostconditionViolationException` with message C.
+- "n/a" means that the step cannot be reached, because `Old<T>()` throws.
+- The cells of one row are separated by ";", in the order of the cases of the row.
+- The rows keep the numbers that the design gave them; 28 and 29 are not used.
+
+`Old<T>()` and an array of the namespace:
+
+| # | Case | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 1 | `FrozenSet<int>[]`: is `old.Items` the original's array | `Old<T>()` throws `InvalidOperationException` | yes | no; its element is the original's set |
+| 2 | row 1, then `h.Items[0] = s2`; `EnsureAssignable(h, old)` | n/a | — | V |
+| 3 | row 1, nothing changed; `EnsureAssignable(h, old)` | n/a | — | — |
+| 4 | `FrozenSet<int>[][]`, an element of an inner array replaced by s2 | not measured | — (the outer and the inner array are the original's) | V (neither is) |
+| 5 | `FrozenSet<int>[,]`, an element replaced by s2 | not measured | — | V |
+| 6 | an array of a class of the caller in the namespace, an element replaced by an instance of other content | V | — | V |
+| 7 | row 6, nothing changed; then a property of the element changed | not measured | —; — | —; — (the element is shared) |
+| 8 | `List<FrozenSet<int>>`, an element replaced through the indexer: is `old.Items[0]` still the original set; `EnsureAssignable(h, old)` | `Old<T>()` throws | no; — | yes; V |
+| 9 | `List<FrozenSet<int>>` with two elements, then `Clear`: `old.Items[0]` | n/a | `null` | not `null` |
+| 10 | `List<FrozenDictionary<string, int>>`, an element replaced by a dictionary of other content | not measured | — | V |
+| 11 | `Stack<FrozenSet<int>>`, `Pop` and then `Push` of another set: is `old.Items.Peek()` the original set; `EnsureAssignable(h, old)` | not measured | no; — | yes; V |
+| 12 | `Queue<FrozenSet<int>>` of capacity 1, `Dequeue` and then `Enqueue` of another set: is `old.Items.Peek()` the original set; `EnsureAssignable(h, old)` | not measured | no; — | yes; V |
+| 13 | `ImmutableArray<FrozenSet<int>>`, an element replaced through `ImmutableCollectionsMarshal.AsArray`: is `old.Items[0]` the original set; `EnsureAssignable(h, old)` | not measured | no; — | yes; V |
+| 14 | `ArraySegment<FrozenSet<int>>`, an element of its array replaced by s2 | not measured | — | V |
+| 15 | `Collection<FrozenSet<int>>`, an element replaced by s2 | not measured | — | V |
+| 16 | `Items` declared `object` and holding a `FrozenSet<int>[]`: is `old.Items` the original's array | not measured | yes | no |
+| 17 | `Old(() => a)` for a `FrozenSet<int>[]` `a`: is the result `a` | `Old<T>()` throws | yes | no |
+| 18 | row 17, then `a[0] = s2`; `EnsureAssignable(a, old)` | n/a | — | C |
+| 19 | for comparison: `List<int>`, an element replaced | not measured | V | V |
+
+Two holders, each with its own array:
+
+| # | Values | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 20 | two `FrozenSet<int>[]` that hold one set | — | V | — |
+| 21 | two `FrozenSet<int>[]`, with s1 and with s1b | — | V | — |
+| 22 | two `FrozenSet<int>[]`, with s1 and with s2 | V | V | V |
+| 23 | two `FrozenSet<int>[]` of lengths 1 and 2 | V | V | V |
+| 24 | both hold `null`; both are empty (two instances) | —; — | V; V | —; — |
+| 25 | two `FrozenSet<int>[][]`; two `FrozenSet<int>[,]`; one set in both | not measured | V; V | —; — |
+| 26 | two `FrozenDictionary<string, int>[]` of equal content | — | V | — |
+| 27 | two arrays of a class of the caller in the namespace: one element instance in both; two instances of equal content | —; — | V; V | —; V |
+
+The second cell of row 27 differs from 2.0.0. #45 made that difference, and it stays: a class of the
+caller in the namespace is still shared and compared by reference (A3).
+
+The value types of the namespace. `E` is a `FrozenSet<int>.Enumerator`. `S` is a struct of the
+caller that is declared in the namespace and has one `int` field. `SR` is such a struct with a field
+`Numbers` of type `List<int>`. The 2.0.0 cells of rows 34 to 36, 38 and 41 were measured with a
+struct whose `int` is an auto-property; such a struct gave the same "Before" and "After" as `S`.
+
+| # | Case | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 30 | member `E`, `Old<T>()`, nothing changed | `Old<T>()` throws `InvalidOperationException` | V | — |
+| 31 | member `E`, the enumerator advanced by one after `Old<T>()` | n/a; two holders without `Old<T>()`, one enumerator advanced: V | V | V |
+| 32 | two holders, enumerators of s1 and of s1b; of s1 and of s2 | V; V | V; V | —; V |
+| 33 | member `FrozenDictionary<string, int>.Enumerator`, `Old<T>()`, nothing changed | not measured | V | — |
+| 34 | member `S`, `Old<T>()`, nothing changed; the value changed | —; V | V; V | —; V |
+| 35 | two holders, `S` of equal content; of different content | —; V | V; V | —; V |
+| 36 | member `S[]`, `Old<T>()`, nothing changed; an element changed | —; V | —; — (the array is shared) | —; V |
+| 37 | member `E[]`, `Old<T>()`, nothing changed | `Old<T>()` throws | — | — |
+| 38 | member `List<S>`, `Old<T>()`, nothing changed; an element replaced by one of other content | —; not measured | V; V | —; V |
+| 39 | `Items` declared `object` and holding a boxed `S`: is `old.Items` the original's box; nothing changed; replaced by a value of other content; replaced by another box of equal content | not measured | yes; —; V; V | no; —; V; — |
+| 40 | member `S?`, `Old<T>()`, nothing changed; the value changed | not measured | V; V | —; V |
+| 41 | `T` = `S?`, equal content; different content | `NotSupportedException`; `NotSupportedException` | C; C | —; C |
+| 42 | member `SR`, `Old<T>()`, nothing changed; the list gained an element | not measured | V; V | —; V |
+| 43 | `Old(() => sr)` for an `SR` `sr`: is the list of the result the original's list; then the list gained an element, `EnsureAssignable(sr, old)` | not measured | yes; — | no; V that names `Numbers` |
+| 44 | `Items` declared `object` and holding a boxed `SR`: is the list of `old.Items` the original's list; then the list gained an element, `EnsureAssignable(h, old)` | not measured | yes; — | no; V |
+| 45 | member `object[]` that holds a boxed `SR`, `Old<T>()`, the list gained an element | not measured | — | V |
+| 46 | for comparison, two holders with a class of the caller in the namespace: one instance; two of equal content | not measured | —; V | —; V |
+| 47 | member of an enum that is declared in the namespace, `Old<T>()`, nothing changed; the value changed | not measured | V; V | —; V |
+| 48 | member array of that enum, `Old<T>()`, nothing changed; an element changed | not measured | —; — (the array is shared) | —; V |
+| 49 | member `S?[]`, `Old<T>()`, nothing changed; an element changed | not measured | V; V | —; V |
+
+Rows 42 to 45: on `82c6255` `Old<T>()` returned a boxed value of such a type as it was, so a
+reference inside the box was shared with the original (rows 43 to 45). A member that is declared as
+the struct type is part of the memory of its holder. Read from the code of the copier, which this
+change did not touch: the references inside such a member were copied before too, so row 42 changed
+through the comparison alone. Rows 30 to 33 and 37 rest on the private fields of the enumerators in
+the runtime that ran them, .NET 8.0.16. The first cell of row 32 also needs two sets of equal
+content to give enumerators with equal fields; no unit test holds that cell.
+
+An array as `T`. `Box` is a small class with one property. `Base` and `Derived` are a class and a
+class derived from it that adds a member:
+
+| # | Case | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 50 | `T` = `int[]`, equal content | — | — | — |
+| 51 | `T` = `int[]`, one element differs | V that names `SyncRoot` | — | C |
+| 52 | `T` = `int[]`, lengths 2 and 1 | V that names `Length`, `LongLength` and `SyncRoot` | V that names `Length` and `LongLength` | C |
+| 53 | `T` = `string[]`: one element differs; `null` against a string; `"aB"` against `"ab"` | V that names `SyncRoot`, each | —; —; — | C; C; C |
+| 54 | `T` = `Box[]`: two instances of equal content; the content differs | —; V that names `SyncRoot` | —; — | —; C |
+| 55 | `T` = `int[][]`, an element of an inner array differs | V that names `SyncRoot` | — | C |
+| 56 | `T` = `int[,]`, one element differs | V that names `SyncRoot` | — | C |
+| 57 | `T` = `object[]`, one element differs | V that names `SyncRoot` | — | C |
+| 58 | `T` = `FrozenSet<int>[]`: with s1 and with s1b; with s1 and with s2 | —; V that names `SyncRoot` | V that names `SyncRoot`, each | —; C |
+| 59 | `T` = `int[]`: one element differs, pattern `Length`; one element differs, pattern `SyncRoot`; the lengths differ, pattern `.*` | V that names `SyncRoot`; —; — | —; —; — | C; C; C |
+| 60 | `T` = `int[]`, equal content: a pattern that is not a valid regular expression; a pattern array that holds `null` | `RegexParseException`; `ArgumentNullException` | the same | —; — |
+| 61 | `T` = `int[]`, one element differs, and the pattern array itself is `null` | not measured | `ArgumentNullException` | `ArgumentNullException` |
+| 62 | `actual` is `null` and `expected` is not; both are `null`: with `T` = `int[]`; with `T` = `Array` | `ArgumentNullException` for the first case with `T` = `int[]`; the others not measured | a `PostconditionViolationException` with the message "actual is null and expected is not."; —; for each `T` | the same |
+| 63 | `T` = `int[]`: one instance on both sides; both are empty (two instances) | —; not measured | —; — | —; — |
+| 64 | `Old(() => a)` for an `int[]` `a`, then `a[0]` changed; nothing changed | V that names `SyncRoot`; — | —; — | C; — |
+| 65 | `Old(() => a)` for a `Box[]` `a`, then a property of an element changed | not measured | — | C |
+| 66 | `T` = `Stream[]`: two arrays that hold one stream; one array on both sides; two arrays with two streams | not measured; not measured; `TargetInvocationException` | —; —; — | —; —; C |
+| 67 | `Old(() => a)` for a `Stream[]` `a`, then the stream was written to | not measured | — | — (the stream is shared and is compared with itself) |
+| 68 | `T` = `DateTime[]`, the same ticks and another `Kind`; the same two values with `T` = `DateTime` | —; not measured | —; V that names `Kind` and `_dateData` | the same |
+| 69 | `T` = `Base[]`, with two `Derived` whose own member differs; the same two values with `T` = `Base` | not measured | —; — | C; — |
+| 70 | `T` = `object[]`, each array holds itself: and nothing else; and a second element that differs; `Old<T>()`, nothing changed | not measured | —; —; — | —; C; — |
+| 71 | `T` = `object[]`, two pairs of arrays that hold each other: and nothing else; and one other element that differs | not measured | —; — | —; C |
+| 72 | `T` = `Array`, two `int[]`: one element differs; equal content | V that names `SyncRoot`; not measured | —; — | C; — |
+| 73 | `T` = `Array`, two `int[]` of different lengths, pattern `Length` | V that names `SyncRoot` | — | C |
+| 74 | `T` = `Array`: `int[] {1, 2}` and `object[] {1, 2}`; `int[] {1, 2}` and `long[] {1, 2}` | —; V that names `SyncRoot` | —; — | —; C |
+| 75 | `T` = `Array`, `Old<T>()`, then one element changed | not measured | — | C |
+| 76 | `T` = `object[]`, a `string[]` and an `object[]` of equal content | — | — | — |
+| 77 | for comparison, a declared type that is not an array type and can hold an array: `T` = `object`, `IEnumerable<int>`, `IList<int>`, `IReadOnlyList<int>`, `IList`, `ICloneable`, each with two `int[]` of which one element differs | — for `object`, `IList<int>` and `IList`; the others not measured | —, each | —, each |
+| 78 | for comparison, a collection class as `T`: `List<int>`, one element differs; equal content; one element differs, pattern `_items`; `ImmutableArray<int>`, one element differs, pattern `array` | not measured | V that names `_items`; —; —; — | the same |
+
+Message C names the declared `T` as `Type.ToString()` gives it. For row 51 and for row 72:
+
+```text
+actual and expected are not equal. System.Int32[] is compared as a whole, so assignable patterns do not apply.
+actual and expected are not equal. System.Array is compared as a whole, so assignable patterns do not apply.
+```
+
+Rows 77 and 78 stay with #40: the members that the declared type shows are compared.
+
+An array as `T` whose element class reflects with no member, with dynamic code off. `X` is a class
+with no member. No 2.0.0 result exists for these rows:
+
+| # | Case | Before | After |
+|---|---|---|---|
+| 79 | `T` = `X[]`: two arrays, each with its own instance; `Old<T>()`, nothing changed | —; — | `InvalidOperationException` "cannot compare" with the path `actual[]`, each |
+| 80 | `T` = `X[]`: two arrays that hold one instance; both are empty | —; — | —; — |
+| 81 | `T` = an array of a class with no member whose `Equals` says "equal" for any two instances; two arrays, two instances | — | — |
+| 82 | for comparison, a member `X[]`: two arrays, two instances; `Old<T>()`, nothing changed; a member array of the class of row 81 | `InvalidOperationException` of R8 with a path through the member (``H`1.Items[]``); the same; — | the same |
+
+Row 79 gives an array as `T` the result that an array in a member already had (row 82). The
+exception is thrown only when `Equals` reports the two elements unequal (row 81), as its message
+says. The message is the one that the #52 amendment gives for a class below a nullable value type,
+with another path. Unit tests hold the whole message for five paths:
+
+| `T` and values | Path in the message |
+|---|---|
+| `X[]`, two arrays, each with its own instance | `actual[]` |
+| `X[][]`, the inner arrays hold two instances | `actual[][]` |
+| `X[,]` | `actual[]` |
+| `System.Array`, holding two `X[]` | `actual[]` |
+| `Holder[]`, where `Holder` has a member `Leaf` of type `X` | `actual[].Leaf` |
+
+The path has one `[]` for each sequence that the comparison walks, whatever its rank, and `.Name`
+for each member.
+
+Rank, lengths and lower bounds:
+
+| # | Case | 2.0.0 | Before | After |
+|---|---|---|---|---|
+| 83 | member `int[,]`: 1 by 2 and 2 by 1, the same elements in the same order | — | — | V |
+| 84 | member `int[,]`: 2 by 3 and 3 by 2 | — | — | V |
+| 85 | member `int[,]`: 2 by 0 and 0 by 2; 0 by 3 and 0 by 5 | —; not measured | —; — | V; V |
+| 86 | member `int[,]`, 2 by 2: equal content; one element differs | not measured; V | —; V | —; V |
+| 87 | member declared `Array`: `int[] {1, 2}` and `int[,] {{1, 2}}` | — | — | V |
+| 88 | member declared `Array`: an `int[,]` of 1 by 2 and an `int[,,]` of 1 by 1 by 2 | — | — | V |
+| 89 | member declared `Array`: `int[] {1, 2}` and a one-dimensional array with lower bound 1 that holds 1 and 2 | — | — | V |
+| 90 | member declared `Array`: two one-dimensional arrays of equal content, with lower bounds 1 and 1; with lower bounds 1 and 2 | not measured; — | —; — | —; V |
+| 91 | member declared `Array`: two `int[,]` of 1 by 2, with lower bounds (0, 0) and (1, 1); with lower bounds (0, 0) and (0, 1) | —; not measured | —; — | V; V |
+| 92 | member `int[,,]`: 1 by 2 by 3 and 1 by 3 by 2 | — | — | V |
+| 93 | member declared `Array`: `int[] {1, 2}` and `object[] {1, 2}`; `int[] {1, 2}` and `long[] {1, 2}` | —; not measured | —; V | —; V |
+| 94 | member declared `IEnumerable`: `int[,] {{1, 2}}` and `List<int> {1, 2}`; `List<int> {1, 2}` and `int[] {1, 2}`; `int[,] {{1, 2}}` and `int[] {1, 2}` | not measured | —; —; — | —; —; V |
+| 95 | member declared `object`: `int[,]` of 1 by 2 and of 2 by 1 | — | — | V |
+| 96 | arrays of 1 by 2 and of 2 by 1 below a member: the elements of a `List<int[,]>`; the values of a `Dictionary<string, int[,]>`; the keys of a `Dictionary<int[,], int>`; a field of a struct; the elements of an `ImmutableArray<int[,]>`; the elements of an `int[][,]` | — for the list; the others not measured | —, each | V, each |
+| 97 | member declared `Array`: an `int[0][]` and an `int[0, 0]`; an empty `int[]` and an empty one-dimensional array with lower bound 1 | not measured | —; — | V; V |
+| 98 | `Old<T>()`, nothing changed: a member `int[,]` of 2 by 2; one of 2 by 3; a member declared `Array` that holds an array with lower bound 1 | `Old<T>()` throws for the first and for the third; the second not measured | —, each | —, each |
+| 99 | `T` = `int[,]`: 1 by 2 and 2 by 1 | — | — | C |
+| 100 | `T` = `Array`: `int[] {1, 2}` and `int[,] {{1, 2}}`; an `int[]` and an array with lower bound 1 of the same content | V that names `Rank`; — | V that names `Rank`; — | C; C |
+
+`Old<T>()` keeps rank, lengths and lower bounds (B5; row 98). Row 94 shows that equality is not
+transitive across kinds of sequence: an `int[,] {{1, 2}}` equals a `List<int> {1, 2}`, which equals
+an `int[] {1, 2}`, and the two arrays differ.
+
+Arrays of pointers and of function pointers. `px` and `py` are two addresses. "NSE" is
+`NotSupportedException`, and "BIF" is `BadImageFormatException`. The table has no column for 2.0.0;
+"Measured with the 2.0.0 package" below gives the eight results that exist:
+
+| # | Case | Before | After |
+|---|---|---|---|
+| 101 | for comparison, `Old<T>()` of a holder of an `int*[]`: is the array the original's; is the address the same | no; yes | the same |
+| 102 | two holders, `int*[]`: the same address; different addresses; lengths 1 and 2 with an equal first address | NSE, each | —; V; V |
+| 103 | holder of an `int*[]`, `Old<T>()`: nothing changed; an element set to another address; the `int` behind the address changed | NSE, each | —; V; — |
+| 104 | for comparison: one `int*[]` instance in two holders; two empty `int*[]` in a member declared `Array`; `T` = `int*[]`, one instance on both sides; `T` = `int*[]`, both are empty | —, each | —, each |
+| 105 | `T` = `int*[]`: the same address; different addresses; `Old<T>()`, then an element set to another address | —; —; — | —; C; C |
+| 106 | for comparison: `T` = `Array`, two `int*[]` of the same address | — | — |
+| 107 | two holders, `int*[,]` of 1 by 2: the same addresses; the second address differs; 1 by 2 against 2 by 1 | NSE, each | —; V; V |
+| 108 | two holders, `delegate*<void>[]`: the same function; a function and null; two different functions | BIF, each | —; V; V |
+| 109 | member declared `Array`: an `int*[]` and a `long*[]` that hold the same address; an `int*[]` and a `delegate*<void>[]` that hold the same address | NSE; NSE | —; — |
+| 110 | an array of pointers that has an element against another kind of value: an `int*[]` and a `nint[]` that hold the same address; `int*[] {px}` and an empty `nint[]`; `int*[] {px}` and an empty `List<int>`; `int*[] {px}` and an `object[]` that holds `Pointer.Box(px)` | NSE, each | V, each |
+| 111 | for comparison, no element: an empty `int*[]` against an empty `List<int>`; against an empty `int[]`; against an empty `long*[]`; against an empty `nint[]` | —, each | —, each |
+| 112 | member declared `Array`: `int*[] {px, py}` and `int*[,] {{px, py}}`; `int*[] {px, py}` and an array with lower bound 1 of the same addresses; two arrays with lower bound 1 of the same addresses; two such arrays of which the second address differs; `int*[,]` of 1 by 2 and of 2 by 1 that hold null pointers | NSE, each | V; V; —; V; V |
+| 113 | member declared `Array`: `int*[,]` of 0 by 3 and of 0 by 5 | — | V |
+| 114 | arrays of pointers as elements: an `int*[][]` whose inner arrays hold the same address; one whose inner arrays hold different addresses; a `List<int*[]>` whose arrays hold different addresses | NSE, each | —; V; V |
+| 115 | for comparison, pointer fields: the same address; different addresses; `Old<T>()`, nothing changed; `Old<T>()`, then the `int` behind the address changed | —; V that names the field; —; — | the same |
+| 116 | holder of a `delegate*<void>[]`: `Old<T>()` alone; `Old<T>()`, nothing changed; `Old<T>()`, then an element set to another function | BIF, each | `Old<T>()` throws nothing, and its array is another array with the same address; —; V |
+| 117 | `T` = `delegate*<void>[]`: the same function; different functions | BIF; BIF | —; C |
+
+Of the 378 calls that were measured for the design, 203 give another result on the library as this
+change leaves it than on `82c6255`.
+
+**Limits.** Each was checked against the code, and the row or the measurement that shows it is
+named. "Read from the code" marks a limit that no test or measurement shows.
+
+1. **An element keeps its own rule.** An element of a copied array or list that is of the two types
+   is the original's instance (row 1). The limits that the #49 amendment gives for shared elements
+   (its limit 3) apply to it unchanged.
+2. **One shared instance in both arrays.** A shared element that is one instance on both sides is
+   compared with itself and is equal, whatever changed inside it (row 67). Rule S reports one
+   instance of a state-holding shared type only when it is passed as `actual` and as `expected`
+   themselves.
+3. **A class of the caller in the namespace** is still shared and compared by reference (rows 7, 27
+   and 46).
+4. **An element of an array as `T` is not compared as that type is as `T`.** It is compared by the
+   rules for a member or an element: a value type by `Equals` first (row 68), by the runtime type of
+   the element (row 69), and a shared element by reference (row 66). R5 has its exceptions here
+   too: a `string` element is compared with `Equals` (row 53), a delegate by its methods (R4), and
+   two elements of the two types element by element (row 58).
+5. **A value type of the namespace as `T`** is compared member by member, as every struct as `T` is
+   (row 43). One whose getter throws still fails: `T` = `FrozenSet<int>.Enumerator` with two
+   enumerators of one set gives a `TargetInvocationException`, before and after (measured; #40).
+6. **Only the declared type selects the comparison as a whole.** Any other declared type that holds
+   an array at run time is compared by the members that it shows (rows 77 and 78; #40). A generic
+   method that forwards its own type parameter and its patterns gets the comparison as a whole when
+   it is called with an array type, and its patterns then do not apply (measured).
+7. **Patterns.** For an array as `T`, a pattern that is not a valid regular expression and a `null`
+   element of the pattern array are not reported (row 60). A pattern array that is `null` itself is
+   still rejected (row 61).
+8. **The two values of a call whose `T` is compared by its members.** Neither the dimension test nor
+   the comparison by address decides the two values of the call themselves when `T` is neither an
+   array type nor `System.Array`: a member that leads back to those two values is answered as equal
+   before either. For the comparison by address it was measured for two arrays of pointers: with
+   `ICollection` as `T`, an `int*[] {px}` and an `int*[] {py}` give no exception, where the same two
+   arrays give message C with `T` = `int*[]` and with `T` = `Array`; an `int*[] {px}` and an
+   `int*[] {px, py}` as `ICollection` give a violation that names `Count`. Read from the code and
+   not measured: the same holds for two arrays of function pointers, and for the two values of the
+   call when they are not both arrays. An `int*[] {px}` and a `List<int>` of one element as
+   `ICollection` have equal counts, and when `SyncRoot` of each returns the value itself, that
+   member leads back to the top-level pair and counts as equal, so the rule that such an array is
+   different from every value that is not such an array does not decide the call. For the dimension
+   test it was measured. With
+   `ICollection` as `T`, an `int[,]` of 1 by 2 and one of 2 by 1 give no exception: `ICollection`
+   shows `Count`, `IsSynchronized` and `SyncRoot`, the counts are equal, and `SyncRoot` of an array
+   is the array itself, which leads back to the top-level pair (a unit test shows it; measured also
+   for an `int[2]` and an `int[1, 2]`). With different numbers of elements, `Count` is reported
+   (measured for `ICollection`, `ICollection<int>` and `IReadOnlyCollection<int>` with an `int[2]`
+   and an `int[1]`).
+9. **Native AOT, an element class with no visible members.** An array as `T` that holds two
+   instances of such a class throws `InvalidOperationException` when `Equals` reports them unequal,
+   also when nothing changed (row 79; smoke check 82), as an array in a member does. When `Equals`
+   says "equal", they are equal (row 81); the Known Limitation "**R8 trusts `Equals`**" applies. No
+   smoke check was added for an `Equals` that ignores state.
+10. **Native AOT, `Old<T>()` copies what reflection shows.** A collection whose storage field is not
+    visible keeps sharing its storage, as the Known Limitations say of every hidden field. Smoke
+    check 83 preserves `List<FrozenSet<string>>` with `DynamicDependency`. What the copy of such a
+    list shares without that attribute was not measured.
+11. **An array as a key.** After `Old<T>()` has copied a dictionary with its default comparer, a
+    lookup with a key that is an array misses, with the original key and with the copy's own key
+    (measured for a `Dictionary<int[], int>`; a `HashSet<int[]>` copy contains neither). This is the
+    Known Limitation "**Identity-hashed keys** (D8)." This change extends it to a key that is an
+    array of the namespace: on `82c6255` such a key was shared and was found; now it is copied and
+    is not found (measured for a `Dictionary<FrozenSet<int>[], int>`). A key that is a
+    `FrozenSet<int>` is still the original's set and is found. Enumerating the copy works, and the
+    comparison of such a dictionary is not affected (measured: no exception when nothing changed,
+    and a violation when the value of that key changed). With a comparer that compares the content
+    of the arrays, both lookups find the key (measured for a `Dictionary<int[], int>`).
+12. **Lower bounds, element types, kinds of sequence.** A lower bound counts (A4). Element types
+    count through the boxed elements (A5). Across kinds of sequence, equality is not transitive (row
+    94).
+13. **The messages.** Neither message C nor a violation says that a rank, a length or a lower bound
+    differs.
+14. **Pointers.** A pointer or a function pointer as an element is compared by its address only. The
+    type that it points to and the memory behind the address are not compared (row 109; row 103,
+    third cell), as for a pointer field (row 115).
+15. **Cost.** An array as `T` is now compared element by element, which `82c6255` skipped. One call
+    was measured: `EnsureAssignable(new byte[1_000_000], new byte[1_000_000])` with equal content
+    allocated 80,781,544 bytes and took about 220 ms, in a Debug build. This is one measurement, not
+    a rate. `Old<T>()` now copies an array of the namespace that it shared before, and the storage
+    of a list of such elements (read from the code; not measured as a cost).
+16. **Getters below an array as `T`.** The getters of the public properties run for two different
+    instances of one class that is neither a shared type nor a sequence, wherever the comparison
+    reaches such a pair: as two elements of the arrays, as two elements of a `FrozenSet<T>` that the
+    arrays hold, or through a field of an element of a value type that its `Equals` does not settle.
+    A getter that throws there ends the call in a `TargetInvocationException` (measured for these
+    three places). No getter runs for one instance on both sides, for two different `Stream`s, or
+    for two values of a value type that `Equals` settles (measured). The Known Limitation on a
+    property that returns a new instance of its own type on every read applies below an array as `T`
+    too (read from the code).
+17. **A member that is an enumerator of a frozen set.** Measured on .NET 8.0.16, with a holder of a
+    `FrozenSet<T>` of a class and of a `FrozenSet<T>.Enumerator` of that set: after `Old<T>()`, a
+    field of an element of the set changes and the enumerator is not moved, and the call reports a
+    violation that names the enumerator member. The same holds when the enumerator is boxed in a
+    member declared `IEnumerator<T>`. With no enumerator member the same change gives no exception
+    (limit 3 of the #49 amendment), and with the enumerator member and no change the call gives no
+    exception. Why the enumerator member differs was not measured: the fields of the enumerator are
+    private to the runtime and were not read. So the result depends on the runtime. The design
+    leaves the private fields of the enumerators without a rule. The maintainer decided to state
+    this as a limit, in the XML remarks of `Old<T>()` and in the API reference, and not to treat
+    `FrozenSet<T>.Enumerator` and `FrozenDictionary<TKey, TValue>.Enumerator` differently from the
+    other value types of the namespace: the code is not changed. Both texts say what to do: keep no
+    enumerator of a frozen collection in the state that is compared, or, when `EnsureAssignable<T>()`
+    compares the members of the type that holds it, list that member as assignable (read from the
+    code: a member whose name a pattern matches is not compared; not measured for this case). The
+    limit was measured for a `FrozenSet<T>` only.
+18. **Another method still reads the namespace.** `Contract.EnsureImmutableCollection<T>()`
+    reads `Type.Namespace` of the runtime type of its argument, and so throws
+    `BadImageFormatException` for an array of function pointers (measured). This change does not
+    touch that method.
+
+**Measured results, unit tests.** JIT, whole suite, postconditions on. In each state the Debug and
+the Release configuration gave the same total, with 0 failed:
+
+| State | Tests |
+|---|---|
+| `82c6255`, before the work | 746 |
+| after the dimension test | 780 |
+| after the arrays of pointers and of function pointers | 836 |
+| after an array as `T` | 907 |
+| after the change of the namespace category | 989 |
+| after the corrections that the review of the work asked for | 994 |
+
+248 tests were added: 222 in four new test files (34 in `EnsureAssignableArrayDimensionTests.cs`, 54
+in `EnsureAssignablePointerArrayTests.cs`, 74 in `EnsureAssignableArrayAsTTests.cs` and 60 in
+`OldFrozenNamespaceArrayTests.cs`), and 26 in `SharedTypesTests.cs`. One test of #49 was rewritten:
+`EnsureAssignable_WhenMemberHoldsTwoArraysOfOneFrozenSet_ReportsTheMember` held the "Before" of row
+20, and is now `EnsureAssignable_WhenMemberHoldsTwoArraysOfOneFrozenSet_DoesNotThrow`.
+
+**Measured results, the calls of the design.** The design measured 378 calls on `82c6255` and on
+four prototypes, one for each state of the work. The same calls were measured again on the library
+after each of the four changes and at its final state. In each of the five runs every call gave the
+result that was expected for that state. At the final state that is the "After" of the tables above.
+The expected value of two calls was corrected before the runs, the two calls of row 79: the path in
+their message is `actual[]` (A8), where the prototype printed ``Empty57[][]``. The measurement files
+are not in the repository.
+
+**Measured results, mutation check.** With the four changes in place and 989 tests, before the five
+tests that the review added, the library was changed by hand in four ways. No change was committed,
+and the 989 tests ran each time.
+
+- The dimension test never answers "different". 30 tests fail.
+- No addresses are taken from an array of pointers or of function pointers, and the classification
+  reads the namespace of such an array type again. 45 tests fail.
+- An array type or `System.Array` as `T` is compared by the members of `T`. 38 tests fail.
+- The namespace category shares arrays and value types again. 65 tests fail.
+
+Before the runs, the work had listed the measured calls whose unit tests must fail under each
+change: 25, 25, 33 and 49 calls. The test of each of them failed.
+
+**Measured results, smoke program.** The program had 79 checks in the default build and 78 in the
+variant with the hidden dictionary entry (`-p:AotSmokeHiddenDictionaryEntry=true`). It now has 84
+and 83. Checks 80 to 84 are new:
+
+| Check | Call | With postconditions on | With `DBC_POST=off` |
+|---|---|---|---|
+| 80 | two holders with a member `int[,]`: 1 by 2 and 2 by 1, the same elements in the same order | `PostconditionViolationException` | no exception |
+| 81 | `T` = `int[]`, one element differs | `PostconditionViolationException` whose text contains "is compared as a whole" | no exception |
+| 82 | `T` = `HiddenLeaf[]`, two arrays, each with its own `HiddenLeaf` of equal `Value` | Native AOT: `InvalidOperationException` whose text contains "cannot compare", `uContract.AotSmoke.HiddenLeaf` and `reached through 'actual[]'`. JIT: no exception | no exception |
+| 83 | a holder of a `List<FrozenSet<string>>`, `Old<T>()`, then an element replaced through the indexer by a set of other content | `PostconditionViolationException` | no exception |
+| 84 | a holder of a `FrozenSet<string>.Enumerator`, `Old<T>()`, nothing changed | no exception | no exception |
+
+Native AOT. Environment: `win-x64`. Each publish ran `dotnet publish
+tests\uContract.AotSmoke\uContract.AotSmoke.csproj -c Release -r win-x64 -warnaserror`, with
+switches that make the build sequential and name the output folder, and with
+`-p:AotSmokeHiddenDictionaryEntry=true` for the variant. Neither publish gave a diagnostic:
+
+| Publish | With postconditions on | With `DBC_POST=off` |
+|---|---|---|
+| Default | 84 `PASS`, no `FAIL` | 84 `PASS`, no `FAIL` |
+| Variant with the hidden dictionary entry | 83 `PASS`, no `FAIL` | 83 `PASS`, no `FAIL` |
+
+The four runs were made at the final state of the library and of the tests. These are the ten lines
+of the five checks in the default publish; the variant gave the same ten lines. The prefix `on:` or
+`off:` names the run and is not output of the program. The program prints the first line of a
+message. Every line is given in full, except the line of check 82 with postconditions on: it is
+given up to the closing parenthesis of "(reached through …)", and the message continues as every
+"cannot compare" message of this kind does:
+
+```text
+on:  PASS 80 Arrays of the same elements and different lengths per dimension expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: Fields were modified that are not marked as assignable:
+on:  PASS 81 EnsureAssignable<int[]> arrays with one element differing expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: actual and expected are not equal. System.Int32[] is compared as a whole, so assignable patterns do not apply.
+on:  PASS 82 EnsureAssignable<HiddenLeaf[]> elements with hidden members expected=InvalidOperationException got=InvalidOperationException EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'actual[]')…
+on:  PASS 83 List of frozen sets with one element replaced expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: Fields were modified that are not marked as assignable:
+on:  PASS 84 Enumerator of a frozen set unchanged expected=no exception got=no exception
+off: PASS 80 Arrays of the same elements and different lengths per dimension expected=no exception got=no exception
+off: PASS 81 EnsureAssignable<int[]> arrays with one element differing expected=no exception got=no exception
+off: PASS 82 EnsureAssignable<HiddenLeaf[]> elements with hidden members expected=no exception got=no exception
+off: PASS 83 List of frozen sets with one element replaced expected=no exception got=no exception
+off: PASS 84 Enumerator of a frozen set unchanged expected=no exception got=no exception
+```
+
+Two publishes of the default build were made earlier in the work, each with postconditions on and
+off: after the change for an array as `T`, when the program had 82 checks, and after the change of
+the namespace category. They gave 82 `PASS` and 84 `PASS`, with no `FAIL`.
+
+Under the JIT the program was run in its `--report` mode at the final state, where it prints 84 and
+83 lines. There check 82 reports no exception, because the members of `HiddenLeaf` are visible.
+
+CI publishes the default build for `linux-x64` and runs the smoke program there. It had not run for
+this change when this amendment was written.
+
+**Measured, other results.**
+
+- **The namespace of an array of function pointers.** Reading `Type.Namespace` throws
+  `BadImageFormatException` for `delegate*<void>[]`, for `delegate*<void>[][]`, for
+  `delegate*<void>[,]` and for `delegate* unmanaged<void>[]`. It does not throw for
+  `List<delegate*<void>[]>` or for `Dictionary<string, delegate*<void>[]>`. On `82c6255`
+  `SharedTypes.IsShared` threw that exception for `delegate*<void>[]`; it now returns `false`.
+- **Nested arrays of function pointers.** The design measured a holder of a `delegate*<void>[]`
+  only. During the work, a first form of the change classified a one-dimensional array of function
+  pointers without reading its namespace. With that form `Old<T>()` and the comparison still threw
+  `BadImageFormatException` for a holder of a `delegate*<void>[][]`, and `Old<T>()` threw it for a
+  holder of a `List<delegate*<void>[]>`, whose storage is an array of such arrays. The
+  classification now looks at the innermost element type. Unit tests hold both holders. For the
+  array of arrays: the copy has other arrays and the same address, two holders of one function are
+  equal, and two holders of different functions are a violation. For the list: the copy has another
+  list, another array and the same address, an unchanged holder is equal to its copy, and a replaced
+  function is a violation.
+- **Other holders of function pointers.** Measured after the change for the arrays of pointers and
+  before the two later changes, each with `Old<T>()` and then `EnsureAssignable<T>()`. Nothing
+  changed, and no exception: a holder of a `Dictionary<string, delegate*<void>[]>`, a class with a
+  function pointer field, a holder of an array of a struct with a field `delegate*<void>[]`, a
+  holder of an array of a struct with a function pointer field, and a holder of a tuple with a
+  `delegate*<void>[]`. A function replaced, and a violation: the first four of these. `Old<T>()` of
+  a holder of a `HashSet<delegate*<void>[]>` does not throw. One `delegate*<void>[]` passed as
+  `actual` and as `expected` gives no exception, with `T` inferred and with `T` = `object`; unit
+  tests hold these two calls at the final state.
+- **The rules of B3 and the arrays and value types.** On `82c6255`, 28 array types were classified:
+  7 were shared, each through the namespace category alone, and 21 were not shared. Among them were
+  arrays of types that other rules share (`Stream[]`, `Task[]`, `Delegate[]`, `Type[]`,
+  `SafeHandle[]`, `StringComparer[]`, `Regex[]`). At the final state none of the 28 is shared. Of
+  the value types of six assemblies of the runtime (`System.Private.CoreLib`,
+  `System.Collections.Immutable`, `System.Net.Http`, `System.ComponentModel.Primitives`,
+  `System.Net.Sockets`, `System.Text.RegularExpressions`), 14 were shared on `82c6255`, all in
+  `System.Collections.Immutable`, the assembly that holds the namespace. At the final state none is.
+- **The measurements that the limits cite** were made with throwaway tests at the final state of the
+  library, or on a state of this work whose library code is the final one: the array keys (limit
+  11), `ICollection` and the other interfaces as `T` (limit 8), the generic method (limit 6), the
+  getter that throws (limit 16), the `byte[]` of 1,000,000 elements (limit 15), the enumerator
+  member (limit 17), and `EnsureImmutableCollection<T>()` (limit 18, measured after the change for
+  the arrays of pointers).
+
+**Measured with the 2.0.0 package.** These results come from programs with the 2.0.0 package, on
+.NET 8.0.16, that are not in the repository. The 2.0.0 cells of the tables above come from them.
+In short:
+
+- **`Old<T>()` threw** for a holder of a `FrozenSet<int>[]`, of a `List<FrozenSet<int>>`, of a
+  `FrozenSet<int>.Enumerator` and of an array of such enumerators, and for a `FrozenSet<int>[]`
+  itself (`InvalidOperationException`); for a holder of an `int[,]` of 2 by 2
+  (`InvalidOperationException`) and of an array with lower bound 1 (`IndexOutOfRangeException`); and
+  for a holder of an `int*[]` or of a `delegate*<void>[]` (`ArgumentException`).
+- **An array as `T`.** The members of the array type were compared. A different element was a
+  violation that names `SyncRoot` (rows 51, 53 to 58, 64 and 72). The pattern `SyncRoot`
+  excused a different element, and the pattern `.*` different lengths (row 59). An invalid pattern
+  and a `null` pattern were reported (row 60).
+- **Rank, lengths and lower bounds.** In a member, 2.0.0 found these pairs equal: `int[,]` of 1 by 2
+  and of 2 by 1, of 2 by 3 and of 3 by 2, and of 2 by 0 and of 0 by 2; `int[,,]` of 1 by 2 by 3 and
+  of 1 by 3 by 2; in a member declared `Array`, an `int[]` and an `int[,]`, an `int[,]` and an
+  `int[,,]`, and arrays of equal content with lower bounds 0 and 1, 1 and 2, and (0, 0) and (1, 1);
+  an `int[,]` of 1 by 2 and of 2 by 1 in a member declared `object` and as elements of a list (rows
+  83 to 85, 87 to 92, 95 and 96). As `T`, it found an `int[,]` of 1 by 2 equal to one of 2 by 1, and
+  with `T` = `Array` an `int[]` equal to an array with lower bound 1 of the same content (rows 99
+  and 100). 2.0.0 did report three differences of this kind: two `int[]` of lengths 2 and 1 as `T`
+  (`Length`, `LongLength` and `SyncRoot`; row 52), two `FrozenSet<int>[]` of lengths 1 and 2 in a
+  member (row 23), and an `int[]` against an `int[,]` with `T` = `Array` (`Rank`; row 100). So the
+  sentence of the design that 2.0.0 "compared neither rank nor lengths per dimension nor lower
+  bounds" is too wide; the CHANGELOG states the pairs that were measured.
+- **Arrays of pointers and of function pointers.** Eight calls were measured. `Old<T>()` of a holder
+  of an `int*[]` and of a holder of a `delegate*<void>[]` threw `ArgumentException`. The comparison
+  threw `NotSupportedException` for two holders of an `int*[]` with the same address and with
+  different addresses, for `T` = `int*[]` with the same address and with different addresses, for
+  two holders of a `delegate*<void>[]` with the same function, and for `T` = `delegate*<void>[]`
+  with the same function. None of the eight overflowed the stack. The next call of that program, two
+  holders with pointer fields, ended the process with a stack overflow, which the accepted text
+  records for pointer fields.
+
+The table "The 2.0.0 package on the same checks" of the accepted text is unchanged. No run of the
+smoke program in package mode is recorded for this change.
+
+**Where the work differs from the design.**
+
+- More unit tests were added than the cells of the design's tables need: tests were added while the
+  work was done and reviewed. "Measured results, unit tests" gives the counts.
+- The design has no row for a nested array of function pointers. "Measured, other results" above
+  records the case and its tests.
+- The design says of 2.0.0 that it "compared neither rank nor lengths per dimension nor lower
+  bounds". "Measured with the 2.0.0 package" above gives what the measurements show.
+- `SharedTypes.Classify` keeps its early answer for a type whose innermost element type is a
+  function pointer, although the namespace category no longer reads the namespace of an array type.
+  A comment at that place says what must be checked before the early answer is removed.
+
+**Qualified in the accepted text.** Each statement is quoted by its opening words:
+
+- B3: "in the `System.Collections.Frozen`" namespace. The category now matches a class that is
+  declared in that namespace and is not an array type: the two types and every other such class. An
+  array type is not matched, whatever its element type, and a value type that is declared there is
+  not matched.
+- B2: "A boxed value type (in an `object`, interface or `ValueType` field, or an `object[]` element) is"
+  cloned before its fields are replaced. On `82c6255` that did not hold for a boxed value of a value
+  type of the namespace: B3 came first, and the copy held the original's box (row 39). It holds now.
+- B5: "A copied array has the same runtime type, rank and bounds, non-zero lower bounds" included. On
+  `82c6255` an array of the namespace was not copied at all, because B3 came first (rows 1, 4, 16
+  and 17). B5 holds for it now.
+- "Order for a pair: same reference or a `null` side → R6 → pointer and `string` → R4 → R5 → R3 →".
+  At the step R5, a pair of two values of a value type of the namespace and a pair of two arrays of
+  the namespace are no longer decided. The first goes on to R3. The second goes on to the R1 memo,
+  to the dimension test and to R7. The dimension test is a new step for two arrays, after the R1
+  memo and before R7. "The rule as it is now" above gives the order.
+- "**R3 — Value types.** Primitives and enums are compared with `Equals`." R3 now also decides a
+  value of a value type of the namespace: an enum that is declared there with `Equals`, and a struct
+  by its steps 1 to 4 (rows 30 to 49).
+- R3: "A pointer field, read through reflection as a `System.Reflection.Pointer`, is compared by
+  address with `Pointer.Equals`." That is the rule for a field, and it stands. An element of an
+  array of pointers or of function pointers is not read as a `Pointer`: the two arrays are compared
+  by the addresses in their memory.
+- R5: "Values of B3 types are compared by reference". R5 follows B3. An array of the namespace and a
+  value of a value type of the namespace are no longer values of B3 types, and they are not compared
+  by reference. Two instances of a class of the caller in the namespace still are (rows 27 and 46).
+- R6: "Exception: when both are `IEnumerable` and neither is a `string`, they are" compared by R7.
+  For two arrays the dimension test comes before R7. Two arrays of different rank, such as an
+  `int[]` and an `int[,]`, are of different runtime types, and they are unequal without an element
+  being read (rows 87 and 88). Two arrays that pass the dimension test and have different element
+  types are still compared by R7 (rows 74 and 93), and so are an array and a sequence that is not an
+  array (row 94). An array of pointers or of function pointers that has an element is the exception
+  to R7: it is not enumerated.
+- R7: "Any other `IEnumerable` is compared element by element," in order. Two arrays are compared so
+  only after the dimension test (rows 83 to 100). Two arrays of pointers or of function pointers
+  that have elements are compared by address and are not enumerated (rows 102 to 117).
+- "Unchanged: which members are compared (D9), the top level comparing the members of `typeof(T)`,"
+  the assignable patterns, and the violation message format. Qualified once more: for an array as
+  `T` the top level is a pair, and the patterns do not apply.
+- R1: "The top-level pair is in progress for the whole call." That holds for a `T` that is compared
+  by its members, and it is what hid a different element of an array as `T` on `82c6255` (change 3
+  above). The two values of an array as `T` are not entered as the top-level pair. They are tracked
+  as every other pair is while it is compared (rows 70 and 71). For two arrays behind a `T` that is
+  compared by its members the statement still holds, with the consequence that limit 8 gives.
+- "What held": "The namespace rule for frozen collections works (checks 49, 50)." The rule is
+  narrowed, as the first entry of this list says. Check 49 still shows that `Old<T>()` shares a
+  frozen set, and the #49 amendment says what check 50 shows. Check 83 shows under Native AOT that a
+  list of frozen sets, preserved with `DynamicDependency`, is copied with its storage, and check 84
+  that an unchanged enumerator member is equal to its copy.
+- The three scope statements on #40. Constraints: "are still not compared (#40 items 1 and
+  2-top-level)". D6: "#40 items 1, 2-top-level, 4, 6 and 7 stay open." Known Limitations:
+  "**Scope.** #40 items 1, 2-top-level, 4, 6 and 7 remain." Item 2-top-level is taken for one more
+  kind of `T`: an array type and `System.Array`. "What stays open" below gives what is left.
+- Known Limitations: "**Identity-hashed keys** (D8)." The limitation now also holds for a key that
+  is an array of the namespace, which was shared before (limit 11 above).
+- Implementation Notes, "**Pointers.**": "`Pointer.Equals` compares the same addresses and needs no
+  `unsafe` code in the library." That is said of a pointer field, and it stands. The library still
+  has no `unsafe` block. But for two arrays of pointers or of function pointers it now reads the
+  memory of the arrays as native integers, through `MemoryMarshal.GetArrayDataReference`,
+  `MemoryMarshal.CreateReadOnlySpan` and `Unsafe.As`. The read is in bounds only when each element
+  is one native integer, so the code tests the element type before it reads anything.
+
+**Still true in the accepted text.** The statement is quoted by its opening words:
+
+- Implementation Notes: "**The `HoldsReferences` cache.**" What the entry says of the copier
+  stands: it does not visit an array whose element type cannot refer to an object. That includes
+  an array of pointers or of function pointers (B2 does not count a pointer or a function pointer as
+  reference-typed). The comparison of a large array of such a kind as `T` is another matter: see
+  limit 15.
+
+**Qualified in the #52 amendment.** Each statement is quoted by its opening words:
+
+- The Status line of that amendment: "at the top level a `string`, a delegate type and a nullable
+  value type are compared as one pair by R0–R8". An array as `T` is now compared as one pair too.
+  Its Revision History row states the same and is qualified with it.
+- The statements that name the three kinds of `T`. "When `T` is a `string`, a delegate type or a
+  nullable value type, two values that are"; in step 4 of the rule, "when `T` is a `string`, a
+  delegate type or a nullable value type, the two values are compared" and "for every other `T`, the
+  members of `typeof(T)` are walked, as before"; "The declared type `T` decides whether the two
+  values are compared as a whole. The test is:"; and "For these three kinds of `T` the top level
+  applies the whole "Order for a pair" of this ADR." Each also holds for an array as `T`, and "every
+  other `T`" no longer includes it. "The rule as it is now" above gives the steps, the fifth case of
+  the test and the new row of the table.
+- "It does not apply "same reference": two references to one object are still walked member by
+  member." Not for an array as `T`: one instance on both sides is equal, and nothing is walked (rows
+  63 and 104).
+- "A base class as `T`. The members that it declares or inherits are compared" (private fields of
+  its own base classes excepted). `System.Array` is a base class, and it is compared as a whole
+  (rows 72 to 75 and 100).
+- "**The declared type `T` decides.** For each of the three kinds, a value that is not `null` has a"
+  runtime type of the same kind. The same holds for the new kind: a value that is not `null` and
+  whose declared type is an array type or `System.Array` is an array. With `System.Array` as `T`,
+  and with an array type that other array types can be assigned to, the two arrays can have
+  different runtime types; then the dimension test, R6 and R7 decide (rows 74, 76 and 100).
+- "`{path}` starts with the name of the underlying type, not with `typeof(T).Name`:". Below an array
+  as `T` the path starts with `actual` (A8).
+- The first rejected alternative, at "A shared value type (an enumerator in
+  `System.Collections.Frozen`) would never be equal: each" side is boxed separately. The enumerators
+  of the namespace are no longer shared, and none of the value types of the six assemblies that were
+  examined is shared (see "Measured, other results"). The alternative stays rejected for its other
+  reasons.
+- Known limits of the behaviour: "**A nullable value type whose underlying type is a shared value
+  type** (an enumerator in" the namespace) is never equal. Superseded. A value type of the namespace
+  is no longer shared, and a nullable struct of the caller in the namespace as `T` gives no
+  exception for equal content (row 41). A nullable enumerator as `T` was not measured.
+- Limits: "A `string`, a delegate type and a nullable value type always have visible members, so
+  an". Whether an array type as `T` always has visible members under Native AOT was not determined.
+  That the check "no members visible" does not run for such a `T` was read from the code.
+- Relation to #40 and #54: "**Left in #40**: the rest of item 2." "What stays open" below gives what
+  is left in #40 now.
+
+**Qualified in the #54 amendment.** Each statement is quoted by its opening words:
+
+- The steps of a call: "5. When `T` is a `string`, a delegate type or a nullable value type, the two
+  values are compared as" a whole, and "6. For every other `T`, the members of `typeof(T)` are
+  walked." Step 5 also holds for an array as `T`, and step 6 no longer includes it.
+- "So rule S and the comparison as a whole never both apply". That also holds for an array as `T`.
+  Read from the code: an array type derives from `System.Array` alone, so it matches no listed type,
+  no listed open generic type, not the type that is matched by full name, and neither
+  `CriticalFinalizerObject` nor `ComObject`. `Type.IsCOMObject` was measured as false for
+  `delegate*<void>[]`; it was not measured for an array of a COM type. Measured: one `int[]`, one
+  `Stream[]`, one `FrozenSet<int>[]` and one `delegate*<void>[]`, each passed as `actual` and as
+  `expected`, give no exception.
+- "The shared value types (enumerators in `System.Collections.Frozen`) are" fixed. The enumerators
+  are no longer shared. This change does not touch the rest of that entry.
+- "**The fixed shared types.** With B3 as it is on `71b2e4e`, these are: `string`; `Delegate`,
+  `Type`," and, later in that sentence, "the types in the namespace `System.Collections.Frozen`".
+  They are now the classes that are declared in that namespace and are not array types.
+- Limits: "A user type declared in the namespace `System.Collections.Frozen` is fixed too." A user
+  class is. A struct or an enum of the caller that is declared there is not shared (rows 34, 35 and
+  47).
+- "That holds for a fixed shared type and for a type that is not shared." The sentence is about two
+  references to one object, which are walked member by member. It does not hold for an array as
+  `T`: one instance on both sides is equal, and it is not walked (row 63).
+- What does not change: "The same instance of a fixed shared type, or of a type that is not shared."
+  The entry says that the call behaves as on `71b2e4e`. For one array on both sides with an array
+  as `T` the result is still "no exception" (row 63). But no member is read any more, and the
+  elements of the pattern array are not examined, so an invalid pattern is not reported in such a
+  call. That was read from the code; row 60 measured it for two different instances.
+- Decision S7: "Unchanged. It shares the same types as before and throws nothing of its own while
+  copying." and decision S8: "Unchanged. B3 and R5 stand." Both are true of #54. With this change
+  the namespace category of B3 is narrowed, and `SharedTypes.IsShared` with it. `Old<T>()` still
+  throws nothing of its own while it copies.
+- What stays open, on #40: "Left in #40 of item 2: two different instances of a shared type as `T`;
+  the same". "What stays open" below gives what is left.
+
+**Qualified in the #49 amendment.** Each statement is quoted by its opening words:
+
+- Its first paragraph: "`Old<T>()`, B3 and `SharedTypes.IsShared` do not" change. Under "Not
+  changed": "`Old<T>()`: every result. It still shares a value of the two types, as it shares every
+  type" that is declared in the namespace. Decision F1: "Unchanged. It still shares a value of the
+  two types. B3 and `SharedTypes.IsShared` do not change." All three are true of #49. With this
+  change B3 and `SharedTypes.IsShared` change: `Old<T>()` no longer shares every type that is
+  declared in the namespace. It still shares a value of the two types.
+- "**Why the two types and not the namespace.** B3 shares every type whose namespace is" the
+  namespace. B3 now shares the classes of that namespace that are not array types. In the same
+  part: "That `Old<T>()` shares an array of the two types is a defect" of its own. This change
+  repairs it. The reason that the part gives for R5, that no getter or factory of the instance runs,
+  still holds for a class of the caller in the namespace.
+- Decision F5: "Unchanged: a class of the caller declared in `System.Collections.Frozen` (also one
+  that implements `IEnumerable`), a value type declared there, and an array whose element type is
+  declared there." Superseded for the value type and for the array. It stands for the class of the
+  caller (rows 27 and 46). The entry "Any other type that B3 shares because of its namespace: see F5
+  below." under "Not changed" is qualified with it.
+- "The rule as it is now": "5. When `T` is a `string`, a delegate type, a nullable value type or one
+  of the two types, the two" values are compared as a whole. Step 5 now also names an array type and
+  `System.Array`. "The test of the #52 amendment on the declared `T` gains a fourth case:". It now
+  has a fifth.
+- "In the code": "because it now also serves the two types". The helper also serves an array as `T`.
+- The table "A pair that a member holds", row 21: "two `FrozenSet<int>[]`, different arrays, the
+  same frozen set as element (F5)". Its "After" is superseded: no exception (row 20 above). Its
+  2.0.0 cell, "not measured", can be filled: no exception.
+- The table "`actual` and `expected` themselves", row 45: "`T` = `FrozenSet<int>[]`, two arrays with
+  frozen sets of equal content (F5)". Its "After" is superseded: no exception for equal content, and
+  message C for different content (row 58 above). Its 2.0.0 cell, "not measured", can be filled: no
+  exception.
+- "Native AOT, the members of an element are not visible": "The path starts with `typeof(T).Name`;
+  for a nullable value type it starts with the name of the underlying type." Below an array as `T`
+  the path starts with `actual` (A8).
+- Limit 5: "**The value types of the namespace.** A value type declared in
+  `System.Collections.Frozen` is not" one of the two types. That stays true, and the rest of the
+  limit is superseded: such a value type is not shared, and R3 compares it (rows 30 to 49).
+- Not tested: "Row 45 stays with #57." and "A value type of the namespace that a member holds (F5,
+  limit 5)." Unit tests of this change hold both.
+- Qualified in the #52 amendment: "Every other type declared in the namespace
+  `System.Collections.Frozen` is still walked as" `T`, with an array of the two types as its
+  example. An array of the two types as `T` is not walked any more. A class of the caller in the
+  namespace as `T` is still walked (read from the code), and so is a value type of the namespace
+  without `?` (row 43).
+- Qualified in the #54 amendment: "`SharedTypes.IsShared` and B3 are unchanged by this" change too.
+  They change with #57.
+- Measured, other results: "`Old<T>()` shares an array of the two types because `Type.Namespace` of
+  an array type is the" namespace of its element type. `Old<T>()` no longer shares such an array.
+  What the sentence says of `Type.Namespace` stands.
+- What stays open, on #40: "Left in #40 of item 2, for a shared type as `T` other than a `string`, a
+  delegate" type and the two types. "What stays open" below gives what is left.
+- What stays open, on #57: "`Old<T>()` shares an array of the two types. A unit test records the
+  result of today for two such" arrays. #57 is closed by this change. That unit test is rewritten to
+  "no exception" (see "Measured results, unit tests"), and the case of row 45 now has unit tests.
+
+**Still true in the #49 amendment.** The statement is quoted by its opening words:
+
+- Terms: "An array of them is not one of them, and neither is any other type declared in the"
+  namespace. That stands, and `SharedTypes.IsFrozenSetOrDictionary` is still the test for the two
+  types. A unit test holds that it is false for an array of frozen sets.
+
+**Superseded in the #49 amendment.** The statement is quoted by its opening words:
+
+- "It now has 79" and 78. The program has 84 and 83 checks. The Status line of that amendment ("the
+  smoke program has 79 checks") and its Revision History row ("79 smoke checks") state the same
+  count and are superseded with it.
+
+Its result tables, its unit-test figures and its other statements are the dated record of #49 and
+stay.
+
+**Not covered by a measurement.**
+
+- The 2.0.0 cells that are marked "not measured".
+- Native AOT for an array of pointers or of function pointers: no smoke check covers one (A12).
+- Native AOT for `System.Array` as `T`: checks 81 and 82 use `int[]` and `HiddenLeaf[]`.
+- Native AOT for a type that has members and loses them to the trimmer, beyond checks 82 and 84. The
+  unit tests state "dynamic code off" only for a type that reflects with no member at all.
+- Whether an array type as `T` can have no visible members under Native AOT. That the check "no
+  members visible" does not run for it was read from the code.
+- The `linux-x64` publish, which CI runs.
+- An array of a COM type. No rule of B3 but the namespace category matched an array type that was
+  measured, and the suite can test a COM import on Windows only.
+- A struct of the caller whose full name is `System.Threading.Lock`. The rule that shares that name
+  is not changed, and it was not measured for a value type.
+- An array of pointers or of function pointers with more than `int.MaxValue` elements in all, which
+  a rank above 1 allows. The code reads `Array.Length` for the number of addresses.
+- What `Old<T>()` copies through a member that is an enumerator of a frozen set, beyond the one
+  case of limit 17.
+- What the copy of a `List<FrozenSet<T>>` shares under Native AOT when the list type is not
+  preserved (limit 10).
+
+**Rejected alternatives.**
+
+- **A separate issue for each of the four further defects.** The four were found on the paths that
+  the first one uses, and six rows of the tables need two of the changes together (A1). The
+  prototypes of the design show what a change made alone gives. With an array as `T` compared as a
+  whole and the namespace category unchanged, `T` = `FrozenSet<int>[]` with two sets of equal
+  content gave message C, where `82c6255` gave a violation that names `SyncRoot` and the final state
+  gives no exception. The same state gave message C for one set in both arrays with the pattern
+  `SyncRoot`, where `82c6255` and the final state give no exception.
+- **Exclude an array type and a value type ahead of every rule of B3.** No test can tell that from
+  the exclusion in the namespace category for the types that were measured (A2). It would also
+  decide the cases that were not measured: an array of a COM type, and a struct that the rule by
+  full name matches (see "Not covered by a measurement").
+- **The type name as the start of the path below an array as `T`.** The name of an array type holds
+  brackets of its own, so the path would show one level of elements too many (A8).
+- **Compare two arrays of pointers by boxing each element.** The runtime does not give an element
+  of such an array as an object: on `82c6255` the comparison threw `NotSupportedException` where it
+  enumerated one (rows 102, 103, 107, 109, 110, 112 and 114). A comparison of boxes would also make
+  an `int*[] {px}` equal to an `object[]` that holds `Pointer.Box(px)`, which A9 keeps different
+  (row 110).
+
+**What stays open.**
+
+- **#57** is closed by this change, with the limits above.
+- **[#40](https://github.com/cwouyang/uContract.NET/issues/40)**: this change takes one more part of
+  the rest of item 2: an array type and `System.Array` as `T`. Left in #40 of item 2: `T` =
+  `object`, an interface, or a base class that is not compared as a whole, for two different
+  instances, also when the two values are arrays (row 77; limit 8); a collection class as `T` (row
+  78); a value type of the namespace as `T` whose getter throws (limit 5); and, for a shared type as
+  `T` other than a `string`, a delegate type and the two types, two different instances and the same
+  instance of a fixed shared type. The design asks for a comment on #40 after the merge that says
+  what this change took and what stays.
+- **`Contract.EnsureImmutableCollection<T>()`** throws `BadImageFormatException` for an array of
+  function pointers (limit 18). No issue was filed for it when this amendment was written.
+- **#46, #48 and #50** are outside this change.
+
+**Why an amendment and not a new ADR.** B1 to B8 and R0–R8 stand. The change narrows one category of
+B3, adds one test for two arrays before R7, adds one kind of `T` to the existing rule "compared as a
+whole", and gives an element of an array of pointers the rule that a pointer field already has. It
+does not do what the #52 amendment reserved for a new ADR, which is to change what every top-level
+comparison does. `docs/adr/README.md` lists breaking changes under "Requires ADR". The amended ADRs
+(ADR-0022, ADR-0012, ADR-0021 and ADR-0007) are that record, as for #52, #54 and #49.
+
+**Unchanged.** Every other decision of this ADR.
+
 ---
 
 ## References
@@ -2242,6 +3258,7 @@ The amended ADRs (ADR-0022, ADR-0012, ADR-0021 and ADR-0007) are that record, as
 - [Issue #52: A `null` `actual` or `expected` in `EnsureAssignable<T>()`](https://github.com/cwouyang/uContract.NET/issues/52)
 - [Issue #54: `Old` + `EnsureAssignable` in a class derived from a shared type](https://github.com/cwouyang/uContract.NET/issues/54)
 - [Issue #49: Compare frozen collections by elements in `EnsureAssignable`](https://github.com/cwouyang/uContract.NET/issues/49)
+- [Issue #57: `Old` shares an array of frozen collections instead of copying it](https://github.com/cwouyang/uContract.NET/issues/57)
 - [`DeepCopier.cs`](../../src/uContract/DeepCopier.cs) — the copy
 - [`SharedTypes.cs`](../../src/uContract/SharedTypes.cs) — B3
 - [`MemberComparison.cs`](../../src/uContract/MemberComparison.cs) — R0–R8 and the walk
@@ -2273,3 +3290,4 @@ The amended ADRs (ADR-0022, ADR-0012, ADR-0021 and ADR-0007) are that record, as
 | 2026-10-09 | Amended     | The top level decides a `null` side first and compares a `string`, a delegate type and a nullable value type as one pair (#52); 72 smoke checks. Decision unchanged. See Implementation Notes > second Amendment. |
 | 2026-10-10 | Amended     | One instance of a shared type whose state can change, passed as `actual` and as `expected`, throws `InvalidOperationException` (rule S, #54); 74 smoke checks. Decision unchanged. See Implementation Notes > third Amendment. |
 | 2026-10-10 | Amended     | Two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared by element (R7), not by reference (R5), and one of the two types as `T` is compared as a whole (#49); 79 smoke checks. Decision unchanged. See Implementation Notes > fourth Amendment. |
+| 2026-10-11 | Amended     | `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there; an array type or `System.Array` as `T` is compared as a whole; two arrays are equal only with the same rank, lengths and lower bounds; two arrays of pointers or of function pointers are compared by address (#57); 84 smoke checks. Decision unchanged. See Implementation Notes > fifth Amendment. |

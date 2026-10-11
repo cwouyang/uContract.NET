@@ -177,7 +177,7 @@ internal sealed class SnapshotCircle : SnapshotShape
 }
 
 // Hidden: never a T, never preserved. It may be a type argument of a T or of a member of a T (the element
-// type of FrozenLeavesHolder.Leaves).
+// type of FrozenLeavesHolder.Leaves), or the element type of an array type that is a T.
 internal sealed class HiddenLeaf
 {
     public int Value;
@@ -363,6 +363,21 @@ internal sealed class FrozenLeavesHolder
     public FrozenSet<HiddenLeaf> Leaves = FrozenSet<HiddenLeaf>.Empty;
 }
 
+internal sealed class GridHolder
+{
+    public int[,] Cells = new int[0, 0];
+}
+
+internal sealed class FrozenSetListHolder
+{
+    public List<FrozenSet<string>> Sets = [];
+}
+
+internal sealed class FrozenSetEnumeratorHolder
+{
+    public FrozenSet<string>.Enumerator Position;
+}
+
 internal sealed unsafe class PointerHolder
 {
     public int* Address;
@@ -461,6 +476,8 @@ public static class Program
 
     private static readonly string[] s_frozenCodes = ["a", "b"];
     private static readonly string[] s_otherFrozenCodes = ["a", "c"];
+    private static readonly int[] s_numbers = [1, 2];
+    private static readonly int[] s_otherNumbers = [1, 3];
 
     public static int Main(string[] args)
     {
@@ -1444,6 +1461,96 @@ public static class Program
             ),
             Expect.Ok
         );
+
+        // ---- Two arrays are equal only when they have the same rank, and the same length and lower bound in
+        // every dimension (issue #57). ----
+
+        // Mutation: the lengths per dimension differ (a 1x2 and a 2x1 array of the same elements in order).
+        // Visibility: T.
+        yield return new Check(
+            80,
+            "Arrays of the same elements and different lengths per dimension",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new GridHolder
+                        {
+                            Cells = new[,]
+                            {
+                                { 1, 2 },
+                            },
+                        },
+                        new GridHolder
+                        {
+                            Cells = new[,]
+                            {
+                                { 1 },
+                                { 2 },
+                            },
+                        }
+                    )
+                ),
+            post,
+            Expect.Ok
+        );
+
+        // ---- An array type or System.Array as T is compared as a whole (issue #57). ----
+
+        // Mutation: one element differs. T is the array type itself: the two arrays are compared element by
+        // element, and the violation says that they are compared as a whole.
+        yield return new Check(
+            81,
+            "EnsureAssignable<int[]> arrays with one element differing",
+            static () => NoResult(static () => Contract.EnsureAssignable(s_numbers, s_otherNumbers)),
+            Expect.Throws<PostconditionViolationException>("is compared as a whole"),
+            Expect.Ok
+        );
+
+        // Mutation: none (two arrays, each with its own element of equal Value). Visibility: none for
+        // HiddenLeaf under Native AOT, where its Equals says unequal: the comparison reports that it cannot
+        // compare the elements, and the path to them starts at the parameter. Under the JIT the members of
+        // HiddenLeaf are visible and the elements are equal.
+        yield return new Check(
+            82,
+            "EnsureAssignable<HiddenLeaf[]> elements with hidden members",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new[] { new HiddenLeaf { Value = 1 } },
+                        new[] { new HiddenLeaf { Value = 1 } }
+                    )
+                ),
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare",
+                "uContract.AotSmoke.HiddenLeaf",
+                "reached through 'actual[]'"
+            ),
+            Expect.Ok
+        );
+
+        // ---- Old copies an array whose element type is declared in System.Collections.Frozen, and a value
+        // type declared in System.Collections.Frozen (issue #57). ----
+
+        // Mutation: an element of the list is replaced through the indexer by a set of different content.
+        // Visibility: DynamicDependency(All) on List<FrozenSet<string>>. The list keeps its elements in an
+        // array of frozen sets: Old copies that array, so the copy still holds the first set.
+        yield return new Check(
+            83,
+            "List of frozen sets with one element replaced",
+            FrozenSetListElementReplaced,
+            post,
+            Expect.Ok
+        );
+
+        // Mutation: none. The enumerator of a FrozenSet<T> is a value type declared in
+        // System.Collections.Frozen: it is copied and compared like any other value type.
+        yield return new Check(
+            84,
+            "Enumerator of a frozen set unchanged",
+            FrozenSetEnumeratorUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
     }
 
     private static object? FrozenDictionariesOfEqualContent()
@@ -1791,6 +1898,25 @@ public static class Program
         TaggedDerived original = new() { Tags = ["a"] };
         TaggedDerived copy = Contract.Old(() => original);
         original.Tags = ["z"];
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(List<FrozenSet<string>>))]
+    private static object? FrozenSetListElementReplaced()
+    {
+        FrozenSetListHolder original = new() { Sets = [s_frozenCodes.ToFrozenSet(StringComparer.Ordinal)] };
+        FrozenSetListHolder copy = Contract.Old(() => original);
+        original.Sets[0] = s_otherFrozenCodes.ToFrozenSet(StringComparer.Ordinal);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? FrozenSetEnumeratorUnchanged()
+    {
+        FrozenSetEnumeratorHolder original = new()
+        {
+            Position = s_frozenCodes.ToFrozenSet(StringComparer.Ordinal).GetEnumerator(),
+        };
+        FrozenSetEnumeratorHolder copy = Contract.Old(() => original);
         return NoResult(() => Contract.EnsureAssignable(original, copy));
     }
 

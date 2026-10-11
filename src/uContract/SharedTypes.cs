@@ -24,6 +24,13 @@ namespace uContract;
 ///     no getter or factory of theirs runs. <see cref="string" /> is listed too; it is compared by Equals.
 ///     A <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> is shared too, and two of
 ///     them are compared element by element, in enumeration order, also without reading their members.
+///     Every other class declared in <c>System.Collections.Frozen</c> is shared and compared by reference.
+///     A value type declared in <c>System.Collections.Frozen</c> is not shared, and an array whose element
+///     type is declared in <c>System.Collections.Frozen</c> is not: <c>Old</c> copies them, and two of them
+///     are compared like any other two values or arrays.
+///     An array of pointers or of function pointers is never shared: <c>Old</c> copies it with its
+///     addresses, and two of them are compared by address. This class never reads
+///     <c>Type.Namespace</c> of an array type.
 /// </summary>
 internal static class SharedTypes
 {
@@ -104,11 +111,21 @@ internal static class SharedTypes
     ///     The shared types of which two instances are compared element by element, in enumeration order, and
     ///     not by reference: every construction of <c>FrozenSet&lt;T&gt;</c> or
     ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and every type derived from one. No other type declared
-    ///     in <c>System.Collections.Frozen</c> matches, and an array of them does not.
+    ///     in <c>System.Collections.Frozen</c> matches. An array of them does not match either, and it is
+    ///     not shared: two such arrays are compared element by element, as any two arrays are.
     /// </summary>
     internal static bool IsFrozenSetOrDictionary(Type type)
     {
         return DerivesFromGeneric(type, typeof(FrozenSet<>)) || DerivesFromGeneric(type, typeof(FrozenDictionary<,>));
+    }
+
+    /// <summary>
+    ///     An array of pointers or of function pointers, of any rank. It is never shared, and two of them are
+    ///     compared by address. Reads the element type only, never the namespace of <paramref name="type" />.
+    /// </summary>
+    internal static bool IsArrayOfPointersOrFunctionPointers(Type type)
+    {
+        return type.IsArray && type.GetElementType() is { IsPointer: true } or { IsFunctionPointer: true };
     }
 
     /// <summary>
@@ -162,23 +179,63 @@ internal static class SharedTypes
 
     private static bool Classify(Type type)
     {
+        // Decided first: an array of pointers or of function pointers is never shared, and neither is a type
+        // for which NamespaceCannotBeRead answers true. The answer for these types is given here, and no test
+        // below is asked about them. IsClassOfTheFrozenNamespace reads the namespace of no array type, but it
+        // would read that of a pointer to a function pointer, for which NamespaceCannotBeRead answers true
+        // too; no object has such a runtime type. Whoever removes this early answer has to check, for each
+        // test below, that it does not throw and does not answer true for these types.
+        if (IsArrayOfPointersOrFunctionPointers(type) || NamespaceCannotBeRead(type))
+        {
+            return false;
+        }
+
         return IsInSharedCategory(type)
             || Listed.Any(listed => listed.IsAssignableFrom(type))
             || ListedGenerics.Any(definition => DerivesFromGeneric(type, definition))
             || DerivesFromNamed(type, LockFullName);
     }
 
-    // Handles (SafeHandle, CriticalHandle), COM objects, frozen collections and CoreLib comparers.
+    // The runtime looks for the namespace of an array type in its innermost element type, and throws
+    // BadImageFormatException when that is a function pointer: for an array of function pointers, of any
+    // rank, and for an array of such arrays. Only the element types are read here.
+    private static bool NamespaceCannotBeRead(Type type)
+    {
+        Type innermost = type;
+        while (innermost.HasElementType)
+        {
+            innermost = innermost.GetElementType()!;
+        }
+
+        return innermost.IsFunctionPointer;
+    }
+
+    // Handles (SafeHandle, CriticalHandle), COM objects, the classes declared in System.Collections.Frozen
+    // and CoreLib comparers.
     // A category added here must be classified too: DescribeChangingShare names it when its state can
-    // change, as it does for the handles and the COM objects; otherwise it is fixed, as the frozen
-    // collections and the CoreLib comparers are. The same holds for a type added to a list above.
+    // change, as it does for the handles and the COM objects; otherwise it is fixed, as the classes declared
+    // in System.Collections.Frozen and the CoreLib comparers are. The same holds for a type added to a list
+    // above.
     private static bool IsInSharedCategory(Type type)
     {
         return typeof(CriticalFinalizerObject).IsAssignableFrom(type)
             || type.IsCOMObject
             || typeof(ComObject).IsAssignableFrom(type)
-            || string.Equals(type.Namespace, "System.Collections.Frozen", StringComparison.Ordinal)
+            || IsClassOfTheFrozenNamespace(type)
             || IsCoreLibComparer(type);
+    }
+
+    // A FrozenSet<T>, a FrozenDictionary<TKey, TValue> and every other class declared in
+    // System.Collections.Frozen. A value type declared there (a struct, an enum, an enumerator of a frozen
+    // collection) is not one of them, and neither is an array, whatever its element type: the runtime
+    // reports the namespace of an array type as that of its innermost element type, so that namespace is
+    // not read. The exclusion is made here only; the other rules are asked about arrays and value types as
+    // before.
+    private static bool IsClassOfTheFrozenNamespace(Type type)
+    {
+        return !type.IsArray
+            && !type.IsValueType
+            && string.Equals(type.Namespace, "System.Collections.Frozen", StringComparison.Ordinal);
     }
 
     private static bool IsCoreLibComparer(Type type)

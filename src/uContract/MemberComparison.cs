@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace uContract;
@@ -74,11 +75,15 @@ internal static class MemberComparison
         );
     }
 
-    // The comparison of a nullable value type, or of a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, as a
-    // whole met a class whose members are not visible. For one of the last two, wholeType is T itself.
+    // The comparison of a nullable value type, of a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or of an
+    // array type or System.Array, as a whole met a class whose members are not visible. For a nullable value
+    // type, wholeType is the underlying type; for the others it is T itself. The path starts with the name of
+    // wholeType, except below an array type or System.Array, where it starts with the parameter name: the
+    // name of an array type holds brackets of its own ("X[]"), which would read as one more element.
     internal static InvalidOperationException CannotCompareBelowWhole(Type wholeType, HiddenMembers hidden)
     {
-        string path = $"{wholeType.Name}{hidden.PathBelowTopLevelMember}";
+        string start = IsArrayTypeOrSystemArray(wholeType) ? "actual" : wholeType.Name;
+        string path = $"{start}{hidden.PathBelowTopLevelMember}";
 
         return new InvalidOperationException(
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
@@ -88,6 +93,14 @@ internal static class MemberComparison
                 + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
+    }
+
+    // The declared types whose two values EnsureAssignable compares as a whole because they are arrays: an
+    // array type of any rank and element type, and System.Array itself. No other type that can hold an array
+    // (object, an interface that arrays implement) is one of them.
+    internal static bool IsArrayTypeOrSystemArray(Type type)
+    {
+        return type.IsArray || type == typeof(Array);
     }
 
     // Under Native AOT a type whose members were not preserved reflects as having none, which
@@ -179,7 +192,9 @@ internal static class MemberComparison
         }
 
         // Values of different runtime types are unequal, and neither is read: the members of one type
-        // cannot be read from the other. Two sequences are still compared element by element.
+        // cannot be read from the other. Two sequences are still compared element by element; two arrays
+        // only when they have the same rank, and the same length and lower bound in every dimension (see
+        // StartReferences).
         Type actualType = actual.GetType();
         Type expectedType = expected.GetType();
         if (actualType != expectedType && !(IsSequence(actual) && IsSequence(expected)))
@@ -188,6 +203,7 @@ internal static class MemberComparison
         }
 
         // FieldInfo.GetValue boxes a pointer-typed field as a Pointer object, whose Equals compares addresses.
+        // An array of pointers or of function pointers is compared by address too (see StartSequences).
         if (actual is Pointer or string)
         {
             equal = Equals(actual, expected);
@@ -214,7 +230,10 @@ internal static class MemberComparison
 
         // Values of different runtime types reach this point only as two non-string sequences (for example
         // ImmutableArray<T> and ArraySegment<T>, or a value-type sequence and an array); they are compared
-        // element by element below, not field by field.
+        // element by element below, not field by field, and two arrays among them only when they have the
+        // same rank, and the same length and lower bound in every dimension. An array of pointers or of
+        // function pointers that has elements is the exception: it is decided without walking a pair of
+        // elements (see StartSequences).
         if (actualType.IsValueType && actualType == expectedType)
         {
             return StartValues(actual, expected, actualType, out equal);
@@ -234,6 +253,18 @@ internal static class MemberComparison
         ReferencePair pair = new(actual, expected);
         if (context.TryGetSettled(pair, out equal))
         {
+            return null;
+        }
+
+        // Decided before any element of either array is read, and after the lookup above. The lookup knows
+        // only pairs that passed this test, except the top-level pair of a T that is compared by its members,
+        // which is entered without it: when the two values of such a call are arrays (T is ICollection, say)
+        // and a member leads back to them (SyncRoot), that member still counts as equal, whatever their rank,
+        // lengths and lower bounds. Two arrays passed as an array type or System.Array are compared as a whole
+        // and come through here like any other pair.
+        if (ArraysDifferInRankLengthOrLowerBound(actual, expected))
+        {
+            equal = false;
             return null;
         }
 
@@ -298,12 +329,32 @@ internal static class MemberComparison
         }
     }
 
-    // Null means the two sequences are different without comparing any element.
+    // Null means the two sequences are different without walking a pair of elements. A walk that holds no
+    // pair ends as equal: it is returned for two sequences without elements, and for two arrays of pointers
+    // or of function pointers that hold the same addresses, which are equal without walking a pair of
+    // elements.
     private static Walk? StartSequences(IEnumerable actual, IEnumerable expected)
     {
         if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
         {
             return new DictionaryWalk(actualDictionary, expectedDictionary);
+        }
+
+        // Two arrays of pointers or of function pointers are compared by address, whatever the pointers point
+        // to; equal addresses leave nothing to walk. Such an array that has elements is different from anything
+        // that is not an array of pointers or of function pointers, also from an object[] of boxed pointers.
+        bool actualHoldsAddresses = TryGetAddresses(actual, out ReadOnlySpan<nint> actualAddresses);
+        bool expectedHoldsAddresses = TryGetAddresses(expected, out ReadOnlySpan<nint> expectedAddresses);
+        if (actualHoldsAddresses && expectedHoldsAddresses)
+        {
+            // Both arrays have the same rank, and the same length and lower bound in every dimension (see
+            // StartReferences), so they hold the same number of addresses in the same order.
+            return actualAddresses.SequenceEqual(expectedAddresses) ? new CollectionWalk([], []) : null;
+        }
+
+        if (actualHoldsAddresses || expectedHoldsAddresses)
+        {
+            return null;
         }
 
         // Two sequences of different runtime types: one that cannot be enumerated (a default
@@ -378,6 +429,60 @@ internal static class MemberComparison
             items = null;
             return false;
         }
+    }
+
+    // Two arrays, of one runtime type or of two, are equal only when they have the same rank, and the same
+    // length and lower bound in every dimension. An array of any rank enumerates as one sequence, so without
+    // this a 1x2 and a 2x1 array of the same elements would compare as equal. No element is read here.
+    private static bool ArraysDifferInRankLengthOrLowerBound(object actual, object expected)
+    {
+        if (actual is not Array actualArray || expected is not Array expectedArray)
+        {
+            return false;
+        }
+
+        if (actualArray.Rank != expectedArray.Rank)
+        {
+            return true;
+        }
+
+        for (int dimension = 0; dimension < actualArray.Rank; dimension++)
+        {
+            if (
+                actualArray.GetLength(dimension) != expectedArray.GetLength(dimension)
+                || actualArray.GetLowerBound(dimension) != expectedArray.GetLowerBound(dimension)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // True for an array of pointers or of function pointers, of any rank, that has at least one element:
+    // addresses are then its elements as the addresses they hold, in the order of the array's memory. An
+    // address is read as a number and never dereferenced. Such an array cannot be enumerated: the runtime
+    // throws NotSupportedException for an element. With no element there is nothing to compare by address,
+    // and the array is compared as any other sequence is.
+    // The memory of the array is read as native integers, which is in bounds only when each element is one
+    // native integer, as a pointer or a function pointer is. So the type is tested here, before anything is
+    // read and before the number of elements is asked for, and never left to a caller.
+    private static bool TryGetAddresses(object value, out ReadOnlySpan<nint> addresses)
+    {
+        addresses = default;
+        if (
+            value is not Array array
+            || !SharedTypes.IsArrayOfPointersOrFunctionPointers(array.GetType())
+            || array.LongLength == 0
+        )
+        {
+            return false;
+        }
+
+        ref byte first = ref MemoryMarshal.GetArrayDataReference(array);
+        addresses = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, nint>(ref first), array.Length);
+        return true;
     }
 
     private static bool IsSequence(object value)

@@ -29,11 +29,23 @@ nothing for two. For a `string`, a delegate, a nullable value type, or a `Frozen
 `FrozenDictionary<TKey, TValue>` as `T`, a pattern no longer allows a change, so do not call the
 method for a value that may change; a test that matched "Fields were modified" for such a `T` sees
 another message; a `string` is compared by ordinal `Equals`, so a change of letter case is a
-violation; a delegate's target is no longer compared. An `Old` result taken while another contract
-check is running gave `ArgumentNullException` in 2.x; it now gives a violation that did not happen,
-or none. `EnsureImmutableCollection<T>()` is no longer a `null` guard with postconditions off. For
-trimmed and Native AOT applications, see [Trimming and Native
-AOT](README.md#trimming-and-native-aot) in the README.
+violation; a delegate's target is no longer compared. An array type or `System.Array` as `T` is
+compared as a whole too, element by element, and the patterns do not apply to it: for an `int[]` as
+`T`, 2.0.0 let the pattern `SyncRoot` excuse a changed element and the pattern `.*` a changed
+length, reported a pattern that is not a valid regular expression, and said "Fields were modified"
+in the violation; none of these holds now. A generic method that forwards its own type parameter
+and its patterns to `EnsureAssignable<T>()` gets this comparison when it is called with an array
+type: its patterns then do not apply, and a different element is a violation, while a call with a
+type that is compared by its members (a `List<int>`) honours them. Do not call such a method for an
+array that may change; state what may change with `Contract.Ensure`. Two arrays are equal only when
+they have the same rank, and the same length and lower bound in every dimension, wherever a member
+or element holds them and when `T` is an array type or `System.Array`: an `int[,]` of 1 by 2 no
+longer equals one of 2 by 1 with the same elements, and an array whose lower bound is 1 no longer
+equals an `int[]` of the same elements. An `Old` result taken while another contract check is
+running gave `ArgumentNullException` in 2.x; it now gives a violation that did not happen, or none.
+`EnsureImmutableCollection<T>()` is no longer a `null` guard with postconditions off. For trimmed
+and Native AOT applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) in the
+README.
 
 ### Changed
 
@@ -44,9 +56,13 @@ AOT](README.md#trimming-and-native-aot) in the README.
   is a read-only snapshot: delegates are shared, so an event raised on the copy reaches the
   original's subscribers. Instances of resource types are shared with the original, not copied: every
   `Stream`, `Task`, `Lazy<T>`, `CancellationTokenSource`, handle, timer and `HttpClient`, every
-  frozen collection (`System.Collections.Frozen`), every `Regex`, `AsyncLocal<T>` and
-  `System.Threading.Lock`, and the comparers of the base class library. The full list is in
-  [Types that `Old<T>()` shares](docs/examples/API_REFERENCE.md#types-that-oldt-shares). A class
+  frozen collection (a `FrozenSet<T>`, a `FrozenDictionary<TKey, TValue>` and every other class
+  declared in `System.Collections.Frozen`; a value type declared in `System.Collections.Frozen` and
+  an array whose element type is declared in `System.Collections.Frozen` are copied), every `Regex`,
+  `AsyncLocal<T>` and `System.Threading.Lock`, and the comparers of the base class library. The full
+  list is in [Types that `Old<T>()` shares](docs/examples/API_REFERENCE.md#types-that-oldt-shares).
+  An element of a copied array or list keeps its own rule: a `FrozenSet<T>` in a copied
+  `FrozenSet<T>[]` or `List<FrozenSet<T>>` is the original's set. A class
   that derives from a shared type whose state can change (a `Stream`, a `Task`, a `Component`, …)
   is shared too, so `Old(() => this)` in such a class returns `this`. A copy of a `Regex`,
   `AsyncLocal<T>` or `Lock` would differ from an unchanged original (a `Regex` caches a runner when it
@@ -80,14 +96,16 @@ AOT](README.md#trimming-and-native-aot) in the README.
   dictionaries whose values are different objects of equal content were a violation in 2.0.0 and
   are equal now (#49; see the entry that begins "`EnsureAssignable<T>()` reports less" below). The
   limits (order, comparer, shared elements) and the ways out are in [Types that `Old<T>()`
-  shares](docs/examples/API_REFERENCE.md#types-that-oldt-shares). Two instances of one other type
-  declared in `System.Collections.Frozen` (two arrays of `FrozenSet<T>`, two instances of a class of
-  yours declared there) are compared by reference. Members whose runtime types differ are unequal,
-  except two sequences, which are compared element by element; the runtime type decides, not the
-  declared type. Base and derived instances are unequal, with the same exception. A `string` and a
-  `char[]` are unequal (a `string` is not a sequence here). A user-defined struct that implements
-  `IEnumerable`, held in an interface-typed or `object` member, is compared by its fields, so state
-  besides its elements is reported. A change outside the window of a `Memory<T>` or
+  shares](docs/examples/API_REFERENCE.md#types-that-oldt-shares). Two instances of one other class
+  declared in `System.Collections.Frozen` (two instances of a class of yours declared there) are
+  compared by reference. Members whose runtime types differ are unequal, except two sequences, which
+  are compared element by element; the runtime type decides, not the declared type. Base and derived
+  instances are unequal, with the same exception. Two arrays, of one runtime type or of two, are
+  equal only when they also have the same rank, and the same length and lower bound in every
+  dimension (see the entry that begins "`EnsureAssignable<T>()` finds two arrays equal" below). A
+  `string` and a `char[]` are unequal (a `string` is not a sequence here). A user-defined struct
+  that implements `IEnumerable`, held in an interface-typed or `object` member, is compared by its
+  fields, so state besides its elements is reported. A change outside the window of a `Memory<T>` or
   `ReadOnlyMemory<T>` is reported. A dictionary value whose `Equals` ignores the changed content is
   reported, because values are compared by their members. A member whose declared type is an
   interface is walked into the members of its runtime type, and their getters run. A getter that
@@ -124,32 +142,66 @@ AOT](README.md#trimming-and-native-aot) in the README.
   another contract check is running is `default` and cannot be told from a real `null`: compared
   later, it gives a violation that did not happen, or misses one. (#47, #52; ADR-0012)
 - **BREAKING**: `EnsureAssignable<T>()` compares the two values as a whole when `T` is a `string`, a
-  delegate type, a nullable value type, or a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`: a
-  `string` with an ordinal `Equals`, a delegate by its methods, a nullable value type with `Equals`
-  and then by its fields, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` element by element,
-  in enumeration order (a dictionary entry by entry, key with key and value with value). Before, the
-  members of `T` were compared. For a `string` those were its length and first character, so two
-  different strings could pass. For a delegate they included its target, compared by its members:
-  now targets and closure state are not compared, so the same method on another object passes, and
-  every entry of a multicast delegate counts. A nullable value type with a value on both sides could
-  not be compared. For a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` as `T`, 2.0.0 reported
-  `Items`, or `Keys` and `Values`, for two different instances, also of equal content, and a call
-  that listed those names as patterns passed, also for different content: now the elements are
-  compared, and a difference is a violation whatever the patterns (#49). The assignable patterns do
-  not apply to these types and are not examined, so an invalid pattern is not reported. A nullable
-  value type can be compared less strictly than the same type without `?` (`DateTime.Equals` ignores
-  `Kind`). Under Native AOT the fields of its underlying type may not be preserved: for a nullable
-  struct that holds a reference, the comparison can then report a difference for an unchanged value
-  or, with an `Old` snapshot, miss a change inside the object it refers to. This holds only when `T`
-  itself is such a type: `T` = `object` still compares nothing beyond `null`, a base class compares
-  the members it declares or inherits, an interface only its own properties, also when the two
-  values are a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` (only the members visible
+  delegate type, a nullable value type, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, or
+  an array type or `System.Array`: a `string` with an ordinal `Equals`, a delegate by its methods, a
+  nullable value type with `Equals` and then by its fields, a `FrozenSet<T>` or a
+  `FrozenDictionary<TKey, TValue>` element by element, in enumeration order (a dictionary entry by
+  entry, key with key and value with value), two arrays element by element, each element as a member
+  or element is, when they have the same rank, and the same length and lower bound in every
+  dimension (otherwise they are not equal). Before, the members of `T` were compared. For a `string`
+  those were its length and first character, so two different strings could pass. For a delegate
+  they included its target, compared by its members: now targets and closure state are not compared,
+  so the same method on another object passes, and every entry of a multicast delegate counts. A
+  nullable value type with a value on both sides could not be compared. For a `FrozenSet<T>` or a
+  `FrozenDictionary<TKey, TValue>` as `T`, 2.0.0 reported `Items`, or `Keys` and `Values`, for two
+  different instances, also of equal content, and a call that listed those names as patterns passed,
+  also for different content: now the elements are compared, and a difference is a violation
+  whatever the patterns (#49). For an array as `T`, 2.0.0 reported `SyncRoot` for a different
+  element (of an `int[]`, a `string[]`, an `int[,]` and an `object[]`, and of an `int[]` passed as
+  `System.Array`), and `Length`, `LongLength` and `SyncRoot` for two `int[]` of different lengths; a
+  call for two `int[]` that listed the reported names as patterns passed, also for a different
+  element or length: now the elements are compared, and a difference is a violation whatever the
+  patterns (#57). A generic method that forwards its own type parameter to `EnsureAssignable<T>()`
+  gets this comparison when it is called with an array type, and its patterns then do not apply. The
+  assignable patterns do not apply to these types and are not examined, so an invalid pattern is not
+  reported. A nullable value type can be compared less strictly than the same type without `?`
+  (`DateTime.Equals` ignores `Kind`). Under Native AOT the fields of its underlying type may not be
+  preserved: for a nullable struct that holds a reference, the comparison can then report a
+  difference for an unchanged value or, with an `Old` snapshot, miss a change inside the object it
+  refers to. For an array type or `System.Array` as `T`, the members of the type of the elements may
+  not be preserved either: preserve that type with `DynamicDependency`. All of this holds only when
+  `T` itself is such a type: `T` = `object` still compares nothing beyond `null`, a base class that
+  is not such a type compares the members it declares or inherits (`System.Array`, `Delegate`,
+  `MulticastDelegate`, a `FrozenSet<T>` and a `FrozenDictionary<TKey, TValue>` are base classes that
+  are compared as a whole), an interface only its own properties, also when the two values are a
+  `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, or two arrays (only the members visible
   through `T` are compared), and two different instances of a shared type other than `string`, a
   delegate, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` are still compared member by
   member (#40), as is a type that is shared, and fixed (a `Regex`), also for one instance on both
   sides. One instance of a shared type whose state can change, passed as `actual` and as `expected`,
   is not compared, whatever `T` is, `object` included: the method throws
-  `InvalidOperationException`; the entry for #54 below gives the ways out. (#52; ADR-0022)
+  `InvalidOperationException`; the entry for #54 below gives the ways out. (#52, #57; ADR-0022)
+- **BREAKING**: `EnsureAssignable<T>()` finds two arrays equal only when they have the same rank,
+  and the same length and lower bound in every dimension. This holds for two arrays that a member
+  holds, for two arrays that are elements of a collection or of another array, keys or values of a
+  dictionary, or fields of a struct, and for the two values themselves when `T` is an array type or
+  `System.Array`. In 2.0.0 these pairs in a member were equal: an `int[,]` of 1 by 2 and one of 2 by
+  1 with the same elements in the same order; an `int[]` and an `int[,]`, or an `int[,]` and an
+  `int[,,]`, of the same elements in a member declared `System.Array`; and two arrays of the same
+  elements whose lower bounds differ. As `T`, 2.0.0 found an `int[,]` of 1 by 2 equal to one of 2 by
+  1, and an `int[]` equal to an array of the same elements whose lower bound is 1 when both were
+  passed as `System.Array`. Each of these is a violation now. The rule is for two arrays: an array
+  and a sequence that is not an array (a `List<T>`) are compared by what they enumerate, whatever
+  the rank of the array (an array of pointers or of function pointers that has elements is the
+  exception: see Fixed). It does not apply either to two arrays passed as a `T` that is neither an
+  array type nor `System.Array` (`object`, an interface): only the members visible through `T` are
+  compared there. Two arrays of different element types that agree in rank, lengths and lower bounds
+  are compared element by element, so an `int[]` and an `object[]` of the same numbers are equal,
+  and an `int[]` and a `long[]` are not. `Old<T>()` keeps the rank, the lengths and the lower bounds
+  of an array that it copies, so this rule adds no violation to the `Old` + `EnsureAssignable` pair
+  for an array that did not change. The violation does not say that a rank, a length or a lower
+  bound differs. Where two such arrays must count as equal, list the member as assignable and state
+  the condition with `Contract.Ensure`. (#57)
 - **BREAKING**: `EnsureAssignable<T>()` throws `InvalidOperationException` when one instance of a
   shared type whose state can change is passed as `actual` and as `expected`. `Old<T>()` shares such
   an instance (a `Stream`, a `Task`, a `CancellationTokenSource`, a class derived from `Component`,
@@ -179,6 +231,13 @@ AOT](README.md#trimming-and-native-aot) in the README.
 - `EnsureAssignable<T>()` no longer overflows the stack, which ends the process, on cyclic object
   graphs, on chains of 10 000 nodes or more, on a property that returns `this`, on multicast
   delegates and on pointer fields (ADR-0022).
+- `Old<T>()` no longer throws `ArgumentException` for an object that holds an array of pointers or
+  of function pointers, and `EnsureAssignable<T>()` no longer throws `NotSupportedException` for
+  such an object or for such an array as `T`. `Old<T>()` copies the array with its addresses. Two
+  such arrays are compared by address, and are equal only when they also have the same rank, and the
+  same length and lower bound in every dimension. The type that a pointer points to and the memory
+  behind an address are not compared. Such an array that has elements is different from anything
+  that is not an array of pointers or of function pointers (#57).
 - `EnsureAssignable<T>()` no longer reports false violations for unchanged dictionaries, structs
   that hold a reference, interface-typed members, and objects that hold a `Regex` (also after it is
   used), an `AsyncLocal<T>` or a `System.Threading.Lock` (ADR-0022).

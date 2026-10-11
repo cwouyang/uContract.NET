@@ -12,6 +12,7 @@
 - **Amended**: 2026-10-09 — the "no members visible" check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type (#52); see the third Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — the "no members visible" check for `T` also does not run when one instance of a shared type whose state can change is passed as `actual` and as `expected` (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — the "no members visible" check for `T` also does not run when `T` is a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, and the rule can fire for an element of two such values that a member or element holds (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fifth Amendment under Implementation Notes
+- **Amended**: 2026-10-11 — the "no members visible" check for `T` also does not run when `T` is an array type or `System.Array`; below such a `T` the path in the "cannot compare" message starts with the parameter name `actual`; and the rule can fire below an array whose element type is declared in `System.Collections.Frozen` (#57, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the sixth Amendment under Implementation Notes
 
 ---
 
@@ -457,6 +458,42 @@ The fourth Amendment (#54) added one case to the second, third and fourth of the
 
 Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
 
+### Amendment (2026-10-11): The "no members visible" rule and arrays (#57)
+
+The decision is unchanged. [Issue #57](https://github.com/cwouyang/uContract.NET/issues/57) changes how `EnsureAssignable<T>()` compares arrays. When the declared `T` is an array type or `System.Array`, `actual` and `expected` are compared as a whole: element by element, and no member of `T` is enumerated. The same change makes `Old<T>()` copy an array whose element type is declared in `System.Collections.Frozen`, and a value of a value type that is declared there, where it shared them with the original; so the comparison now goes into two such arrays or values, where it decided them by reference. The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #57 records the changes, with their reasons, the behaviour before and after, the measurements and the limits. This amendment names the statements of this ADR that it qualifies. Each is quoted by its opening words.
+
+**In the accepted text.**
+
+- "`{path}` is `typeof(T).Name`, then" a `.` and the member name per level. When `T` is an array type or `System.Array`, the path does not start with `typeof(T).Name`. It starts with the parameter name `actual` and goes on with `[]` for an element: `actual[]` for an element, `actual[][]` for an element of an element, and `actual[].Leaf` for a member `Leaf` of an element. The name of an array type holds brackets of its own, so with `typeof(T).Name` the path to an element of a `HiddenLeaf[]` would read `HiddenLeaf[][]`. The message is the one that the #52 amendment of ADR-0022 gives for a class below a nullable value type. It has no way out "list … as assignable", because there is no member to list. Unit tests under the simulated Native AOT runtime hold the whole message for five paths (`T` = `X[]`, `X[][]`, `X[,]`, `System.Array` and an array of a class with a member of type `X`, where `X` is a class with no members), and smoke check 82 measured the path `actual[]` under Native AOT.
+- Known Limitations: "**Detection depends on the data.** The rule fires when the comparison reaches a type". That holds below an array as `T` too. With dynamic code off, two arrays that hold one instance of a class with no members, and two empty arrays of such a class, give no exception: the class is not inspected. Two arrays that each hold their own instance throw, also when one array is the `Old<T>()` copy of the other and nothing changed, unless the `Equals` of the class says "equal". Unit tests hold each of these results.
+
+**In the fifth Amendment (#49).**
+
+- "Since ADR-0022, two different instances of one runtime type of a type that `Old<T>()` shares are decided by reference, also without their members being inspected". An array whose element type is declared in `System.Collections.Frozen` and a value of a value type that is declared there are no longer types that `Old<T>()` shares. Two such arrays are compared element by element, and two such values by `Equals` and then by their fields, so the rule can fire for a class that an element or a field of them leads to. That was read from the code. No unit test and no smoke check has a class with no visible members below such an array or value.
+- "For `T` = `FrozenSet<HiddenLeaf>` the path is ``FrozenSet`1[]``." That stands: the unit test of #49 and smoke check 79 still give that path. The path that starts with `actual` is for an array type or `System.Array` as `T` only.
+- "Below one of the two types as `T` it starts with `typeof(T).Name`, as said above." Below an array type or `System.Array` as `T` it starts with `actual`.
+- "Below one of the two types as `T` there is no member to list either." Below an array type or `System.Array` as `T` there is no member to list either. The rest of the unreadable-property message still applies. This was read from the code.
+
+**In the third Amendment (#52).**
+
+- "When `T` is a `string`, a delegate type or a nullable value type, the two values are compared as a whole, and no member of `T` is enumerated." The same now holds when `T` is an array type or `System.Array`.
+- The Status line of 2026-10-09: "the "no members visible" check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type". It also does not run when `T` is an array type or `System.Array`. The Revision History row of 2026-10-09 says "for a `T` that is compared as a whole", and that now includes an array type and `System.Array`.
+- "The check for `T` does not run when `actual` or `expected` is `null`, or when `T` is a `string`, a delegate type or a nullable value type." It also does not run when `T` is an array type or `System.Array`. The members of `T` are not enumerated in that call.
+- "That does not hold for the three kinds of `T`: no member of `T` is compared." It does not hold either when `T` is an array type or `System.Array`: the elements are compared, and no member of `T`. The annotation on `T` does not name the members of the element type, as for every collection element, so the consumer may have to preserve the element type. Smoke check 82 shows what happens when it is not preserved.
+
+The fourth Amendment (#54) and the fifth Amendment (#49) each added one case to these statements. Those cases stand.
+
+**How this was confirmed.** That the check for `T` does not run when `T` is an array type or `System.Array` was read from the code. The check is in the method that walks the members of `T`, and that method is not called for a `T` that is compared as a whole. The class of an element is still checked where the comparison reaches it. Smoke checks 81 and 82 call `EnsureAssignable<T>()` with `T` = `int[]` and with `T` = `HiddenLeaf[]`. In the Native AOT publishes for `win-x64`, the default one and the variant with the hidden dictionary entry, both gave the expected results. These are the two lines of check 82 in the default publish, with postconditions on and with `DBC_POST=off`; the variant gave the same two lines. The prefix names the run and is not output of the program, and the first line is given up to the closing parenthesis of "(reached through …)":
+
+```text
+on:  PASS 82 EnsureAssignable<HiddenLeaf[]> elements with hidden members expected=InvalidOperationException got=InvalidOperationException EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through 'actual[]')…
+off: PASS 82 EnsureAssignable<HiddenLeaf[]> elements with hidden members expected=no exception got=no exception
+```
+
+In check 82 each of the two arrays holds its own `HiddenLeaf`, and the two have an equal `Value`. No attribute preserves the members of `HiddenLeaf`, and the class has no `Equals` of its own, so the two instances are unequal by `Equals`, and the call throws although the content is equal. Under the JIT the members of `HiddenLeaf` are visible, and the check gives no exception. The checks do not show that the check for `T` does not run: whether an array type as `T` can have no visible members under Native AOT was not determined. `System.Array` as `T` and an array of pointers or of function pointers were not measured under Native AOT. The `linux-x64` publish runs in CI and was not measured for this amendment.
+
+Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
+
 ---
 
 ## References
@@ -488,3 +525,4 @@ Unchanged: the "no members visible" rule itself, its message when the type is `T
 | 2026-10-09 | Amended     | The check for `T` does not run for a `null` argument or for a `T` that is compared as a whole (#52); decisions in ADR-0012 and ADR-0022. Decision unchanged. See Implementation Notes > third Amendment. |
 | 2026-10-10 | Amended     | The check for `T` also does not run for one instance of a shared type whose state can change, passed as `actual` and as `expected` (#54); decision in ADR-0022. Decision unchanged. See Implementation Notes > fourth Amendment. |
 | 2026-10-10 | Amended     | The check for `T` also does not run for a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` as `T`; the elements of two such values that a member or element holds are reached (#49); decision in ADR-0022. Decision unchanged. See Implementation Notes > fifth Amendment. |
+| 2026-10-11 | Amended     | The check for `T` also does not run for an array type or `System.Array` as `T`; below such a `T` the path in the message starts with `actual`; an array whose element type is declared in `System.Collections.Frozen` is no longer decided by reference (#57); decision in ADR-0022. Decision unchanged. See Implementation Notes > sixth Amendment. |
