@@ -2323,7 +2323,8 @@ function pointers by address. `Old<T>()` still shares a `FrozenSet<T>`, a
    array of pointers or of function pointers that has at least one element is different from every
    value that is not such an array. One that has no element is compared as any other sequence is.
    Limit 8 below gives the one case in which neither the dimension test nor the comparison by
-   address decides two such arrays.
+   address decides: such an array as one of the two values of a call whose `T` is compared by its
+   members.
    `Old<T>()` copies such an array with its addresses; for an array of pointers it did so before
    (row 101). In the cases that were measured on `82c6255`, the comparison threw
    `NotSupportedException` when a member held an array of pointers with an element and the other
@@ -2483,7 +2484,7 @@ no measurement exists for the cell. In the tables:
 | 3 | row 1, nothing changed; `EnsureAssignable(h, old)` | n/a | — | — |
 | 4 | `FrozenSet<int>[][]`, an element of an inner array replaced by s2 | not measured | — (the outer and the inner array are the original's) | V (neither is) |
 | 5 | `FrozenSet<int>[,]`, an element replaced by s2 | not measured | — | V |
-| 6 | an array of a class of the caller in the namespace, an element replaced | V | — | V |
+| 6 | an array of a class of the caller in the namespace, an element replaced by an instance of other content | V | — | V |
 | 7 | row 6, nothing changed; then a property of the element changed | not measured | —; — | —; — (the element is shared) |
 | 8 | `List<FrozenSet<int>>`, an element replaced through the indexer: is `old.Items[0]` still the original set; `EnsureAssignable(h, old)` | `Old<T>()` throws | no; — | yes; V |
 | 9 | `List<FrozenSet<int>>` with two elements, then `Clear`: `old.Items[0]` | n/a | `null` | not `null` |
@@ -2701,12 +2702,19 @@ named. "Read from the code" marks a limit that no test or measurement shows.
 7. **Patterns.** For an array as `T`, a pattern that is not a valid regular expression and a `null`
    element of the pattern array are not reported (row 60). A pattern array that is `null` itself is
    still rejected (row 61).
-8. **Two arrays behind a `T` that is compared by its members.** Neither the dimension test nor the
-   comparison by address decides the two values of the call themselves when `T` is neither an array
-   type nor `System.Array`: a member that leads back to those two values is answered as equal before
-   either. For the comparison by address this was read from the code and was not measured: with
-   `ICollection` as `T`, two arrays of pointers or of function pointers that hold the same number of
-   elements are not compared by address. For the dimension test it was measured. With
+8. **The two values of a call whose `T` is compared by its members.** Neither the dimension test nor
+   the comparison by address decides the two values of the call themselves when `T` is neither an
+   array type nor `System.Array`: a member that leads back to those two values is answered as equal
+   before either. For the comparison by address it was measured for two arrays of pointers: with
+   `ICollection` as `T`, an `int*[] {px}` and an `int*[] {py}` give no exception, where the same two
+   arrays give message C with `T` = `int*[]` and with `T` = `Array`; an `int*[] {px}` and an
+   `int*[] {px, py}` as `ICollection` give a violation that names `Count`. Read from the code and
+   not measured: the same holds for two arrays of function pointers, and for the two values of the
+   call when they are not both arrays. An `int*[] {px}` and a `List<int>` of one element as
+   `ICollection` have equal counts, and when `SyncRoot` of each returns the value itself, that
+   member leads back to the top-level pair and counts as equal, so the rule that such an array is
+   different from every value that is not such an array does not decide the call. For the dimension
+   test it was measured. With
    `ICollection` as `T`, an `int[,]` of 1 by 2 and one of 2 by 1 give no exception: `ICollection`
    shows `Count`, `IsSynchronized` and `SyncRoot`, the counts are equal, and `SyncRoot` of an array
    is the array itself, which leads back to the top-level pair (a unit test shows it; measured also
