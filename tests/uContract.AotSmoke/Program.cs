@@ -1585,7 +1585,8 @@ public static class Program
 
         // An array of function pointers: under the JIT, reading the interfaces of its type throws
         // ArgumentException and reading its namespace throws BadImageFormatException, so this case is part of the
-        // program. The check passes such an array to the method and expects the violation.
+        // program. The check passes such an array to the method; with postconditions on it expects the violation,
+        // and with postconditions off it expects no exception.
         yield return new Check(
             86,
             "EnsureImmutableCollection array of function pointers",
