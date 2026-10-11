@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -860,33 +861,41 @@ public static class Contract
 
     /// <summary>
     ///     Ensures that the specified collection is immutable in postconditions.
-    ///     Returns the collection if it is immutable, or throws <see cref="PostconditionViolationException" /> if mutable.
+    ///     Returns the collection if its runtime type is an immutable or read-only one, or throws
+    ///     <see cref="PostconditionViolationException" /> if it is not: see the remarks.
     ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
     /// <typeparam name="T">The type of the collection</typeparam>
     /// <param name="collection">The collection to verify for immutability</param>
     /// <returns>
-    ///     The original collection if it is immutable. In a call that does not check it, the argument as it
+    ///     The original collection if its runtime type passes. In a call that does not check it, the argument as it
     ///     is, null included: see the remarks.
     /// </returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="collection" /> is null and the method checks the collection
     /// </exception>
     /// <exception cref="PostconditionViolationException">
-    ///     Thrown when the collection is mutable and the method checks the collection
+    ///     Thrown when the runtime type of the collection is an array or is not one of the types that the remarks
+    ///     list, and the method checks the collection
     /// </exception>
     /// <remarks>
     ///     This method verifies that a collection returned from a method is immutable.
-    ///     It reads the runtime type of <paramref name="collection" />. An array is reported as mutable,
-    ///     whatever its element type. A type that is not an array passes when it implements
-    ///     <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
+    ///     The runtime type of <paramref name="collection" /> decides, and no element of the collection is read.
+    ///     An array is reported as mutable, whatever its element type. A type that is not an array passes when
+    ///     it implements <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
     ///     <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>, <c>IImmutableStack&lt;T&gt;</c> or
     ///     <c>IImmutableQueue&lt;T&gt;</c>, whether the type or a base class declares the interface and whether
-    ///     the implementation is explicit. A <c>FrozenSet&lt;T&gt;</c> or a
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> is accepted: a type that is or derives from one passes.
-    ///     A type whose name starts with "Immutable" or "ReadOnly" passes too. The namespace of the type is
-    ///     not read: a builder of an immutable collection, such as <c>ImmutableList&lt;T&gt;.Builder</c>, is
-    ///     reported as mutable.
+    ///     the implementation is explicit. A type that is not an array also passes when it is or derives from a
+    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, and when it is or
+    ///     derives from a <c>ReadOnlyCollection&lt;T&gt;</c> or a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c>,
+    ///     or from a generic type whose definition has the full name
+    ///     <c>System.Collections.ObjectModel.ReadOnlySet`1</c>.
+    ///     A read-only wrapper, such as a <c>ReadOnlyCollection&lt;T&gt;</c> or a class derived from one, is a
+    ///     view: it passes although the collection that it wraps can change.
+    ///     A type that is none of these is reported as mutable: neither the namespace nor the name of the type is read,
+    ///     except that full name, so a builder of an immutable collection, such as
+    ///     <c>ImmutableList&lt;T&gt;.Builder</c>, and a class that only has a name like "Immutable" or
+    ///     "ReadOnly", are reported as mutable.
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
@@ -929,15 +938,16 @@ public static class Contract
             // An array is mutable whatever its element type; nothing else is read from its type.
             // A type that is not an array passes when it implements IImmutableList<T>, IImmutableSet<T>,
             // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
-            // from a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or its name starts with "Immutable" or
-            // "ReadOnly". The namespace of the type is not read.
+            // from a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or it is or derives from a
+            // ReadOnlyCollection<T>, a ReadOnlyDictionary<TKey, TValue> or a generic type whose definition has the
+            // full name System.Collections.ObjectModel.ReadOnlySet`1. A type that is none of these is a violation.
+            // Neither the namespace nor the name of the type is read, except that full name.
             bool isImmutable =
                 !collectionType.IsArray
                 && (
                     ImplementsImmutableCollectionInterface(collectionType)
                     || SharedTypes.IsFrozenSetOrDictionary(collectionType)
-                    || collectionType.Name.StartsWith("Immutable", StringComparison.Ordinal)
-                    || collectionType.Name.StartsWith("ReadOnly", StringComparison.Ordinal)
+                    || _IsReadOnlyWrapper(collectionType)
                 );
 
             if (!isImmutable)
@@ -1593,6 +1603,33 @@ public static class Contract
         {
             Entered.Value = false;
         }
+    }
+
+    private static bool _IsReadOnlyWrapper(Type type)
+    {
+        for (Type? current = type; current is not null; current = current.BaseType)
+        {
+            if (!current.IsGenericType)
+            {
+                continue;
+            }
+
+            Type definition = current.GetGenericTypeDefinition();
+            if (
+                definition == typeof(ReadOnlyCollection<>)
+                || definition == typeof(ReadOnlyDictionary<,>)
+                || string.Equals(
+                    definition.FullName,
+                    "System.Collections.ObjectModel.ReadOnlySet`1",
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Note: The value-based null-check methods (RequireNotNull<T>, RequireNotEmpty, EnsureNotNull<T>,

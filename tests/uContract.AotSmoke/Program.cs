@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -1619,6 +1620,15 @@ public static class Program
             89,
             "EnsureImmutableCollection class that implements IImmutableStack",
             static () => NoResult(static () => Contract.EnsureImmutableCollection(new PlateStack())),
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // A read-only wrapper is a view and passes, whatever the collection that it wraps.
+        yield return new Check(
+            90,
+            "EnsureImmutableCollection read-only collection over a list",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(new ReadOnlyCollection<int>([1]))),
             Expect.Ok,
             Expect.Ok
         );
