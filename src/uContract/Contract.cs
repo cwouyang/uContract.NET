@@ -878,7 +878,9 @@ public static class Contract
     ///     This method verifies that a collection returned from a method is immutable.
     ///     It reads the runtime type of <paramref name="collection" />. An array is reported as mutable,
     ///     whatever its element type. A type that is not an array passes when its namespace starts with
-    ///     System.Collections.Immutable or when its name starts with "Immutable" or "ReadOnly".
+    ///     System.Collections.Immutable or when its name starts with "Immutable" or "ReadOnly". A
+    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> is accepted: a type that is
+    ///     or derives from one passes.
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
@@ -919,8 +921,9 @@ public static class Contract
             Type collectionType = collection.GetType();
 
             // An array is mutable whatever its element type; nothing else is read from its type.
-            // A type that is not an array passes when its namespace starts with System.Collections.Immutable
-            // or its name starts with "Immutable" or "ReadOnly".
+            // A type that is not an array passes when its namespace starts with System.Collections.Immutable,
+            // or its name starts with "Immutable" or "ReadOnly", or it is or derives from a FrozenSet<T> or a
+            // FrozenDictionary<TKey, TValue>.
             bool isImmutable =
                 !collectionType.IsArray
                 && (
@@ -928,6 +931,7 @@ public static class Contract
                         == true
                     || collectionType.Name.StartsWith("Immutable", StringComparison.Ordinal)
                     || collectionType.Name.StartsWith("ReadOnly", StringComparison.Ordinal)
+                    || SharedTypes.IsFrozenSetOrDictionary(collectionType)
                 );
 
             if (!isImmutable)

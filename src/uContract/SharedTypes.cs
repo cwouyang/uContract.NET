@@ -108,9 +108,10 @@ internal static class SharedTypes
     }
 
     /// <summary>
-    ///     The shared types of which two instances are compared element by element, in enumeration order, and
-    ///     not by reference: every construction of <c>FrozenSet&lt;T&gt;</c> or
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and every type derived from one. No other type declared
+    ///     Says whether <paramref name="type" /> is or derives from a constructed <c>FrozenSet&lt;T&gt;</c> or
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>. Two instances of such a type are compared element by
+    ///     element, in enumeration order, and not by reference, and
+    ///     <c>Contract.EnsureImmutableCollection</c> accepts an instance of it. No other type declared
     ///     in <c>System.Collections.Frozen</c> matches. An array of them does not match either, and it is
     ///     not shared: two such arrays are compared element by element, as any two arrays are.
     /// </summary>

@@ -1572,6 +1572,23 @@ public static class Program
             post,
             Expect.Ok
         );
+
+        // A FrozenSet<T> is accepted.
+        yield return new Check(
+            87,
+            "EnsureImmutableCollection frozen set of strings",
+            FrozenSetEnsured,
+            Expect.Ok,
+            Expect.Ok
+        );
+    }
+
+    private static object? FrozenSetEnsured()
+    {
+        string[] elements = ["a", "b"];
+        FrozenSet<string> frozen = elements.ToFrozenSet(StringComparer.Ordinal);
+
+        return NoResult(() => Contract.EnsureImmutableCollection(frozen));
     }
 
     private static unsafe object? FunctionPointerArrayEnsured() =>
