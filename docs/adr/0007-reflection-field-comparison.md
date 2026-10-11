@@ -12,6 +12,7 @@
 - **Amended**: 2026-10-09 — at the top level a `null` is compared as a value, and a `string`, a delegate type and a nullable value type are compared as a whole, without the patterns (#52, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the third Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — at the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared member by member: the call throws `InvalidOperationException`, and the patterns do not apply (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared element by element, not by reference, and one of the two types as `T` is compared as a whole, without the patterns (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fifth Amendment under Implementation Notes
+- **Amended**: 2026-10-11 — an array type or `System.Array` as `T` is compared as a whole, without the patterns; two arrays are equal only when they have the same rank, and the same length and lower bound in every dimension; two arrays of pointers or of function pointers are compared by address; an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there are no longer compared by reference (#57, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the sixth Amendment under Implementation Notes
 
 ---
 
@@ -524,6 +525,65 @@ Still true:
 
 This amendment adds no decision. It is the record that this ADR was considered for #49.
 
+### Amendment (2026-10-11): Arrays as T, the rank, lengths and lower bounds of two arrays, and the namespace System.Collections.Frozen (#57)
+
+The decision is unchanged. [Issue #57](https://github.com/cwouyang/uContract.NET/issues/57) changes
+how `EnsureAssignable<T>()` compares arrays, and which types `Old<T>()` shares because they are
+declared in the namespace `System.Collections.Frozen`. There are four points for this ADR:
+
+- When the declared `T` is an array type or `System.Array`, two values that are not `null` are
+  compared as a whole: element by element, each element as a member or an element is. No member of
+  `T` is compared, and the patterns do not apply and are not examined.
+- Two arrays that the comparison meets as a pair are equal only when they have the same rank, and
+  the same length and lower bound in every dimension. That holds for two arrays that a member or an
+  element holds, and for the two values of an array type or `System.Array` as `T`.
+- Two arrays of pointers or of function pointers are compared by the addresses that they hold.
+- `Old<T>()` no longer shares an array whose element type is declared in that namespace, or a value
+  of a value type that is declared there. So the comparison no longer decides two of them by
+  reference (R5).
+
+The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #57 records the
+changes, with their reasons, the behaviour before and after, the measurements and the limits. It
+qualifies these statements of this ADR, each quoted by its opening words:
+
+- The amendment of 2026-10-07: "Values of different runtime types are unequal (R6)." R6 excepts two
+  sequences, which R7 compares element by element. Two arrays are now compared so only when they
+  have the same rank, and the same length and lower bound in every dimension. Two arrays of
+  different rank are unequal, and no element of them is read.
+- The same amendment: "**Value types** are compared by `Equals`, then by their fields when `Equals`
+  says "unequal" (R3)." That now also holds for a value of a value type that is declared in the
+  namespace `System.Collections.Frozen`. Such a value was compared by reference before, so two
+  boxes of equal content were different.
+- The same amendment: "**Shared types** are compared by reference (R5)." An array whose element type
+  is declared in that namespace and a value of a value type that is declared there are no longer
+  shared types.
+- The fifth Amendment above: "Two instances of one runtime type that is another type declared in the
+  namespace `System.Collections.Frozen` (two arrays of `FrozenSet<T>`, two instances of a class of
+  the caller declared there) are still compared by reference." Superseded for two arrays of
+  `FrozenSet<T>`: they are compared element by element, as any two arrays are. Two values of a value
+  type that is declared there are not compared by reference either. The statement stands for two
+  instances of a class of the caller that is declared there.
+- The third Amendment above: "When `T` is a `string`, a delegate type or a nullable value" type, two
+  values that are not `null` are compared as a whole. The fifth Amendment added a `FrozenSet<T>` and
+  a `FrozenDictionary<TKey, TValue>`. The same now holds when `T` is an array type or
+  `System.Array`.
+- The Status line of 2026-10-10 for #49: "one of the two types as `T` is compared as a whole,
+  without the patterns". So is an array type or `System.Array` as `T`. The Revision History rows of
+  2026-10-09 and of 2026-10-10 for #49 name the kinds of `T` that are compared as a whole; the array
+  types and `System.Array` are added to them.
+- The third Amendment: "Each still holds for every other `T` with two values that are not `null`."
+  "Every other `T`" no longer includes an array type or `System.Array`.
+
+Still true:
+
+- The fourth Amendment above: "There are now three cases." There are still three. The second case, a
+  `T` that is compared as a whole, now also covers an array type and `System.Array`.
+- The third Amendment above, for a `T` that is compared by its members: the members of `T` are
+  compared one by one. That includes a `T` such as `object` or an interface whose two values are
+  arrays: such a call is not compared as a whole.
+
+This amendment adds no decision. It is the record that this ADR was considered for #57.
+
 ---
 
 ## References
@@ -545,3 +605,4 @@ This amendment adds no decision. It is the record that this ADR was considered f
 | 2026-10-09 | Amended     | The top level compares `null` as a value and three kinds of `T` as a whole (#52, ADR-0022). Decision unchanged. See Implementation Notes > third Amendment. |
 | 2026-10-10 | Amended     | At the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: `InvalidOperationException` (#54, ADR-0022). Decision unchanged. See Implementation Notes > fourth Amendment. |
 | 2026-10-10 | Amended     | Two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared by element, not by reference; one of the two types as `T` is compared as a whole (#49, ADR-0022). Decision unchanged. See Implementation Notes > fifth Amendment. |
+| 2026-10-11 | Amended     | An array type or `System.Array` as `T` is compared as a whole; two arrays are equal only with the same rank, lengths and lower bounds; two arrays of pointers or of function pointers are compared by address; an array whose element type is declared in `System.Collections.Frozen`, and a value of a value type declared there, are no longer compared by reference (#57, ADR-0022). Decision unchanged. See Implementation Notes > sixth Amendment. |

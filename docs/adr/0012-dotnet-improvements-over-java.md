@@ -11,6 +11,7 @@
 - **Amended**: 2026-10-09 — `EnsureAssignable<T>()` compares a `null` `actual` or `expected` as a value and never rejects it, and `EnsureImmutableCollection<T>()` checks `collection` for `null` only when it checks the collection (#52); this supersedes parts of the #47 amendment; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — in a call that compares, `EnsureAssignable<T>()` does not compare one instance of a shared type whose state can change, passed as `actual` and as `expected`: it throws `InvalidOperationException` (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the third Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — when `T` is a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, `EnsureAssignable<T>()` compares two values that are not `null` as a whole: element by element, in enumeration order, without the patterns (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
+- **Amended**: 2026-10-11 — when `T` is an array type or `System.Array`, `EnsureAssignable<T>()` compares two values that are not `null` as a whole: element by element, without the patterns; the release notes gain one entry marked BREAKING, for the rank, lengths and lower bounds of two arrays, and one entry under Fixed, for arrays of pointers and of function pointers (#57, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fifth Amendment under Implementation Notes
 
 ---
 
@@ -574,6 +575,33 @@ The decision is unchanged. [Issue #49](https://github.com/cwouyang/uContract.NET
 
 Unchanged: the main decision of this ADR, the check of the pattern array, the `null` rule and its two messages, the rule for one shared instance on both sides (#54), `EnsureImmutableCollection<T>()`, and every other `Contract` method. The public signatures do not change.
 
+### Amendment (2026-10-11): An array type or System.Array as T is compared as a whole; the release notes for #57
+
+The decision is unchanged. [Issue #57](https://github.com/cwouyang/uContract.NET/issues/57) adds one kind of `T` to those that `EnsureAssignable<T>()` compares as a whole. When the declared `T` is an array type or `System.Array`, two values that are not `null` are compared as one pair: element by element, each element as a member or an element is. No member of `T` is compared, and the assignable patterns do not apply and are not examined. The same change makes `EnsureAssignable<T>()` find two arrays equal only when they have the same rank, and the same length and lower bound in every dimension, and compare two arrays of pointers or of function pointers by address. It also makes `Old<T>()` copy an array whose element type is declared in `System.Collections.Frozen`, and a value of a value type that is declared there; `Old<T>()` still shares a `FrozenSet<T>`, a `FrozenDictionary<TKey, TValue>` and every other class that is declared in that namespace. The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) for #57 records the changes, with their reasons, the behaviour before and after, the measurements and the limits.
+
+**Qualified in the #52 amendment.** Each statement is quoted by its opening words:
+
+- Under "Qualified.": "When `T` is a `string`, a delegate type or a nullable value type, two values that are not `null` are now compared as a whole." The #49 amendment above added a `FrozenSet<T>` and a `FrozenDictionary<TKey, TValue>`. The same now holds when `T` is an array type or `System.Array`. The amendment of ADR-0022 for #57 records that decision.
+- The table row that ends "Compared; see the amendment of ADR-0022 for #52". For an array type or `System.Array` as `T`, see the amendment of ADR-0022 for #57.
+
+**Qualified in the #49 amendment.** Each statement is quoted by its opening words:
+
+- The Status line of 2026-10-10 for #49: "when `T` is a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, `EnsureAssignable<T>()` compares two values that are not `null` as a whole". It now also does so when `T` is an array type or `System.Array`.
+- "`Old<T>()` is unchanged: it still shares such a value with the original instead of copying it." That stands for a `FrozenSet<T>` and a `FrozenDictionary<TKey, TValue>`. `Old<T>()` no longer shares an array of them: it copies the array, and each element of the copy is the original's set or dictionary.
+- Release notes, under "Still true in the #52 amendment": "No entry is added for #49." That is true of #49. For #57 two entries are added; "Release notes" below says which.
+
+**Release notes.** This is what `CHANGELOG.md` holds under `[Unreleased]` for #57:
+
+- **One entry is added under Changed, marked BREAKING.** It begins "`EnsureAssignable<T>()` finds two arrays equal only when they have the same rank, and the same length and lower bound in every dimension." It names the pairs that 2.0.0 found equal and that are a violation now. It says that the rule is for two arrays, and not for an array and another sequence, and not for two arrays that are passed as a `T` that is neither an array type nor `System.Array`. It says that the violation does not name the rank, the length or the lower bound that differs.
+- **One entry is added under Fixed.** It is not marked BREAKING. It begins "`Old<T>()` no longer throws `ArgumentException` for an object that holds an array of pointers or of function pointers, and `EnsureAssignable<T>()` no longer throws `NotSupportedException` for such an object or for such an array as `T`."
+- **Existing entries are extended.** The entry for a `T` that is compared as a whole, which the #52 amendment names, now also names an array type and `System.Array`, says what 2.0.0 reported for an array as `T`, and carries "(#52, #57; ADR-0022)". The entry that begins "`Old<T>()` copies by reflection instead of JSON" now says that a `FrozenSet<T>`, a `FrozenDictionary<TKey, TValue>` and every other class that is declared in `System.Collections.Frozen` are shared, that a value type declared there and an array whose element type is declared there are copied, and that an element of a copied array or list keeps its own rule. The entry that begins "`EnsureAssignable<T>()` reports more" now says "class" where it said "type" in its sentence on two instances that are compared by reference, no longer gives two arrays of `FrozenSet<T>` as an example there, and points to the new entry for two arrays. The paragraph "Migrating from 2.x" gains sentences on an array as `T` and on the rank, lengths and lower bounds of two arrays.
+
+The reasons. The entry for the rank, lengths and lower bounds is new and is marked BREAKING because calls that passed in 2.0.0 now throw, and no existing entry said so: the pairs that the entry names were measured with the 2.0.0 package and gave no exception there. 2.0.0 did report two one-dimensional arrays of different lengths, so the entry does not say that 2.0.0 compared none of the three; it names the pairs that were measured. The entry for the arrays of pointers and of function pointers is under Fixed: in the eight calls that were measured with the 2.0.0 package, `Old<T>()` threw `ArgumentException` and the comparison threw `NotSupportedException`. No entry is added for the arrays and the value types of `System.Collections.Frozen`: the design gives as the reason that, against 2.0.0, they bring nothing that the existing entries do not already state (A10 in the amendment of ADR-0022 for #57). The #49 amendment above handled #49 in that way.
+
+**Why an amendment and not a new ADR.** The main decision of this ADR stands. The amendment of ADR-0022 for #57 gives the reasoning for all four amended ADRs.
+
+Unchanged: the main decision of this ADR, the check of the pattern array, the `null` rule and its two messages, the rule for one shared instance on both sides (#54), `EnsureImmutableCollection<T>()`, and every other `Contract` method. The public signatures do not change.
+
 ---
 
 ## References
@@ -596,3 +624,4 @@ Unchanged: the main decision of this ADR, the check of the pattern array, the `n
 | 2026-10-09 | Amended     | `EnsureAssignable<T>()` compares `null` as a value; `EnsureImmutableCollection<T>()` checks `null` only when it checks (#52). Supersedes parts of the #47 amendment. Decision unchanged. See Implementation Notes > second Amendment. |
 | 2026-10-10 | Amended     | One instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: `InvalidOperationException` (#54, rule S of ADR-0022). Qualifies parts of the #52 amendment. Decision unchanged. See Implementation Notes > third Amendment. |
 | 2026-10-10 | Amended     | A `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` as `T` is compared as a whole (#49, ADR-0022). Qualifies parts of the #52 amendment. Decision unchanged. See Implementation Notes > fourth Amendment. |
+| 2026-10-11 | Amended     | An array type or `System.Array` as `T` is compared as a whole; the release notes gain one BREAKING entry (rank, lengths and lower bounds of two arrays) and one entry under Fixed (arrays of pointers and of function pointers) (#57, ADR-0022). Qualifies parts of the #52 and #49 amendments. Decision unchanged. See Implementation Notes > fifth Amendment. |
