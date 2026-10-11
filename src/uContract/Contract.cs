@@ -993,9 +993,11 @@ public static class Contract
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or
     ///     <see cref="Array" />, the two values are
     ///     compared as a whole and no member of it is compared; for a nullable value type the fields of the
-    ///     underlying type may not be preserved. <see cref="object" /> compares nothing beyond null; a base
-    ///     class other than <see cref="Array" /> compares the members it declares or inherits, and an
-    ///     interface only the properties it declares itself.
+    ///     underlying type, and for an array type the members of the element type, may not be preserved.
+    ///     <see cref="object" /> compares nothing beyond null; a base class that is not compared as a whole
+    ///     (<see cref="Delegate" />, <see cref="MulticastDelegate" />, a <c>FrozenSet&lt;T&gt;</c>, a
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and <see cref="Array" /> are) compares the members it
+    ///     declares or inherits, and an interface only the properties it declares itself.
     ///     Whatever it is, <see cref="object" /> included, nothing is compared and the method throws
     ///     <see cref="InvalidOperationException" /> when one instance is passed as <paramref name="actual" />
     ///     and as <paramref name="expected" /> and its runtime type is a type that <see cref="Old{T}" />
@@ -1035,9 +1037,9 @@ public static class Contract
     ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
     ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to
     ///     be compared has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c>
-    ///     override this only means they are different instances). Below a nullable value type, and below a
-    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or
-    ///     <see cref="Array" />, passed as <typeparamref name="T" />, the same holds for a class with no visible
+    ///     override this only means they are different instances). When <typeparamref name="T" /> is a nullable
+    ///     value type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array
+    ///     type or <see cref="Array" />, the same holds below it for a class with no visible
     ///     members whose <c>Equals</c> reports the values unequal. Below an array type or <see cref="Array" />
     ///     the path in the message starts with the parameter name: <c>actual[]</c> for an element,
     ///     <c>actual[][]</c> for an element of an element, <c>actual[].Leaf</c> for a member <c>Leaf</c> of an
@@ -1113,8 +1115,10 @@ public static class Contract
     ///     unwrapped values, for example with <c>if (a is { } x &amp;&amp; b is { } y)</c>; do not read <c>.Value</c>
     ///     before that test: it throws when there is no value.
     ///     For every other <typeparamref name="T" /> the members visible through it are compared:
-    ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class other than
-    ///     <see cref="Array" /> compares the
+    ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class that is not
+    ///     compared as a whole (<see cref="Delegate" />, <see cref="MulticastDelegate" />, a
+    ///     <c>FrozenSet&lt;T&gt;</c>, a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and <see cref="Array" />
+    ///     are) compares the
     ///     members it declares or inherits, and an interface only the properties it declares itself; in
     ///     neither case what the runtime type adds, even if the values are strings. Two different instances
     ///     of a type that <see cref="Old{T}" /> shares (two <c>Stream</c>s) are still compared member by member,
@@ -1306,8 +1310,8 @@ public static class Contract
 
         // The top-level pair is in progress for the whole call, so a member leading back to it is not a
         // difference. (A value-type T is boxed here afresh, so that pair is never reached again.) Two arrays
-        // are the top-level pair here only when T is not an array type or System.Array (object, an interface):
-        // such a T is compared as a whole and never comes here.
+        // are the top-level pair here only when T is neither an array type nor System.Array (object, an
+        // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
         context.EnterTopLevel(new ReferencePair(actual!, expected!));
 
         foreach (MemberAccessor member in metadata.Members)

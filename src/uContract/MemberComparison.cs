@@ -232,8 +232,8 @@ internal static class MemberComparison
         // ImmutableArray<T> and ArraySegment<T>, or a value-type sequence and an array); they are compared
         // element by element below, not field by field, and two arrays among them only when they have the
         // same rank, and the same length and lower bound in every dimension. An array of pointers or of
-        // function pointers that has elements is the exception: it is decided without comparing an element
-        // (see StartSequences).
+        // function pointers that has elements is the exception: it is decided without walking a pair of
+        // elements (see StartSequences).
         if (actualType.IsValueType && actualType == expectedType)
         {
             return StartValues(actual, expected, actualType, out equal);
@@ -329,9 +329,10 @@ internal static class MemberComparison
         }
     }
 
-    // Null means the two sequences are different without comparing any element. A walk that holds no pair
-    // ends as equal: it is returned for two sequences without elements, and for two arrays of pointers or of
-    // function pointers that hold the same addresses, which are equal without comparing any element.
+    // Null means the two sequences are different without walking a pair of elements. A walk that holds no
+    // pair ends as equal: it is returned for two sequences without elements, and for two arrays of pointers
+    // or of function pointers that hold the same addresses, which are equal without walking a pair of
+    // elements.
     private static Walk? StartSequences(IEnumerable actual, IEnumerable expected)
     {
         if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)

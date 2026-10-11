@@ -29,7 +29,8 @@ namespace uContract;
 ///     type is declared in <c>System.Collections.Frozen</c> is not: <c>Old</c> copies them, and two of them
 ///     are compared like any other two values or arrays.
 ///     An array of pointers or of function pointers is never shared: <c>Old</c> copies it with its
-///     addresses, and two of them are compared by address. The namespace of an array type is never read.
+///     addresses, and two of them are compared by address. This class never reads
+///     <c>Type.Namespace</c> of an array type.
 /// </summary>
 internal static class SharedTypes
 {
@@ -178,9 +179,12 @@ internal static class SharedTypes
 
     private static bool Classify(Type type)
     {
-        // Decided first: an array of pointers or of function pointers is never shared, and neither is an
-        // array type whose namespace the runtime cannot tell. No test below reads the namespace of an array
-        // type (see IsClassOfTheFrozenNamespace), so each of them answers false for these types too.
+        // Decided first: an array of pointers or of function pointers is never shared, and neither is a type
+        // for which NamespaceCannotBeRead answers true. The answer for these types is given here, and no test
+        // below is asked about them. IsClassOfTheFrozenNamespace reads the namespace of no array type, but it
+        // would read that of a pointer to a function pointer, for which NamespaceCannotBeRead answers true
+        // too; no object has such a runtime type. Whoever removes this early answer has to check, for each
+        // test below, that it does not throw and does not answer true for these types.
         if (IsArrayOfPointersOrFunctionPointers(type) || NamespaceCannotBeRead(type))
         {
             return false;

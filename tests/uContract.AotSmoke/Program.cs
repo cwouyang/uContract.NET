@@ -1465,7 +1465,8 @@ public static class Program
         // ---- Two arrays are equal only when they have the same rank, and the same length and lower bound in
         // every dimension (issue #57). ----
 
-        // Mutation: none (a 1x2 and a 2x1 array of the same elements in order). Visibility: T.
+        // Mutation: the lengths per dimension differ (a 1x2 and a 2x1 array of the same elements in order).
+        // Visibility: T.
         yield return new Check(
             80,
             "Arrays of the same elements and different lengths per dimension",
