@@ -28,7 +28,7 @@ namespace uContract;
 /// </remarks>
 public static class Contract
 {
-    // The framework declares ReadOnlySet<T>, a read-only view of a set, from .NET 9; this library is built for
+    // The framework declares ReadOnlySet<T>, a read-only wrapper of a set, from .NET 9; this library is built for
     // .NET 8, so EnsureImmutableCollection matches that type by the full name of its generic type definition.
     private const string ReadOnlySetFullName = "System.Collections.ObjectModel.ReadOnlySet`1";
 
@@ -868,8 +868,8 @@ public static class Contract
     ///     <c>IImmutableSet&lt;T&gt;</c>, <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>,
     ///     <c>IImmutableStack&lt;T&gt;</c> or <c>IImmutableQueue&lt;T&gt;</c>, or is or derives from a
     ///     <c>FrozenSet&lt;T&gt;</c>, <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, <c>ReadOnlyCollection&lt;T&gt;</c>,
-    ///     <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> or <c>ReadOnlySet&lt;T&gt;</c>. Returns the argument if it
-    ///     does, or throws <see cref="PostconditionViolationException" /> if it does not.
+    ///     <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> or <c>System.Collections.ObjectModel.ReadOnlySet&lt;T&gt;</c>.
+    ///     Returns the argument if it does, or throws <see cref="PostconditionViolationException" /> if it does not.
     ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
     /// <typeparam name="T">
@@ -906,7 +906,8 @@ public static class Contract
     ///     another assembly whose definition has the same full name passes too.
     ///     A <c>ReadOnlyCollection&lt;T&gt;</c> and a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> are views of the
     ///     collection that they wrap, as is the <c>ReadOnlySet&lt;T&gt;</c> of .NET 9. An instance of such a type,
-    ///     or of a class derived from one, passes although the wrapped collection can change.
+    ///     or of a class derived from one, passes whatever it wraps: the method does not look at the wrapped
+    ///     collection, which may be one that its owner can change.
     ///     A type that is not an array and meets none of these conditions is reported as mutable: neither the
     ///     namespace nor the name of the type is read, except the full name given above. So the
     ///     <c>ImmutableList&lt;T&gt;.Builder</c> of an immutable list is reported as mutable, and so is a class or
@@ -914,8 +915,9 @@ public static class Contract
     ///     and that meets none of the conditions.
     ///     A pass is a statement about the runtime type and not a proof that the content cannot change, although the
     ///     name of the method and the message of the violation say "immutable": the elements of an accepted
-    ///     collection are not examined, a <c>ReadOnlyCollection&lt;T&gt;</c> is a view of a list that its owner can
-    ///     still change, and a type that implements one of the five interfaces is taken at its word.
+    ///     collection are not examined, a <c>ReadOnlyCollection&lt;T&gt;</c> passes whatever list it wraps, which
+    ///     may be one that its owner can change, and a type that implements one of the five interfaces is taken at
+    ///     its word.
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
