@@ -11,7 +11,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     private const string ViolationDescription = "Ensure resultingCollection is an immutable collection";
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfImmutableLists_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfImmutableLists_ThrowsPostconditionViolationException()
     {
         ImmutableList<int>[] argument = [ImmutableList.Create(1)];
 
@@ -19,7 +19,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfImmutableArrays_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfImmutableArrays_ThrowsPostconditionViolationException()
     {
         ImmutableArray<int>[] argument = [ImmutableArray.Create(1)];
 
@@ -27,7 +27,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenJaggedArrayOfImmutableLists_ReportsViolation()
+    public void EnsureImmutableCollection_WhenJaggedArrayOfImmutableLists_ThrowsPostconditionViolationException()
     {
         ImmutableList<int>[][] argument =
         [
@@ -38,7 +38,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenTwoDimensionalArrayOfImmutableLists_ReportsViolation()
+    public void EnsureImmutableCollection_WhenTwoDimensionalArrayOfImmutableLists_ThrowsPostconditionViolationException()
     {
         ImmutableList<int>[,] argument = new ImmutableList<int>[1, 1];
 
@@ -46,7 +46,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfImmutableListsIsDeclaredAsObject_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfImmutableListsIsDeclaredAsObject_ThrowsPostconditionViolationException()
     {
         object argument = new[] { ImmutableList.Create(1) };
 
@@ -54,7 +54,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfReadOnlyCollections_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfReadOnlyCollections_ThrowsPostconditionViolationException()
     {
         ReadOnlyCollection<int>[] argument = [new ReadOnlyCollection<int>([1])];
 
@@ -62,7 +62,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfReadOnlyMemory_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfReadOnlyMemory_ThrowsPostconditionViolationException()
     {
         ReadOnlyMemory<int>[] argument = new ReadOnlyMemory<int>[1];
 
@@ -70,7 +70,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfClassWhoseNameStartsWithReadOnly_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfClassWhoseNameStartsWithReadOnly_ThrowsPostconditionViolationException()
     {
         ReadOnlyLookingBag[] argument = [new ReadOnlyLookingBag()];
 
@@ -78,7 +78,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfFunctionPointers_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfFunctionPointers_ThrowsPostconditionViolationException()
     {
         delegate* <void>[] argument = [&TargetFunction];
 
@@ -86,7 +86,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenJaggedArrayOfFunctionPointers_ReportsViolation()
+    public void EnsureImmutableCollection_WhenJaggedArrayOfFunctionPointers_ThrowsPostconditionViolationException()
     {
         delegate* <void>[][] argument =
         [
@@ -97,7 +97,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenTwoDimensionalArrayOfFunctionPointers_ReportsViolation()
+    public void EnsureImmutableCollection_WhenTwoDimensionalArrayOfFunctionPointers_ThrowsPostconditionViolationException()
     {
         delegate* <void>[,] argument = new delegate* <void>[1, 1];
 
@@ -105,7 +105,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfFrozenSets_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfFrozenSets_ThrowsPostconditionViolationException()
     {
         FrozenSet<int> element = ImmutableArray.Create(1).ToFrozenSet();
         FrozenSet<int>[] argument = [element];
@@ -114,7 +114,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenArrayOfOwnImmutableStacks_ReportsViolation()
+    public void EnsureImmutableCollection_WhenArrayOfOwnImmutableStacks_ThrowsPostconditionViolationException()
     {
         OwnImmutableStack[] argument = [new OwnImmutableStack()];
 
@@ -130,10 +130,7 @@ public unsafe class EnsureImmutableCollectionArrayTests
         Assert.Equal(ViolationDescription, exception.Description);
     }
 
-    private sealed class ReadOnlyLookingBag
-    {
-        public List<int> Items { get; } = [];
-    }
+    private sealed class ReadOnlyLookingBag;
 
     private sealed class OwnImmutableStack : IImmutableStack<int>
     {

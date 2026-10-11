@@ -48,23 +48,6 @@ public class EnsureImmutableCollectionInterfaceTests
         Assert.Same(argument, result);
     }
 
-    private sealed class GenericStackOfTheCaller<T> : IImmutableStack<T>
-    {
-        public bool IsEmpty => throw new NotSupportedException();
-
-        public IImmutableStack<T> Clear() => throw new NotSupportedException();
-
-        public T Peek() => throw new NotSupportedException();
-
-        public IImmutableStack<T> Pop() => throw new NotSupportedException();
-
-        public IImmutableStack<T> Push(T value) => throw new NotSupportedException();
-
-        public IEnumerator<T> GetEnumerator() => throw new NotSupportedException();
-
-        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
-    }
-
     [Fact]
     public void EnsureImmutableCollection_WhenBaseClassImplementsImmutableStack_ReturnsCollection()
     {
@@ -75,25 +58,6 @@ public class EnsureImmutableCollectionInterfaceTests
         Assert.Same(argument, result);
     }
 
-    private class StackBaseOfTheCaller : IImmutableStack<int>
-    {
-        public bool IsEmpty => throw new NotSupportedException();
-
-        public IImmutableStack<int> Clear() => throw new NotSupportedException();
-
-        public int Peek() => throw new NotSupportedException();
-
-        public IImmutableStack<int> Pop() => throw new NotSupportedException();
-
-        public IImmutableStack<int> Push(int value) => throw new NotSupportedException();
-
-        public IEnumerator<int> GetEnumerator() => throw new NotSupportedException();
-
-        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
-    }
-
-    private sealed class DerivedStackOfTheCaller : StackBaseOfTheCaller;
-
     [Fact]
     public void EnsureImmutableCollection_WhenClassImplementsImmutableStackExplicitly_ReturnsCollection()
     {
@@ -102,23 +66,6 @@ public class EnsureImmutableCollectionInterfaceTests
         ExplicitStackOfTheCaller result = Contract.EnsureImmutableCollection(argument);
 
         Assert.Same(argument, result);
-    }
-
-    private sealed class ExplicitStackOfTheCaller : IImmutableStack<int>
-    {
-        bool IImmutableStack<int>.IsEmpty => throw new NotSupportedException();
-
-        IImmutableStack<int> IImmutableStack<int>.Clear() => throw new NotSupportedException();
-
-        int IImmutableStack<int>.Peek() => throw new NotSupportedException();
-
-        IImmutableStack<int> IImmutableStack<int>.Pop() => throw new NotSupportedException();
-
-        IImmutableStack<int> IImmutableStack<int>.Push(int value) => throw new NotSupportedException();
-
-        IEnumerator<int> IEnumerable<int>.GetEnumerator() => throw new NotSupportedException();
-
-        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
     }
 
     [Fact]
@@ -293,17 +240,19 @@ public class EnsureImmutableCollectionInterfaceTests
         AssertViolation(() => Contract.EnsureImmutableCollection(argument));
     }
 
-    private sealed class BagOfTheCaller
-    {
-        public List<int> Items { get; } = [];
-    }
-
     [Fact]
     public void EnsureImmutableCollection_WhenCollectionThatSaysItIsReadOnly_ThrowsPostconditionViolationException()
     {
         FixedCollectionOfTheCaller argument = new();
 
         AssertViolation(() => Contract.EnsureImmutableCollection(argument));
+    }
+
+    private static void AssertViolation(Action call)
+    {
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(call);
+
+        Assert.Equal(ViolationDescription, exception.Description);
     }
 
     private sealed class FixedCollectionOfTheCaller : ICollection<int>
@@ -327,11 +276,62 @@ public class EnsureImmutableCollectionInterfaceTests
         IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
     }
 
-    private static void AssertViolation(Action call)
+    private sealed class BagOfTheCaller
     {
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(call);
+        public List<int> Items { get; } = [];
+    }
 
-        Assert.Equal(ViolationDescription, exception.Description);
+    private sealed class GenericStackOfTheCaller<T> : IImmutableStack<T>
+    {
+        public bool IsEmpty => throw new NotSupportedException();
+
+        public IImmutableStack<T> Clear() => throw new NotSupportedException();
+
+        public T Peek() => throw new NotSupportedException();
+
+        public IImmutableStack<T> Pop() => throw new NotSupportedException();
+
+        public IImmutableStack<T> Push(T value) => throw new NotSupportedException();
+
+        public IEnumerator<T> GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
+    }
+
+    private class StackBaseOfTheCaller : IImmutableStack<int>
+    {
+        public bool IsEmpty => throw new NotSupportedException();
+
+        public IImmutableStack<int> Clear() => throw new NotSupportedException();
+
+        public int Peek() => throw new NotSupportedException();
+
+        public IImmutableStack<int> Pop() => throw new NotSupportedException();
+
+        public IImmutableStack<int> Push(int value) => throw new NotSupportedException();
+
+        public IEnumerator<int> GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
+    }
+
+    private sealed class DerivedStackOfTheCaller : StackBaseOfTheCaller;
+
+    private sealed class ExplicitStackOfTheCaller : IImmutableStack<int>
+    {
+        bool IImmutableStack<int>.IsEmpty => throw new NotSupportedException();
+
+        IImmutableStack<int> IImmutableStack<int>.Clear() => throw new NotSupportedException();
+
+        int IImmutableStack<int>.Peek() => throw new NotSupportedException();
+
+        IImmutableStack<int> IImmutableStack<int>.Pop() => throw new NotSupportedException();
+
+        IImmutableStack<int> IImmutableStack<int>.Push(int value) => throw new NotSupportedException();
+
+        IEnumerator<int> IEnumerable<int>.GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
     }
 
     private readonly struct QueueOfTheCaller(int marker) : IImmutableQueue<int>

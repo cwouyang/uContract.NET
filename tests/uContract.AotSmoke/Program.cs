@@ -1597,7 +1597,10 @@ public static class Program
         yield return new Check(
             87,
             "EnsureImmutableCollection frozen set of strings",
-            FrozenSetEnsured,
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureImmutableCollection(s_frozenCodes.ToFrozenSet(StringComparer.Ordinal))
+                ),
             Expect.Ok,
             Expect.Ok
         );
@@ -1632,14 +1635,6 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
-    }
-
-    private static object? FrozenSetEnsured()
-    {
-        string[] elements = ["a", "b"];
-        FrozenSet<string> frozen = elements.ToFrozenSet(StringComparer.Ordinal);
-
-        return NoResult(() => Contract.EnsureImmutableCollection(frozen));
     }
 
     private static unsafe object? FunctionPointerArrayEnsured() =>

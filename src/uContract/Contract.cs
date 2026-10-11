@@ -952,7 +952,7 @@ public static class Contract
             bool isImmutable =
                 !collectionType.IsArray
                 && (
-                    ImplementsImmutableCollectionInterface(collectionType)
+                    _ImplementsImmutableCollectionInterface(collectionType)
                     || SharedTypes.IsFrozenSetOrDictionary(collectionType)
                     || _IsReadOnlyWrapper(collectionType)
                 );
@@ -968,36 +968,6 @@ public static class Contract
         {
             Entered.Value = false;
         }
-    }
-
-    [UnconditionalSuppressMessage(
-        "Trimming",
-        "IL2070",
-        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are fixed, and an annotation on it would move this warning to each caller of a method that only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. Check 89 of the smoke program (tests/uContract.AotSmoke) exercises this read for a class of that program, and the program is published with Native AOT and, once, trimmed without it. If an interface were missing from what the runtime returns here, this method would answer false: a type that passes by nothing else would be reported as a violation, not accepted."
-    )]
-    private static bool ImplementsImmutableCollectionInterface(Type type)
-    {
-        foreach (Type implemented in type.GetInterfaces())
-        {
-            if (!implemented.IsGenericType)
-            {
-                continue;
-            }
-
-            Type definition = implemented.GetGenericTypeDefinition();
-            if (
-                definition == typeof(IImmutableList<>)
-                || definition == typeof(IImmutableSet<>)
-                || definition == typeof(IImmutableDictionary<,>)
-                || definition == typeof(IImmutableStack<>)
-                || definition == typeof(IImmutableQueue<>)
-            )
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>
@@ -1626,6 +1596,36 @@ public static class Contract
                 definition == typeof(ReadOnlyCollection<>)
                 || definition == typeof(ReadOnlyDictionary<,>)
                 || string.Equals(definition.FullName, ReadOnlySetFullName, StringComparison.Ordinal)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are fixed, and an annotation on it would move this warning to each caller of a method that only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. Check 89 of the smoke program (tests/uContract.AotSmoke) exercises this read for a class of that program, and the program is published with Native AOT and, once, trimmed without it. If an interface were missing from what the runtime returns here, this method would answer false: a type that passes by nothing else would be reported as a violation, not accepted."
+    )]
+    private static bool _ImplementsImmutableCollectionInterface(Type type)
+    {
+        foreach (Type implemented in type.GetInterfaces())
+        {
+            if (!implemented.IsGenericType)
+            {
+                continue;
+            }
+
+            Type definition = implemented.GetGenericTypeDefinition();
+            if (
+                definition == typeof(IImmutableList<>)
+                || definition == typeof(IImmutableSet<>)
+                || definition == typeof(IImmutableDictionary<,>)
+                || definition == typeof(IImmutableStack<>)
+                || definition == typeof(IImmutableQueue<>)
             )
             {
                 return true;
