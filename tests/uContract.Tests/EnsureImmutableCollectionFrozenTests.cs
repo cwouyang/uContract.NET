@@ -221,6 +221,14 @@ public class EnsureImmutableCollectionFrozenTests
         AssertViolation(() => Contract.EnsureImmutableCollection(argument));
     }
 
+    [Fact]
+    public void EnsureImmutableCollection_WhenClassNamedFrozenSetDerivesFromNoFrozenType_ThrowsPostconditionViolationException()
+    {
+        FrozenSetLookingBag argument = new();
+
+        AssertViolation(() => Contract.EnsureImmutableCollection(argument));
+    }
+
     private static void AssertViolation(Action call)
     {
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(call);
@@ -229,4 +237,6 @@ public class EnsureImmutableCollectionFrozenTests
     }
 
     private static void TargetFunction() { }
+
+    private sealed class FrozenSetLookingBag;
 }

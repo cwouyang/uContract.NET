@@ -248,6 +248,14 @@ public class EnsureImmutableCollectionInterfaceTests
         AssertViolation(() => Contract.EnsureImmutableCollection(argument));
     }
 
+    [Fact]
+    public void EnsureImmutableCollection_WhenClassImplementsOwnInterfaceNamedImmutableStack_ThrowsPostconditionViolationException()
+    {
+        StackOfItsOwnInterface argument = new();
+
+        AssertViolation(() => Contract.EnsureImmutableCollection(argument));
+    }
+
     private static void AssertViolation(Action call)
     {
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(call);
@@ -474,6 +482,15 @@ public class EnsureImmutableCollectionInterfaceTests
 
         IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
     }
+
+    // The interface is declared in a holder so that the simple name IImmutableStack, used by the other tests of
+    // this class, keeps meaning the interface of System.Collections.Immutable.
+    private static class OwnInterfaces
+    {
+        public interface IImmutableStack<T>;
+    }
+
+    private sealed class StackOfItsOwnInterface : OwnInterfaces.IImmutableStack<int>;
 
     private sealed class StackOfTheCaller : IImmutableStack<int>
     {

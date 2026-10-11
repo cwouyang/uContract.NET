@@ -50,7 +50,7 @@ public class EnsureImmutableCollectionWrapperTests
     }
 
     [Fact]
-    public void EnsureImmutableCollection_WhenClassDerivedFromReadOnlyCollectionChangesTheList_ReturnsCollection()
+    public void EnsureImmutableCollection_WhenClassDerivedFromReadOnlyCollectionAddsMethodThatChangesTheList_ReturnsCollection()
     {
         SneakyLines argument = new([]);
 
@@ -248,6 +248,14 @@ public class EnsureImmutableCollectionWrapperTests
         AssertViolation(() => Contract.EnsureImmutableCollection(argument));
     }
 
+    [Fact]
+    public void EnsureImmutableCollection_WhenGenericClassNamedReadOnlySetIsNestedInAnotherClass_ThrowsPostconditionViolationException()
+    {
+        OtherSets.ReadOnlySet<int> argument = new();
+
+        AssertViolation(() => Contract.EnsureImmutableCollection(argument));
+    }
+
     private static void TargetFunction() { }
 
     private static IReadOnlyList<int> ReadOnlyListOfOne() => [1];
@@ -286,4 +294,10 @@ public class EnsureImmutableCollectionWrapperTests
     private sealed class DictionaryOnTop(IDictionary<int, int> dictionary) : ReadOnlyDictionary<int, int>(dictionary);
 
     private sealed class DerivedFromReadOnlySet(ISet<int> set) : ReadOnlySet<int>(set);
+
+    // The holder keeps the simple name ReadOnlySet of the other tests of this class meaning the stand-in.
+    private static class OtherSets
+    {
+        public sealed class ReadOnlySet<T>;
+    }
 }
