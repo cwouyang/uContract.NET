@@ -876,8 +876,9 @@ public static class Contract
     /// </exception>
     /// <remarks>
     ///     This method verifies that a collection returned from a method is immutable.
-    ///     It checks if the type is from System.Collections.Immutable namespace or
-    ///     if the type name starts with "Immutable" or "ReadOnly".
+    ///     It reads the runtime type of <paramref name="collection" />. An array is reported as mutable,
+    ///     whatever its element type. A type that is not an array passes when its namespace starts with
+    ///     System.Collections.Immutable or when its name starts with "Immutable" or "ReadOnly".
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
@@ -916,14 +917,18 @@ public static class Contract
             Entered.Value = true;
 
             Type collectionType = collection.GetType();
-            string typeName = collectionType.Name;
-            string? namespaceName = collectionType.Namespace;
 
-            // Check if type is from System.Collections.Immutable namespace
+            // An array is mutable whatever its element type; nothing else is read from its type.
+            // A type that is not an array passes when its namespace starts with System.Collections.Immutable
+            // or its name starts with "Immutable" or "ReadOnly".
             bool isImmutable =
-                namespaceName?.StartsWith("System.Collections.Immutable", StringComparison.Ordinal) == true
-                || typeName.StartsWith("Immutable", StringComparison.Ordinal)
-                || typeName.StartsWith("ReadOnly", StringComparison.Ordinal);
+                !collectionType.IsArray
+                && (
+                    collectionType.Namespace?.StartsWith("System.Collections.Immutable", StringComparison.Ordinal)
+                        == true
+                    || collectionType.Name.StartsWith("Immutable", StringComparison.Ordinal)
+                    || collectionType.Name.StartsWith("ReadOnly", StringComparison.Ordinal)
+                );
 
             if (!isImmutable)
             {

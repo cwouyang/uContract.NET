@@ -1551,7 +1551,33 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // ---- EnsureImmutableCollection reports an array as mutable, whatever its element type. ----
+
+        // An array of immutable lists: the namespace of its element type is System.Collections.Immutable.
+        yield return new Check(
+            85,
+            "EnsureImmutableCollection array of immutable lists",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(new[] { ImmutableList.Create(1) })),
+            post,
+            Expect.Ok
+        );
+
+        // An array of function pointers: under the JIT, reading its namespace ended in
+        // BadImageFormatException before this change.
+        yield return new Check(
+            86,
+            "EnsureImmutableCollection array of function pointers",
+            FunctionPointerArrayEnsured,
+            post,
+            Expect.Ok
+        );
     }
+
+    private static unsafe object? FunctionPointerArrayEnsured() =>
+        NoResult(static () => Contract.EnsureImmutableCollection(new delegate* <void>[] { &NoOperation }));
+
+    private static void NoOperation() { }
 
     private static object? FrozenDictionariesOfEqualContent()
     {
