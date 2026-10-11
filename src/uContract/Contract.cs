@@ -864,9 +864,12 @@ public static class Contract
     }
 
     /// <summary>
-    ///     Ensures in postconditions that the runtime type of the specified collection meets one of the conditions
-    ///     given in the remarks. Returns the collection if it does, or throws
-    ///     <see cref="PostconditionViolationException" /> if it does not.
+    ///     Ensures in postconditions that the runtime type of the argument implements <c>IImmutableList&lt;T&gt;</c>,
+    ///     <c>IImmutableSet&lt;T&gt;</c>, <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>,
+    ///     <c>IImmutableStack&lt;T&gt;</c> or <c>IImmutableQueue&lt;T&gt;</c>, or is or derives from a
+    ///     <c>FrozenSet&lt;T&gt;</c>, <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, <c>ReadOnlyCollection&lt;T&gt;</c>,
+    ///     <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> or <c>ReadOnlySet&lt;T&gt;</c>. Returns the argument if it
+    ///     does, or throws <see cref="PostconditionViolationException" /> if it does not.
     ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
     /// <typeparam name="T">
@@ -874,16 +877,16 @@ public static class Contract
     ///     <c>FrozenSet&lt;int&gt;</c> declared as <c>IReadOnlySet&lt;int&gt;</c> or as <c>object</c> gets the
     ///     answer of <c>FrozenSet&lt;int&gt;</c>.
     /// </typeparam>
-    /// <param name="collection">The collection whose runtime type is checked</param>
+    /// <param name="collection">The argument whose runtime type is checked</param>
     /// <returns>
-    ///     The original collection if its runtime type passes. In a call that does not check it, the argument as it
-    ///     is, null included: see the remarks.
+    ///     The original collection if the runtime type of the argument passes. In a call that does not check it,
+    ///     the argument as it is, null included: see the remarks.
     /// </returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="collection" /> is null and the method checks the collection
     /// </exception>
     /// <exception cref="PostconditionViolationException">
-    ///     Thrown when the runtime type of the collection is an array or meets none of the conditions of the
+    ///     Thrown when the runtime type of the argument is an array type or meets none of the conditions of the
     ///     remarks, and the method checks the collection
     /// </exception>
     /// <remarks>
@@ -909,6 +912,10 @@ public static class Contract
     ///     <c>ImmutableList&lt;T&gt;.Builder</c> of an immutable list is reported as mutable, and so is a class or
     ///     a value type, such as <c>ReadOnlyMemory&lt;T&gt;</c>, whose name starts with "Immutable" or "ReadOnly"
     ///     and that meets none of the conditions.
+    ///     A pass is a statement about the runtime type and not a proof that the content cannot change, although the
+    ///     name of the method and the message of the violation say "immutable": the elements of an accepted
+    ///     collection are not examined, a <c>ReadOnlyCollection&lt;T&gt;</c> is a view of a list that its owner can
+    ///     still change, and a type that implements one of the five interfaces is taken at its word.
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
@@ -949,8 +956,9 @@ public static class Contract
             Type collectionType = collection.GetType();
 
             // An array type is reported as mutable, whatever its element type, and the test for it comes first so
-            // that nothing else is read from an array type: under the JIT, reading the interfaces of the type
-            // delegate*<void>[] throws ArgumentException, and reading its namespace throws BadImageFormatException.
+            // that nothing else is read from an array type: on .NET 8, under the JIT, reading the interfaces of the
+            // type delegate*<void>[] throws ArgumentException, and reading its namespace throws
+            // BadImageFormatException.
             // A type that is not an array passes when it implements IImmutableList<T>, IImmutableSet<T>,
             // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
             // from a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or it is or derives from a
@@ -1619,7 +1627,7 @@ public static class Contract
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are fixed by decision, and an annotation on that method, for example [RequiresUnreferencedCode], would put a trimming diagnostic on callers of a method that only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. The smoke program of the repository calls EnsureImmutableCollection with an instance of a class of that program that implements one of the five interfaces. On each run, the continuous integration of the repository publishes the smoke program with Native AOT and runs it, and the program fails the run if a check does not give its expected result. The smoke program was also published with Native AOT by hand, and once trimmed without Native AOT by hand; continuous integration does not repeat the trimmed publish. In the publishes made by hand, the call ended without an exception. If one of the five interfaces were missing from what the runtime returns here, a type that implements only that interface among the five and passes by no other condition would be reported as a violation, not accepted."
+        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are not to change, and an annotation on that method, for example [RequiresUnreferencedCode], would put a trimming diagnostic on callers of a method that only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. The Native AOT smoke program of the repository holds a check that calls EnsureImmutableCollection with an instance of a class of that program that implements one of the five interfaces, and expects it to be accepted. The measured results are recorded in ADR-0021. If one of the five interfaces were missing from what the runtime returns here, a type that implements only that interface among the five and passes by no other condition would be reported as a violation, not accepted."
     )]
     private static bool _ImplementsImmutableCollectionInterface(Type type)
     {

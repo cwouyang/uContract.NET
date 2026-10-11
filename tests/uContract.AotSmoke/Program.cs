@@ -1574,7 +1574,9 @@ public static class Program
 
         // ---- EnsureImmutableCollection reports an array as mutable, whatever its element type. ----
 
-        // An array of immutable lists: the namespace of its element type is System.Collections.Immutable.
+        // An array whose element type is an immutable collection: the check passes it to the method; with
+        // postconditions on it expects the violation, and with postconditions off it expects no exception. An array
+        // is reported as mutable whatever its element type.
         yield return new Check(
             85,
             "EnsureImmutableCollection array of immutable lists",
@@ -1583,7 +1585,7 @@ public static class Program
             Expect.Ok
         );
 
-        // An array of function pointers: under the JIT, reading the interfaces of its type throws
+        // An array of function pointers: on .NET 8, under the JIT, reading the interfaces of its type throws
         // ArgumentException and reading its namespace throws BadImageFormatException, so this case is part of the
         // program. The check passes such an array to the method; with postconditions on it expects the violation,
         // and with postconditions off it expects no exception.
@@ -1622,7 +1624,9 @@ public static class Program
         );
 
         // A class of this program that implements IImmutableStack<int>, passed as its own type: the method
-        // reads the interfaces of its runtime type.
+        // reads the interfaces of its runtime type. The justification of the trimming suppression on the interface
+        // read of Contract.EnsureImmutableCollection relies on this check: whoever edits or removes it should
+        // read that justification first.
         yield return new Check(
             89,
             "EnsureImmutableCollection class that implements IImmutableStack",
