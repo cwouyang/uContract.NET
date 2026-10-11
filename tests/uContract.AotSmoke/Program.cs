@@ -383,6 +383,25 @@ internal sealed unsafe class PointerHolder
     public int* Address;
 }
 
+// Implements IImmutableStack<int>. Its members throw: EnsureImmutableCollection reads the runtime type of
+// its argument only.
+internal sealed class PlateStack : IImmutableStack<int>
+{
+    public bool IsEmpty => throw new NotSupportedException();
+
+    public IImmutableStack<int> Clear() => throw new NotSupportedException();
+
+    public int Peek() => throw new NotSupportedException();
+
+    public IImmutableStack<int> Pop() => throw new NotSupportedException();
+
+    public IImmutableStack<int> Push(int value) => throw new NotSupportedException();
+
+    public IEnumerator<int> GetEnumerator() => throw new NotSupportedException();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new NotSupportedException();
+}
+
 // Hidden: never a T, never preserved. Reached through an interface-typed member.
 internal interface IShippingLabel;
 
@@ -1578,6 +1597,28 @@ public static class Program
             87,
             "EnsureImmutableCollection frozen set of strings",
             FrozenSetEnsured,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // ---- EnsureImmutableCollection decides by the immutable interfaces, not by the namespace. ----
+
+        // A builder is declared in System.Collections.Immutable and implements none of IImmutableList<T>,
+        // IImmutableSet<T>, IImmutableDictionary<TKey, TValue>, IImmutableStack<T> and IImmutableQueue<T>.
+        yield return new Check(
+            88,
+            "EnsureImmutableCollection builder of an immutable list",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(ImmutableList.CreateBuilder<int>())),
+            post,
+            Expect.Ok
+        );
+
+        // A class of this program that implements IImmutableStack<int>, passed as its own type: the method
+        // reads the interfaces of its runtime type.
+        yield return new Check(
+            89,
+            "EnsureImmutableCollection class that implements IImmutableStack",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(new PlateStack())),
             Expect.Ok,
             Expect.Ok
         );

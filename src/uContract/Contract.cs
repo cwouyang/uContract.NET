@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -877,10 +878,15 @@ public static class Contract
     /// <remarks>
     ///     This method verifies that a collection returned from a method is immutable.
     ///     It reads the runtime type of <paramref name="collection" />. An array is reported as mutable,
-    ///     whatever its element type. A type that is not an array passes when its namespace starts with
-    ///     System.Collections.Immutable or when its name starts with "Immutable" or "ReadOnly". A
-    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> is accepted: a type that is
-    ///     or derives from one passes.
+    ///     whatever its element type. A type that is not an array passes when it implements
+    ///     <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
+    ///     <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>, <c>IImmutableStack&lt;T&gt;</c> or
+    ///     <c>IImmutableQueue&lt;T&gt;</c>, whether the type or a base class declares the interface and whether
+    ///     the implementation is explicit. A <c>FrozenSet&lt;T&gt;</c> or a
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> is accepted: a type that is or derives from one passes.
+    ///     A type whose name starts with "Immutable" or "ReadOnly" passes too. The namespace of the type is
+    ///     not read: a builder of an immutable collection, such as <c>ImmutableList&lt;T&gt;.Builder</c>, is
+    ///     reported as mutable.
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
@@ -921,17 +927,17 @@ public static class Contract
             Type collectionType = collection.GetType();
 
             // An array is mutable whatever its element type; nothing else is read from its type.
-            // A type that is not an array passes when its namespace starts with System.Collections.Immutable,
-            // or its name starts with "Immutable" or "ReadOnly", or it is or derives from a FrozenSet<T> or a
-            // FrozenDictionary<TKey, TValue>.
+            // A type that is not an array passes when it implements IImmutableList<T>, IImmutableSet<T>,
+            // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
+            // from a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or its name starts with "Immutable" or
+            // "ReadOnly". The namespace of the type is not read.
             bool isImmutable =
                 !collectionType.IsArray
                 && (
-                    collectionType.Namespace?.StartsWith("System.Collections.Immutable", StringComparison.Ordinal)
-                        == true
+                    ImplementsImmutableCollectionInterface(collectionType)
+                    || SharedTypes.IsFrozenSetOrDictionary(collectionType)
                     || collectionType.Name.StartsWith("Immutable", StringComparison.Ordinal)
                     || collectionType.Name.StartsWith("ReadOnly", StringComparison.Ordinal)
-                    || SharedTypes.IsFrozenSetOrDictionary(collectionType)
                 );
 
             if (!isImmutable)
@@ -945,6 +951,36 @@ public static class Contract
         {
             Entered.Value = false;
         }
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are fixed, and an annotation on it would move this warning to each caller of a method that only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. Check 89 of the smoke program (tests/uContract.AotSmoke) exercises this read for a class of that program, and the program is published with Native AOT and, once, trimmed without it. If an interface were missing from what the runtime returns here, this method would answer false: a type that passes by nothing else would be reported as a violation, not accepted."
+    )]
+    private static bool ImplementsImmutableCollectionInterface(Type type)
+    {
+        foreach (Type implemented in type.GetInterfaces())
+        {
+            if (!implemented.IsGenericType)
+            {
+                continue;
+            }
+
+            Type definition = implemented.GetGenericTypeDefinition();
+            if (
+                definition == typeof(IImmutableList<>)
+                || definition == typeof(IImmutableSet<>)
+                || definition == typeof(IImmutableDictionary<,>)
+                || definition == typeof(IImmutableStack<>)
+                || definition == typeof(IImmutableQueue<>)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
