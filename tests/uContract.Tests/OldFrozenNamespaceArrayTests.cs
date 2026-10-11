@@ -176,6 +176,7 @@ public class OldFrozenNamespaceArrayTests
     {
         Holder<List<FrozenSet<int>>> holder = HolderOfAListOf(Numbers.ToFrozenSet());
         Holder<List<FrozenSet<int>>> old = Contract.Old(() => holder);
+        Assert.NotSame(holder.Items, old.Items);
         holder.Items[0] = OtherNumbers.ToFrozenSet();
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
@@ -206,6 +207,7 @@ public class OldFrozenNamespaceArrayTests
             Items = new List<FrozenDictionary<string, int>>(SpareCapacity) { DictionaryOfOneEntry(1) },
         };
         Holder<List<FrozenDictionary<string, int>>> old = Contract.Old(() => holder);
+        Assert.NotSame(holder.Items, old.Items);
         holder.Items[0] = DictionaryOfOneEntry(2);
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
@@ -233,6 +235,7 @@ public class OldFrozenNamespaceArrayTests
     {
         Holder<Stack<FrozenSet<int>>> holder = HolderOfAStackOf(Numbers.ToFrozenSet());
         Holder<Stack<FrozenSet<int>>> old = Contract.Old(() => holder);
+        Assert.NotSame(holder.Items, old.Items);
         holder.Items.Pop();
         holder.Items.Push(OtherNumbers.ToFrozenSet());
 
@@ -261,6 +264,7 @@ public class OldFrozenNamespaceArrayTests
     {
         Holder<Queue<FrozenSet<int>>> holder = HolderOfAFullQueueOf(Numbers.ToFrozenSet());
         Holder<Queue<FrozenSet<int>>> old = Contract.Old(() => holder);
+        Assert.NotSame(holder.Items, old.Items);
         holder.Items.Dequeue();
         holder.Items.Enqueue(OtherNumbers.ToFrozenSet());
 
@@ -317,6 +321,7 @@ public class OldFrozenNamespaceArrayTests
     {
         Holder<Collection<FrozenSet<int>>> holder = new() { Items = [Numbers.ToFrozenSet()] };
         Holder<Collection<FrozenSet<int>>> old = Contract.Old(() => holder);
+        Assert.NotSame(holder.Items, old.Items);
         holder.Items[0] = OtherNumbers.ToFrozenSet();
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>

@@ -533,6 +533,10 @@ public class EnsureAssignableArrayDimensionTests
         Assert.Equal(ItemsChanged, exception.Description);
     }
 
+    // ICollection as T is compared by the properties it declares: Count, IsSynchronized and SyncRoot. The two
+    // arrays hold the same number of elements, and SyncRoot of an array is the array itself: it leads back
+    // to the two values passed to the method, which counts as equal. The rank, the lengths and the lower
+    // bounds of the two arrays are not compared in such a call.
     [Fact]
     public void EnsureAssignable_WhenOneByTwoAndTwoByOneArraysArePassedAsCollections_DoesNotThrow()
     {

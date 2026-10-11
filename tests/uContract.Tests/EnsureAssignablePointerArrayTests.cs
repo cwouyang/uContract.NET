@@ -574,6 +574,26 @@ public unsafe class EnsureAssignablePointerArrayTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenOneArrayOfFunctionPointersIsPassedAsActualAndExpected_DoesNotThrow()
+    {
+        delegate* <void>[] functions = [&FirstFunction];
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(functions, functions));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOneArrayOfFunctionPointersIsPassedAsActualAndExpected_DoesNotThrow()
+    {
+        object functions = ArrayOfFunctionPointers(&FirstFunction);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(functions, functions));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void Old_WhenObjectHoldsAnArrayOfFunctionPointers_DoesNotThrow()
     {
         FunctionPointerArrayHolder holder = new() { Items = [&FirstFunction] };

@@ -92,7 +92,7 @@ public unsafe class EnsureAssignableArrayAsTTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsAnArrayOfObjectsAndAPropertyOfAnElementDiffers_ReportsTheTwoAsNotEqual()
+    public void EnsureAssignable_WhenTIsAnArrayOfBoxesAndAPropertyOfAnElementDiffers_ReportsTheTwoAsNotEqual()
     {
         Box[] actual = [new Box { Value = 1 }];
         Box[] expected = [new Box { Value = 2 }];
@@ -103,6 +103,20 @@ public unsafe class EnsureAssignableArrayAsTTests
         );
 
         Assert.Equal(NotEqual(typeof(Box[])), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnArrayOfBoxesAndEachArrayHasItsOwnInstancesOfEqualContent_DoesNotThrow()
+    {
+        Box[] actual = [new Box { Value = 1 }, new Box { Value = 2 }];
+        Box[] expected = [new Box { Value = 1 }, new Box { Value = 2 }];
+        Assert.NotSame(actual, expected);
+        Assert.NotSame(actual[0], expected[0]);
+        Assert.NotSame(actual[1], expected[1]);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -349,6 +363,19 @@ public unsafe class EnsureAssignableArrayAsTTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenNothingChangedInAnArrayOfBoxesSinceOld_DoesNotThrow()
+    {
+        Box[] boxes = [new Box { Value = 1 }];
+        Box[] old = Contract.Old(() => boxes);
+        Assert.NotSame(boxes, old);
+        Assert.NotSame(boxes[0], old[0]);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(boxes, old));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenTIsAnArrayOfStreamsAndTwoArraysHoldOneStream_DoesNotThrow()
     {
         using MemoryStream stream = new();
@@ -442,6 +469,20 @@ public unsafe class EnsureAssignableArrayAsTTests
         );
 
         Assert.Equal(NotEqual(typeof(Vehicle[])), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnArrayOfObjectAndEachHoldsOnlyItself_DoesNotThrow()
+    {
+        object[] actual = new object[1];
+        actual[0] = actual;
+        object[] expected = new object[1];
+        expected[0] = expected;
+        Assert.NotSame(actual, expected);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
     }
 
     [Fact]
