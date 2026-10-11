@@ -224,7 +224,7 @@ public class EnsureImmutableCollectionFrozenTests
     [Fact]
     public void EnsureImmutableCollection_WhenClassNamedFrozenSetDerivesFromNoFrozenType_ThrowsPostconditionViolationException()
     {
-        FrozenSetLookingBag argument = new();
+        OtherSets.FrozenSet<int> argument = new();
 
         AssertViolation(() => Contract.EnsureImmutableCollection(argument));
     }
@@ -238,5 +238,9 @@ public class EnsureImmutableCollectionFrozenTests
 
     private static void TargetFunction() { }
 
-    private sealed class FrozenSetLookingBag;
+    // The holder keeps the simple name FrozenSet of the other tests of this class meaning the type of the framework.
+    private static class OtherSets
+    {
+        public sealed class FrozenSet<T>;
+    }
 }
