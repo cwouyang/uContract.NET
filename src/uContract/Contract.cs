@@ -864,10 +864,9 @@ public static class Contract
     }
 
     /// <summary>
-    ///     Ensures in postconditions that the runtime type of the specified collection is one that this method
-    ///     accepts: a type that implements an immutable collection interface, a frozen collection type or a
-    ///     read-only wrapper type, as the remarks define them. Returns the collection if its runtime type is accepted, or throws
-    ///     <see cref="PostconditionViolationException" /> if it is not.
+    ///     Ensures in postconditions that the runtime type of the specified collection meets one of the conditions
+    ///     given in the remarks. Returns the collection if it does, or throws
+    ///     <see cref="PostconditionViolationException" /> if it does not.
     ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
     /// <typeparam name="T">
@@ -956,7 +955,8 @@ public static class Contract
             // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
             // from a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or it is or derives from a
             // ReadOnlyCollection<T>, a ReadOnlyDictionary<TKey, TValue> or a generic type whose definition has the
-            // full name System.Collections.ObjectModel.ReadOnlySet`1 (the read-only wrappers). A type that is not
+            // full name System.Collections.ObjectModel.ReadOnlySet`1. That full name is the only name that is
+            // compared: a generic type of another assembly whose definition has it passes too. A type that is not
             // an array and meets none of these conditions is a violation, whatever its name. Neither the
             // namespace nor the name of the type is read, except that full name. No element and no state of the
             // instance is read.
@@ -1619,7 +1619,7 @@ public static class Contract
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are fixed, and an annotation on that method would give each caller a different diagnostic (the one for a call to a method marked [RequiresUnreferencedCode], or for a type argument that lacks the [DynamicallyAccessedMembers] annotation), although the method only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. Check 89 of the smoke program (tests/uContract.AotSmoke) exercises this read for a class of that program. The continuous integration of the repository publishes the smoke program with Native AOT and runs it. A publish trimmed without Native AOT was made and run by hand while this change was developed; continuous integration does not repeat it. In both, check 89 showed no exception. If one of the five interfaces were missing from what the runtime returns here, a type that implements only that interface among the five and passes by no other condition would be reported as a violation, not accepted."
+        Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are fixed by decision, and an annotation on that method, for example [RequiresUnreferencedCode], would put a trimming diagnostic on callers of a method that only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. The smoke program of the repository passes a class of that program that implements one of the five interfaces to this method. The continuous integration of the repository publishes the smoke program with Native AOT and runs it. A publish trimmed without Native AOT was made and run by hand once, and continuous integration does not repeat it. In both, the call showed no exception. If one of the five interfaces were missing from what the runtime returns here, a type that implements only that interface among the five and passes by no other condition would be reported as a violation, not accepted."
     )]
     private static bool _ImplementsImmutableCollectionInterface(Type type)
     {
