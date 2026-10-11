@@ -41,8 +41,6 @@ public class EnsureImmutableCollectionWrapperTests
         Assert.Same(argument, result);
     }
 
-    private sealed class LinesOnTop(IList<int> list) : ReadOnlyCollection<int>(list);
-
     [Fact]
     public void EnsureImmutableCollection_WhenClassNamedImmutableHoldsPublicList_ThrowsPostconditionViolationException()
     {
@@ -135,7 +133,8 @@ public class EnsureImmutableCollectionWrapperTests
     [Fact]
     public void EnsureImmutableCollection_WhenReadOnlyCollection_ReturnsCollection()
     {
-        ReadOnlyCollection<int> argument = new List<int> { 1 }.AsReadOnly();
+        List<int> wrapped = [1];
+        ReadOnlyCollection<int> argument = new(wrapped);
 
         ReadOnlyCollection<int> result = Contract.EnsureImmutableCollection(argument);
 
@@ -271,6 +270,8 @@ public class EnsureImmutableCollectionWrapperTests
     }
 
     private sealed class ReadOnlyOrderLines(IList<int> list) : ReadOnlyCollection<int>(list);
+
+    private sealed class LinesOnTop(IList<int> list) : ReadOnlyCollection<int>(list);
 
     private sealed class SneakyLines(IList<int> list) : ReadOnlyCollection<int>(list)
     {

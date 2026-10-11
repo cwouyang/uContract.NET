@@ -1624,7 +1624,7 @@ public static class Program
             Expect.Ok
         );
 
-        // A read-only wrapper is a view and passes, whatever the collection that it wraps.
+        // A ReadOnlyCollection<T> is a view of the list that it wraps, and it passes although that list can change.
         yield return new Check(
             90,
             "EnsureImmutableCollection read-only collection over a list",

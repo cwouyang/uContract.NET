@@ -6,11 +6,15 @@ namespace System.Collections.ObjectModel;
 
 #pragma warning restore IDE0130
 
-#pragma warning disable CS9113 // The constructor argument stands for the set that the framework type wraps.
 internal class ReadOnlySet<T>(ISet<T> set) : IEnumerable<T>
-#pragma warning restore CS9113
 {
-    public IEnumerator<T> GetEnumerator() => throw new NotSupportedException();
+    public IEnumerator<T> GetEnumerator()
+    {
+        return set.GetEnumerator();
+    }
 
-    IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
+    }
 }

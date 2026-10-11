@@ -28,6 +28,10 @@ namespace uContract;
 /// </remarks>
 public static class Contract
 {
+    // The framework declares ReadOnlySet<T>, a read-only view of a set, from .NET 9; this library is built for
+    // .NET 8, so EnsureImmutableCollection matches that type by the full name of its generic type definition.
+    private const string ReadOnlySetFullName = "System.Collections.ObjectModel.ReadOnlySet`1";
+
     private static readonly ContractConfiguration Config = new();
     private static readonly AsyncLocal<bool> Entered = new();
 
@@ -861,8 +865,8 @@ public static class Contract
 
     /// <summary>
     ///     Ensures that the specified collection is immutable in postconditions.
-    ///     Returns the collection if its runtime type is an immutable or read-only one, or throws
-    ///     <see cref="PostconditionViolationException" /> if it is not: see the remarks.
+    ///     Returns the collection if its runtime type is one of the types that the remarks list, or throws
+    ///     <see cref="PostconditionViolationException" /> if it is not.
     ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
     /// <typeparam name="T">The type of the collection</typeparam>
@@ -879,8 +883,8 @@ public static class Contract
     ///     list, and the method checks the collection
     /// </exception>
     /// <remarks>
-    ///     This method verifies that a collection returned from a method is immutable.
-    ///     The runtime type of <paramref name="collection" /> decides, and no element of the collection is read.
+    ///     This method checks the runtime type of <paramref name="collection" /> against the types listed here.
+    ///     That type decides: no element of the collection is read, and neither is the state of the instance.
     ///     An array is reported as mutable, whatever its element type. A type that is not an array passes when
     ///     it implements <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
     ///     <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>, <c>IImmutableStack&lt;T&gt;</c> or
@@ -889,13 +893,15 @@ public static class Contract
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, and when it is or
     ///     derives from a <c>ReadOnlyCollection&lt;T&gt;</c> or a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c>,
     ///     or from a generic type whose definition has the full name
-    ///     <c>System.Collections.ObjectModel.ReadOnlySet`1</c>.
-    ///     A read-only wrapper, such as a <c>ReadOnlyCollection&lt;T&gt;</c> or a class derived from one, is a
-    ///     view: it passes although the collection that it wraps can change.
-    ///     A type that is none of these is reported as mutable: neither the namespace nor the name of the type is read,
-    ///     except that full name, so a builder of an immutable collection, such as
-    ///     <c>ImmutableList&lt;T&gt;.Builder</c>, and a class that only has a name like "Immutable" or
-    ///     "ReadOnly", are reported as mutable.
+    ///     <c>System.Collections.ObjectModel.ReadOnlySet`1</c>. The framework declares that type, a read-only view
+    ///     of a set, from .NET 9; this library is built for .NET 8, so it matches the type by that full name.
+    ///     A <c>ReadOnlyCollection&lt;T&gt;</c>, a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c>, a
+    ///     <c>ReadOnlySet`1</c> and a class derived from one of them are views of the collection that they wrap:
+    ///     they pass although that collection can change.
+    ///     A type that is none of these is reported as mutable: neither the namespace nor the name of the type is
+    ///     read, except that full name. So the <c>ImmutableList&lt;T&gt;.Builder</c> of an immutable list is
+    ///     reported as mutable, and so is a class whose name starts with "Immutable" or "ReadOnly" and that is none
+    ///     of the types above.
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
@@ -940,8 +946,9 @@ public static class Contract
             // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
             // from a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or it is or derives from a
             // ReadOnlyCollection<T>, a ReadOnlyDictionary<TKey, TValue> or a generic type whose definition has the
-            // full name System.Collections.ObjectModel.ReadOnlySet`1. A type that is none of these is a violation.
-            // Neither the namespace nor the name of the type is read, except that full name.
+            // full name System.Collections.ObjectModel.ReadOnlySet`1 (the views of a collection). A type that is
+            // none of these is a violation, whatever its name. Neither the namespace nor the name of the type is
+            // read, except that full name. No element and no state of the instance is read.
             bool isImmutable =
                 !collectionType.IsArray
                 && (
@@ -1618,11 +1625,7 @@ public static class Contract
             if (
                 definition == typeof(ReadOnlyCollection<>)
                 || definition == typeof(ReadOnlyDictionary<,>)
-                || string.Equals(
-                    definition.FullName,
-                    "System.Collections.ObjectModel.ReadOnlySet`1",
-                    StringComparison.Ordinal
-                )
+                || string.Equals(definition.FullName, ReadOnlySetFullName, StringComparison.Ordinal)
             )
             {
                 return true;
