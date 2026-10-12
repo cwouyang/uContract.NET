@@ -980,21 +980,21 @@ public static class Contract
             // that nothing else is read from an array type: on .NET 8, under the JIT, reading the interfaces of the
             // type delegate*<void>[] throws ArgumentException, and reading its namespace throws
             // BadImageFormatException. For a type that is not an array, the helpers compare generic type
-            // definitions: first with the nine framework types that the library refers to, which reads no name,
-            // and then by full name (Type.FullName, whole and ordinal). Such a type passes when it implements a
-            // generic interface whose definition has the full name of IImmutableList<T>, IImmutableSet<T>,
-            // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
-            // from a generic type whose definition has the full name of FrozenSet<T>,
-            // FrozenDictionary<TKey, TValue>, ReadOnlyCollection<T> or ReadOnlyDictionary<TKey, TValue>, or the
-            // full name System.Collections.ObjectModel.ReadOnlySet`1. The assembly that declares the definition
-            // is not compared: an interface to implement, or a type to be or to derive from, of another assembly
-            // whose generic definition has the same full name stands for the one that the condition names. A
-            // full name counts only in the place that its condition gives it: a class with the full name of one
-            // of the five interfaces, and a type that implements an interface with the full name of a frozen
-            // type or of a wrapper, meet no condition by that. The case this is for is a second loaded copy of
-            // the framework assembly that declares the immutable and the frozen collections. A type that meets
-            // none of the conditions is a violation: a part of a name, such as the namespace or the start of the
-            // name, does not decide. No element and no state of the instance is read.
+            // definitions: first with the types that the conditions name and that the library can refer to (all
+            // of them but ReadOnlySet<T>), which reads no name, and then by full name (Type.FullName, whole and
+            // ordinal). Such a type passes when it implements a generic interface whose definition has the full
+            // name of IImmutableList<T>, IImmutableSet<T>, IImmutableDictionary<TKey, TValue>,
+            // IImmutableStack<T> or IImmutableQueue<T>, or it is or derives from a generic type whose definition
+            // has the full name of FrozenSet<T>, FrozenDictionary<TKey, TValue>, ReadOnlyCollection<T> or
+            // ReadOnlyDictionary<TKey, TValue>, or the full name System.Collections.ObjectModel.ReadOnlySet`1. The
+            // assembly that declares the definition is not compared: an interface to implement, or a type to be or
+            // to derive from, of another assembly whose generic definition has the same full name stands for the
+            // one that the condition names. A full name counts only in the place that its condition gives it: a
+            // class with the full name of one of the five interfaces, and a type that implements an interface with
+            // the full name of a frozen type or of a wrapper, meet no condition by that. The case this is for is a
+            // second loaded copy of the framework assembly that declares the immutable and the frozen collections.
+            // A type that meets none of the conditions is a violation: a part of a name, such as the namespace or
+            // the start of the name, does not decide. No element and no state of the instance is read.
             bool typePasses =
                 !collectionType.IsArray
                 && (
@@ -1628,12 +1628,12 @@ public static class Contract
     }
 
     // EnsureImmutableCollection calls this twice: first with byFullName false, which compares each generic type
-    // definition with the nine framework types that the library refers to and reads no name, and then, when
-    // that gave no match, with byFullName true, which compares full names. A definition that is one of the
-    // nine types has the full name of that type, so the first call changes no answer; for a type that matches
-    // in it, it spares the reads of Type.FullName, which allocate under Native AOT (measured on .NET 8). The
-    // two walks of the base classes come before the read of the interfaces,
-    // so that a type that matches in a walk does not read its interfaces in that call.
+    // definition with the types that the conditions name and that the library can refer to (all of them but
+    // ReadOnlySet<T>) and reads no name, and then, when that gave no match, with byFullName true, which compares
+    // full names. A definition that is one of those types has the full name of that type, so the first call
+    // changes no answer; for a type that matches in it, it spares the reads of Type.FullName, which allocate
+    // under Native AOT (measured on .NET 8). The two walks of the base classes come before the read of the
+    // interfaces, so that a type that matches in a walk does not read its interfaces in that call.
     private static bool _MeetsImmutableCollectionCondition(Type type, bool byFullName)
     {
         return _IsFrozenSetOrDictionary(type, byFullName)
@@ -1740,9 +1740,10 @@ public static class Contract
         return false;
     }
 
-    // The full names that EnsureImmutableCollection compares. They are read from the types of the framework in
-    // the initialiser of this class, which runs once. The arrays are filled here and not changed afterwards.
-    // They are not fields of Contract, so the initialiser of Contract does not hold these reads.
+    // The full names that EnsureImmutableCollection compares. Nine are read from the types of the framework in
+    // the initialiser of this class, which runs once; the tenth is the constant ReadOnlySetFullName, read from
+    // no type. The arrays are filled here and not changed afterwards. They are not fields of Contract, so the
+    // initialiser of Contract does not hold these reads.
     private static class ImmutableCollectionFullNames
     {
         internal static readonly string?[] Interfaces =
