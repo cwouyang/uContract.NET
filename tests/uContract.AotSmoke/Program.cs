@@ -1645,6 +1645,21 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // ---- EnsureImmutableCollection accepts a type by the full name of its generic type definition. ----
+
+        // A class of this program with the full name System.Collections.ObjectModel.ReadOnlySet`1 (see
+        // ReadOnlySetStandIn.cs). The library has no reference to a type of that name, so the check shows that
+        // the method accepts a type by the full name of its generic type definition. The other checks of this
+        // method that expect no exception with postconditions on pass a type that is, derives from or implements
+        // a type that the library refers to.
+        yield return new Check(
+            91,
+            "EnsureImmutableCollection class with the full name of ReadOnlySet",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(new ReadOnlySet<int>())),
+            Expect.Ok,
+            Expect.Ok
+        );
     }
 
     private static unsafe object? FunctionPointerArrayEnsured() =>
