@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -381,6 +382,25 @@ internal sealed class FrozenSetEnumeratorHolder
 internal sealed unsafe class PointerHolder
 {
     public int* Address;
+}
+
+// Implements IImmutableStack<int>. Its members throw: EnsureImmutableCollection reads the runtime type of
+// its argument only.
+internal sealed class PlateStack : IImmutableStack<int>
+{
+    public bool IsEmpty => throw new NotSupportedException();
+
+    public IImmutableStack<int> Clear() => throw new NotSupportedException();
+
+    public int Peek() => throw new NotSupportedException();
+
+    public IImmutableStack<int> Pop() => throw new NotSupportedException();
+
+    public IImmutableStack<int> Push(int value) => throw new NotSupportedException();
+
+    public IEnumerator<int> GetEnumerator() => throw new NotSupportedException();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new NotSupportedException();
 }
 
 // Hidden: never a T, never preserved. Reached through an interface-typed member.
@@ -1551,7 +1571,101 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // ---- EnsureImmutableCollection reports an array as mutable, whatever its element type. ----
+
+        // An array whose element type is an immutable collection: the check passes it to the method; with
+        // postconditions on it expects the violation, and with postconditions off it expects no exception. An array
+        // is reported as mutable whatever its element type.
+        yield return new Check(
+            85,
+            "EnsureImmutableCollection array of immutable lists",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(new[] { ImmutableList.Create(1) })),
+            post,
+            Expect.Ok
+        );
+
+        // An array of function pointers: on .NET 8, under the JIT, reading the interfaces of its type throws
+        // ArgumentException and reading its namespace throws BadImageFormatException, so this case is part of the
+        // program. The check passes such an array to the method; with postconditions on it expects the violation,
+        // and with postconditions off it expects no exception.
+        yield return new Check(
+            86,
+            "EnsureImmutableCollection array of function pointers",
+            FunctionPointerArrayEnsured,
+            post,
+            Expect.Ok
+        );
+
+        // ---- EnsureImmutableCollection accepts a frozen set. ----
+
+        // A FrozenSet<T> passes.
+        yield return new Check(
+            87,
+            "EnsureImmutableCollection frozen set of strings",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureImmutableCollection(s_frozenCodes.ToFrozenSet(StringComparer.Ordinal))
+                ),
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // ---- EnsureImmutableCollection decides by the immutable interfaces, not by the namespace. ----
+
+        // A builder is declared in System.Collections.Immutable and implements none of IImmutableList<T>,
+        // IImmutableSet<T>, IImmutableDictionary<TKey, TValue>, IImmutableStack<T> and IImmutableQueue<T>.
+        yield return new Check(
+            88,
+            "EnsureImmutableCollection builder of an immutable list",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(ImmutableList.CreateBuilder<int>())),
+            post,
+            Expect.Ok
+        );
+
+        // A class of this program that implements IImmutableStack<int>, passed as its own type: the method
+        // reads the interfaces of its runtime type. The justification of the trimming suppression on the interface
+        // read of Contract.EnsureImmutableCollection relies on this check: whoever edits or removes it should
+        // read that justification first.
+        yield return new Check(
+            89,
+            "EnsureImmutableCollection class that implements IImmutableStack",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(new PlateStack())),
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // ---- EnsureImmutableCollection accepts a read-only wrapper. ----
+
+        // A ReadOnlyCollection<T> is a view of the list that it wraps, and it passes although that list can change.
+        yield return new Check(
+            90,
+            "EnsureImmutableCollection read-only collection over a list",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(new ReadOnlyCollection<int>([1]))),
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // ---- EnsureImmutableCollection accepts a type by the full name of its generic type definition. ----
+
+        // A class of this program with the full name System.Collections.ObjectModel.ReadOnlySet`1 (see
+        // ReadOnlySetStandIn.cs). The library has no reference to a type of that name, so the check shows that
+        // the method accepts a type by the full name of its generic type definition. The other checks of this
+        // method that expect no exception with postconditions on pass a type that is, derives from or implements
+        // a type that the library refers to.
+        yield return new Check(
+            91,
+            "EnsureImmutableCollection class with the full name of ReadOnlySet",
+            static () => NoResult(static () => Contract.EnsureImmutableCollection(new ReadOnlySet<int>())),
+            Expect.Ok,
+            Expect.Ok
+        );
     }
+
+    private static unsafe object? FunctionPointerArrayEnsured() =>
+        NoResult(static () => Contract.EnsureImmutableCollection(new delegate* <void>[] { &NoOperation }));
+
+    private static void NoOperation() { }
 
     private static object? FrozenDictionariesOfEqualContent()
     {

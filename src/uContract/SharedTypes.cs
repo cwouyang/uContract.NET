@@ -108,12 +108,21 @@ internal static class SharedTypes
     }
 
     /// <summary>
-    ///     The shared types of which two instances are compared element by element, in enumeration order, and
-    ///     not by reference: every construction of <c>FrozenSet&lt;T&gt;</c> or
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and every type derived from one. No other type declared
-    ///     in <c>System.Collections.Frozen</c> matches. An array of them does not match either, and it is
-    ///     not shared: two such arrays are compared element by element, as any two arrays are.
+    ///     Says whether <paramref name="type" /> is or derives from a constructed <c>FrozenSet&lt;T&gt;</c> or
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>. Two instances of such a type are compared element by
+    ///     element, in enumeration order, and not by reference, and
+    ///     <c>Contract.EnsureImmutableCollection</c> accepts an instance of it. No other type declared
+    ///     in <c>System.Collections.Frozen</c> matches. An array of them does not match either: the type of an
+    ///     array is not a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and does
+    ///     not derive from one.
     /// </summary>
+    // Contract.EnsureImmutableCollection does not call this helper or read a member of this class: it compares
+    // full names with helpers of its own, in Contract, so a call of it does not run the initialiser of this
+    // class. That matters because the initialiser builds the lists of shared types, which refer to types of
+    // other framework assemblies. Measured on .NET 8, under the JIT: a call of
+    // Contract.EnsureImmutableCollection loaded none of System.Net.Http, System.Net.Sockets,
+    // System.ComponentModel.Primitives and System.Text.RegularExpressions, and a call of Contract.Old or
+    // Contract.EnsureAssignable loaded them.
     internal static bool IsFrozenSetOrDictionary(Type type)
     {
         return DerivesFromGeneric(type, typeof(FrozenSet<>)) || DerivesFromGeneric(type, typeof(FrozenDictionary<,>));
