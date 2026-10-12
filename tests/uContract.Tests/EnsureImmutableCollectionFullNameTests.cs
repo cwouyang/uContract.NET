@@ -230,6 +230,22 @@ public class EnsureImmutableCollectionFullNameTests
     }
 
     [Fact]
+    public void EnsureImmutableCollection_WhenClassOfAnotherAssemblyHasFullNameOfIImmutableStack_ThrowsPostconditionViolationException()
+    {
+        object argument = NewInstanceOfClassOfAnotherAssembly(typeof(IImmutableStack<>).FullName!, arity: 1);
+
+        AssertViolation(() => Contract.EnsureImmutableCollection(argument));
+    }
+
+    [Fact]
+    public void EnsureImmutableCollection_WhenInterfaceOfAnotherAssemblyHasFullNameOfFrozenSet_ThrowsPostconditionViolationException()
+    {
+        object argument = NewInstanceOfClassImplementingInterfaceOfAnotherAssembly(typeof(FrozenSet<>).FullName!);
+
+        AssertViolation(() => Contract.EnsureImmutableCollection(argument));
+    }
+
+    [Fact]
     public void EnsureImmutableCollection_WhenClassOfAnotherAssemblyHasFullNameOfReadOnlySet_ReturnsCollection()
     {
         object argument = NewInstanceOfClassOfAnotherAssembly("System.Collections.ObjectModel.ReadOnlySet`1", arity: 1);
