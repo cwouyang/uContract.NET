@@ -206,6 +206,22 @@ public class EnsureImmutableCollectionFullNameTests
     }
 
     [Fact]
+    public void EnsureImmutableCollection_WhenClassOfAnotherAssemblyHasFullNameThatDiffersByCaseOnly_ThrowsPostconditionViolationException()
+    {
+        object collectionLookalike = NewInstanceOfClassOfAnotherAssembly(
+            "System.Collections.ObjectModel.READONLYCOLLECTION`1",
+            arity: 1
+        );
+        object setLookalike = NewInstanceOfClassOfAnotherAssembly(
+            "System.Collections.ObjectModel.READONLYSET`1",
+            arity: 1
+        );
+
+        AssertViolation(() => Contract.EnsureImmutableCollection(collectionLookalike));
+        AssertViolation(() => Contract.EnsureImmutableCollection(setLookalike));
+    }
+
+    [Fact]
     public void EnsureImmutableCollection_WhenClassOfAnotherAssemblyHasFullNameOfImmutableListAndImplementsNoInterface_ThrowsPostconditionViolationException()
     {
         object argument = NewInstanceOfClassOfAnotherAssembly(typeof(ImmutableList<>).FullName!, arity: 1);
