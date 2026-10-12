@@ -43,7 +43,19 @@ or element holds them and when `T` is an array type or `System.Array`: an `int[,
 longer equals one of 2 by 1 with the same elements, and an array whose lower bound is 1 no longer
 equals an `int[]` of the same elements. An `Old` result taken while another contract check is
 running gave `ArgumentNullException` in 2.x; it now gives a violation that did not happen, or none.
-`EnsureImmutableCollection<T>()` is no longer a `null` guard with postconditions off. For trimmed
+`EnsureImmutableCollection<T>()` is no longer a `null` guard with postconditions off.
+`EnsureImmutableCollection<T>()` now reports an array as mutable and decides for a type that is not
+an array by the interfaces that the runtime type of its argument implements and by the generic types
+that it is or derives from, not by the start of its name or by its namespace; the cases are listed
+under Changed and Fixed. Where a call became a violation: return an immutable or a frozen collection
+(`ToImmutableArray()`, `ToImmutableList()` or `ToFrozenSet()`, for example; from a builder,
+`ToImmutable()`) or a read-only wrapper (`AsReadOnly()` of a `List<T>` or of a
+`Dictionary<TKey, TValue>`, or `Array.AsReadOnly(...)`); for a collection type of yours that is
+immutable, implement `IImmutableList<T>`, `IImmutableSet<T>`, `IImmutableDictionary<TKey, TValue>`,
+`IImmutableStack<T>` or `IImmutableQueue<T>`, or derive from `ReadOnlyCollection<T>` or from
+`ReadOnlyDictionary<TKey, TValue>`; for a value that is not a collection (a `ReadOnlyMemory<T>`),
+remove the call, or state the property that is meant with `Contract.Ensure` or
+`Contract.EnsureResult`. For trimmed
 and Native AOT applications, see [Trimming and Native AOT](README.md#trimming-and-native-aot) in the
 README.
 
@@ -215,6 +227,48 @@ README.
   `ArgumentNullException` when it does not check it: with postconditions off, or in a call made
   while another contract check is running. This is a second exception to "parameter validation
   always runs". Code that relied on the method as a `null` guard must add its own. (#52; ADR-0012)
+- **BREAKING**: `EnsureImmutableCollection<T>()` reports an array as mutable, whatever its element
+  type. In 2.0.0 an `ImmutableList<int>[]` passed; it is a violation now. Before this change an
+  `ImmutableArray<int>[]`, a `ReadOnlyCollection<int>[]`, a `ReadOnlyMemory<int>[]`, an
+  `ImmutableList<int>[][]` and an `ImmutableList<int>[,]` passed too; each is a violation now. An
+  `int[]` and a `FrozenSet<int>[]` were violations before this change and still are. Return an
+  `ImmutableArray<T>` (`ToImmutableArray()`) or the result of `Array.AsReadOnly(...)`. (#61)
+- **BREAKING**: `EnsureImmutableCollection<T>()` decides for a type that is not an array by the
+  interfaces that the runtime type of the argument implements and by the generic types that it is or
+  derives from; the start of its name and its namespace no longer decide. A type that is not an
+  array is accepted when it implements `IImmutableList<T>`, `IImmutableSet<T>`,
+  `IImmutableDictionary<TKey, TValue>`, `IImmutableStack<T>` or `IImmutableQueue<T>`, when it is or
+  derives from a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` (see Fixed), or when it is a
+  read-only wrapper: a `ReadOnlyCollection<T>`, a `ReadOnlyDictionary<TKey, TValue>`, the
+  `ReadOnlySet<T>` that the framework declares from .NET 9, or a class derived from one of them.
+  Another type that is not an array is a violation. The method compares the full name of each
+  generic type definition, whole and ordinally, and not the assembly that declares it. No longer
+  accepted: in 2.0.0 an `ImmutableList<int>.Builder`, a class named `ImmutableBag` that holds a
+  `List<int>`, a `ReadOnlyMemory<int>` and the result of `ArrayList.ReadOnly(...)` for an
+  `ArrayList` passed; each is a violation now. Before this change these passed too, and each is a
+  violation now: the builders of an `ImmutableArray<int>`, an `ImmutableDictionary<int, int>`, an
+  `ImmutableHashSet<int>`, an `ImmutableSortedSet<int>` and an `ImmutableSortedDictionary<int, int>`;
+  the `Keys` and the `Values` of an `ImmutableDictionary<int, int>`; the enumerators of an
+  `ImmutableList<int>` and of an `ImmutableArray<int>`; the result of
+  `ImmutableSortedSet<int>.Reverse()`; a `ReadOnlySequence<int>` and a
+  `ReadOnlyCollectionBuilder<int>`; and a class whose name starts with `ReadOnly` and that meets
+  none of the three conditions. Accepted now: in 2.0.0 a class that implements `IImmutableStack<int>`
+  and a class derived from `ReadOnlyCollection<int>` whose name does not start with `ReadOnly` were
+  violations; each passes now. Before this change these were violations too, and each passes now: a
+  struct that implements `IImmutableQueue<int>`, and a class derived from
+  `ReadOnlyDictionary<int, int>` or from `ReadOnlyObservableCollection<int>` whose name does not
+  start with `ReadOnly`. Not changed: an `ImmutableList<int>`, a `ReadOnlyCollection<int>` and a
+  class named `ReadOnlyOrders` derived from `ReadOnlyCollection<int>` passed in 2.0.0 and pass now;
+  a `List<int>` was a violation in 2.0.0 and is one now; an `ImmutableList<int>.Empty` from a second
+  loaded copy of the assembly passed in 2.0.0 and passes now. A call that passes can allocate more.
+  Measured on .NET 8 under the JIT, in bytes allocated per call: 2.0.0 allocated 192 for an
+  `ImmutableList<int>`, for a `ReadOnlyCollection<int>` and for an `ImmutableDictionary<int, int>`;
+  this version allocated 312, 192 and 304. Measured on .NET 8 under Native AOT: this version
+  allocated 1544, 192 and 1528 for the same three, 192 for a `FrozenSet<int>` and 1560 for an
+  `ImmutableArray<int>`, and 3552 with its exception for a `List<int>`, a violation; there is no
+  earlier number under Native AOT to compare these with. The limits of the rule and the ways out are
+  in [What `EnsureImmutableCollection<T>()`
+  accepts](docs/examples/API_REFERENCE.md#what-ensureimmutablecollectiont-accepts). (#61)
 - Known limitation: a property that returns a new instance of its own type on every read (for
   example `DirectoryInfo.Root`) now makes the comparison grow without bound, where 2.0.0 overflowed
   the stack. Fields-only comparison ([#46](https://github.com/cwouyang/uContract.NET/issues/46))
@@ -238,6 +292,14 @@ README.
   same length and lower bound in every dimension. The type that a pointer points to and the memory
   behind an address are not compared. Such an array that has elements is different from anything
   that is not an array of pointers or of function pointers (#57).
+- `EnsureImmutableCollection<T>()` throws `PostconditionViolationException` for an array of function
+  pointers, as it does for other arrays. Version 2.0.0 threw `BadImageFormatException` for a
+  `delegate*<void>[]`; that was measured on .NET 8 (runtime 8.0.16), under the JIT. Before this
+  change the same exception was measured on .NET 8, under the JIT, for a `delegate*<void>[][]` and a
+  `delegate*<void>[,]` (#61).
+- `EnsureImmutableCollection<T>()` accepts a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`,
+  and a type that derives from one of them. In 2.0.0 a `FrozenSet<int>` and a
+  `FrozenDictionary<int, int>` were violations (#61).
 - `EnsureAssignable<T>()` no longer reports false violations for unchanged dictionaries, structs
   that hold a reference, interface-typed members, and objects that hold a `Regex` (also after it is
   used), an `AsyncLocal<T>` or a `System.Threading.Lock` (ADR-0022).
