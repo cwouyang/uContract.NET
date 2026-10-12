@@ -31,7 +31,8 @@ public static class Contract
 {
     // The framework declares ReadOnlySet<T>, a read-only wrapper of a set, from .NET 9; this library is built for
     // .NET 8 and cannot refer to that type, so the full name of its generic type definition is written out here.
-    // EnsureImmutableCollection reads the other full names that it compares from the types of the framework.
+    // EnsureImmutableCollection reads the other full names that it compares from the types of the framework, once
+    // (see ImmutableCollectionFullNames).
     private const string ReadOnlySetFullName = "System.Collections.ObjectModel.ReadOnlySet`1";
 
     private static readonly ContractConfiguration Config = new();
@@ -900,7 +901,8 @@ public static class Contract
     ///     example <c>System.Collections.Immutable.IImmutableList`1</c>): that of each generic interface that the
     ///     type implements with those of the five interfaces named here, and that of the type and of each of its
     ///     base classes, where generic, with those of the two frozen types and the three wrappers named here. It
-    ///     compares the whole name, ordinally. A type that is not an array
+    ///     compares the whole name, ordinally; where a definition is the framework's own type, it takes the names
+    ///     as equal and does not read them. A type that is not an array
     ///     passes when it implements a generic interface whose definition has the full name of
     ///     <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
     ///     <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>, <c>IImmutableStack&lt;T&gt;</c> or
@@ -916,10 +918,10 @@ public static class Contract
     ///     The method does not compare the assembly that declares a generic type definition. Where a condition
     ///     above names an interface to implement, an interface of another assembly whose generic definition has
     ///     the same full name stands for it; where a condition names a type to be or to derive from, a type of
-    ///     another assembly whose generic definition has the same full name stands for it. The full name counts
-    ///     in that place only: a class that has the full name of one of the five interfaces, and a type that
-    ///     implements an interface with the full name of a frozen type or of a wrapper, meet no condition by
-    ///     that. The case this is for is a second loaded copy of the framework assembly that declares the
+    ///     another assembly whose generic definition has the same full name stands for it. A full name counts
+    ///     only in the place that its condition gives it: a class that has the full name of one of the five
+    ///     interfaces, and a type that implements an interface with the full name of a frozen type or of a
+    ///     wrapper, meet no condition by that. The case this is for is a second loaded copy of the framework assembly that declares the
     ///     immutable and the frozen collections: the types of the copy have the full names of the framework's
     ///     types and are not those types.
     ///     A <c>ReadOnlyCollection&lt;T&gt;</c> and a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> are views of the
@@ -979,27 +981,27 @@ public static class Contract
             // An array type is reported as mutable, whatever its element type, and the test for it comes first so
             // that nothing else is read from an array type: on .NET 8, under the JIT, reading the interfaces of the
             // type delegate*<void>[] throws ArgumentException, and reading its namespace throws
-            // BadImageFormatException. For a type that is not an array, the three helpers compare the full name
-            // of a generic type definition (Type.FullName, whole and ordinal), not the type. Such a type passes
+            // BadImageFormatException. For a type that is not an array, the helpers compare generic type
+            // definitions: first with the framework's types, which reads no name, and then by full name
+            // (Type.FullName, whole and ordinal). Such a type passes
             // when it implements a generic interface whose definition has the full name of IImmutableList<T>,
             // IImmutableSet<T>, IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>,
             // or it is or derives from a generic type whose definition has the full name of FrozenSet<T>,
             // FrozenDictionary<TKey, TValue>, ReadOnlyCollection<T> or ReadOnlyDictionary<TKey, TValue>, or the
             // full name System.Collections.ObjectModel.ReadOnlySet`1. The assembly that declares the definition
             // is not compared: an interface to implement, or a type to be or to derive from, of another assembly
-            // whose generic definition has the same full name stands for the one that the condition names, in
-            // that place only. A class with the full name of one of the five interfaces, and a type that
-            // implements an interface with the full name of a frozen type or of a wrapper, meet no condition by
-            // that. The case this is for is a second loaded copy of the framework assembly that declares the
-            // immutable and the frozen collections. A type that meets none of the conditions is a violation: a
-            // part of a name, such as the namespace or the start of the name, does not decide. No element and no
-            // state of the instance is read.
+            // whose generic definition has the same full name stands for the one that the condition names. A
+            // full name counts only in the place that its condition gives it: a class with the full name of one
+            // of the five interfaces, and a type that implements an interface with the full name of a frozen
+            // type or of a wrapper, meet no condition by that. The case this is for is a second loaded copy of
+            // the framework assembly that declares the immutable and the frozen collections. A type that meets
+            // none of the conditions is a violation: a part of a name, such as the namespace or the start of the
+            // name, does not decide. No element and no state of the instance is read.
             bool typePasses =
                 !collectionType.IsArray
                 && (
-                    _ImplementsImmutableCollectionInterface(collectionType)
-                    || _IsFrozenSetOrDictionary(collectionType)
-                    || _IsReadOnlyWrapper(collectionType)
+                    _MeetsImmutableCollectionCondition(collectionType, byFullName: false)
+                    || _MeetsImmutableCollectionCondition(collectionType, byFullName: true)
                 );
 
             if (!typePasses)
@@ -1627,9 +1629,21 @@ public static class Contract
         }
     }
 
-    // Compares full names, for EnsureImmutableCollection. SharedTypes.IsFrozenSetOrDictionary compares types, for
-    // the comparison of EnsureAssignable. The two are kept apart on purpose.
-    private static bool _IsFrozenSetOrDictionary(Type type)
+    // EnsureImmutableCollection calls this twice: first with byFullName false, which compares each generic type
+    // definition with the framework's type and reads no name, and then, when that gave no match, with
+    // byFullName true, which compares full names. A definition that is the framework's type has the framework's
+    // full name, so the first call changes no answer; it spares the reads of Type.FullName, which allocate under
+    // Native AOT (measured on .NET 8).
+    private static bool _MeetsImmutableCollectionCondition(Type type, bool byFullName)
+    {
+        return _ImplementsImmutableCollectionInterface(type, byFullName)
+            || _IsFrozenSetOrDictionary(type, byFullName)
+            || _IsReadOnlyWrapper(type, byFullName);
+    }
+
+    // Compares types or full names, for EnsureImmutableCollection. SharedTypes.IsFrozenSetOrDictionary compares
+    // types only, for the comparison of EnsureAssignable. The two are kept apart on purpose.
+    private static bool _IsFrozenSetOrDictionary(Type type, bool byFullName)
     {
         for (Type? current = type; current is not null; current = current.BaseType)
         {
@@ -1640,8 +1654,9 @@ public static class Contract
 
             Type definition = current.GetGenericTypeDefinition();
             if (
-                _HasFullNameOf(definition, typeof(FrozenSet<>))
-                || _HasFullNameOf(definition, typeof(FrozenDictionary<,>))
+                byFullName
+                    ? _IsOneOf(definition.FullName, ImmutableCollectionFullNames.FrozenTypes)
+                    : definition == typeof(FrozenSet<>) || definition == typeof(FrozenDictionary<,>)
             )
             {
                 return true;
@@ -1651,7 +1666,7 @@ public static class Contract
         return false;
     }
 
-    private static bool _IsReadOnlyWrapper(Type type)
+    private static bool _IsReadOnlyWrapper(Type type, bool byFullName)
     {
         for (Type? current = type; current is not null; current = current.BaseType)
         {
@@ -1662,9 +1677,9 @@ public static class Contract
 
             Type definition = current.GetGenericTypeDefinition();
             if (
-                _HasFullNameOf(definition, typeof(ReadOnlyCollection<>))
-                || _HasFullNameOf(definition, typeof(ReadOnlyDictionary<,>))
-                || string.Equals(definition.FullName, ReadOnlySetFullName, StringComparison.Ordinal)
+                byFullName
+                    ? _IsOneOf(definition.FullName, ImmutableCollectionFullNames.Wrappers)
+                    : definition == typeof(ReadOnlyCollection<>) || definition == typeof(ReadOnlyDictionary<,>)
             )
             {
                 return true;
@@ -1679,7 +1694,7 @@ public static class Contract
         "IL2070",
         Justification = "No caller is annotated: the signature and the attributes of EnsureImmutableCollection are not to change, and an annotation on that method, for example [RequiresUnreferencedCode], would put a trimming diagnostic on callers of a method that only reads the runtime type of its argument. The library itself refers to the five interface types, in the typeof expressions of this method. The Native AOT smoke program of the repository holds a check that calls EnsureImmutableCollection with an instance of a class of that program that implements one of the five interfaces, and expects it to be accepted. The measured results are recorded in ADR-0021. If one of the five interfaces were missing from what the runtime returns here, a type that implements only that interface among the five and passes by no other condition would be reported as a violation, not accepted."
     )]
-    private static bool _ImplementsImmutableCollectionInterface(Type type)
+    private static bool _ImplementsImmutableCollectionInterface(Type type, bool byFullName)
     {
         foreach (Type implemented in type.GetInterfaces())
         {
@@ -1690,11 +1705,13 @@ public static class Contract
 
             Type definition = implemented.GetGenericTypeDefinition();
             if (
-                _HasFullNameOf(definition, typeof(IImmutableList<>))
-                || _HasFullNameOf(definition, typeof(IImmutableSet<>))
-                || _HasFullNameOf(definition, typeof(IImmutableDictionary<,>))
-                || _HasFullNameOf(definition, typeof(IImmutableStack<>))
-                || _HasFullNameOf(definition, typeof(IImmutableQueue<>))
+                byFullName
+                    ? _IsOneOf(definition.FullName, ImmutableCollectionFullNames.Interfaces)
+                    : definition == typeof(IImmutableList<>)
+                        || definition == typeof(IImmutableSet<>)
+                        || definition == typeof(IImmutableDictionary<,>)
+                        || definition == typeof(IImmutableStack<>)
+                        || definition == typeof(IImmutableQueue<>)
             )
             {
                 return true;
@@ -1704,9 +1721,51 @@ public static class Contract
         return false;
     }
 
-    private static bool _HasFullNameOf(Type definition, Type frameworkDefinition)
+    // A name that is null matches nothing.
+    private static bool _IsOneOf(string? fullName, string?[] fullNames)
     {
-        return string.Equals(definition.FullName, frameworkDefinition.FullName, StringComparison.Ordinal);
+        if (fullName is null)
+        {
+            return false;
+        }
+
+        foreach (string? candidate in fullNames)
+        {
+            if (string.Equals(fullName, candidate, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The full names that EnsureImmutableCollection compares, read once from the types of the framework when the
+    // method first compares by full name. The arrays are filled here and not changed afterwards. They are in a
+    // class of their own so that the other methods of Contract do not run these reads.
+    private static class ImmutableCollectionFullNames
+    {
+        internal static readonly string?[] Interfaces =
+        [
+            typeof(IImmutableList<>).FullName,
+            typeof(IImmutableSet<>).FullName,
+            typeof(IImmutableDictionary<,>).FullName,
+            typeof(IImmutableStack<>).FullName,
+            typeof(IImmutableQueue<>).FullName,
+        ];
+
+        internal static readonly string?[] FrozenTypes =
+        [
+            typeof(FrozenSet<>).FullName,
+            typeof(FrozenDictionary<,>).FullName,
+        ];
+
+        internal static readonly string?[] Wrappers =
+        [
+            typeof(ReadOnlyCollection<>).FullName,
+            typeof(ReadOnlyDictionary<,>).FullName,
+            ReadOnlySetFullName,
+        ];
     }
 
     // Note: The value-based null-check methods (RequireNotNull<T>, RequireNotEmpty, EnsureNotNull<T>,
