@@ -1597,7 +1597,8 @@ public static class Program
             Expect.Ok
         );
 
-        // ---- EnsureImmutableCollection accepts a frozen set by the full name of its generic type definition. ----
+        // ---- EnsureImmutableCollection accepts a class derived from FrozenSet<T> by the full name of the
+        // generic type definition of that base class. ----
 
         // A FrozenSet<T> passes.
         yield return new Check(
@@ -1635,7 +1636,8 @@ public static class Program
             Expect.Ok
         );
 
-        // ---- EnsureImmutableCollection accepts a read-only wrapper by the full name of its generic type definition. ----
+        // ---- EnsureImmutableCollection accepts a read-only wrapper by the full name of its generic type
+        // definition. ----
 
         // A ReadOnlyCollection<T> is a view of the list that it wraps, and it passes although that list can change.
         yield return new Check(

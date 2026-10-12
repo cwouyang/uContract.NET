@@ -896,9 +896,11 @@ public static class Contract
     ///     This method checks the runtime type of <paramref name="collection" /> against the conditions given here.
     ///     That type decides: no element of the collection is read, and neither is the state of the instance.
     ///     An array type is reported as mutable, whatever its element type. For a type that is not an array, the
-    ///     method compares the full name of a generic type definition, as <c>Type.FullName</c> gives it (for
-    ///     example <c>System.Collections.Immutable.IImmutableList`1</c>), with the full names of the generic type
-    ///     definitions of the types named here; it compares the whole name, ordinally. A type that is not an array
+    ///     method compares full names of generic type definitions, as <c>Type.FullName</c> gives them (for
+    ///     example <c>System.Collections.Immutable.IImmutableList`1</c>): that of each generic interface that the
+    ///     type implements with those of the five interfaces named here, and that of the type and of each of its
+    ///     base classes, where generic, with those of the two frozen types and the three wrappers named here. It
+    ///     compares the whole name, ordinally. A type that is not an array
     ///     passes when it implements a generic interface whose definition has the full name of
     ///     <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
     ///     <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>, <c>IImmutableStack&lt;T&gt;</c> or
@@ -911,10 +913,15 @@ public static class Contract
     ///     <c>System.Collections.ObjectModel.ReadOnlySet`1</c>. The framework declares <c>ReadOnlySet&lt;T&gt;</c>,
     ///     a read-only wrapper of a set, from .NET 9; this library is built for .NET 8 and cannot refer to that
     ///     type, so it holds that full name as text.
-    ///     The method does not compare the assembly that declares a generic type definition: where a condition
-    ///     above names a type, a generic type of another assembly whose definition has the same full name meets
-    ///     the condition too. The case this is for is a second loaded copy of the framework assembly: the types of
-    ///     the copy have the full names of the framework's types and are not those types.
+    ///     The method does not compare the assembly that declares a generic type definition. Where a condition
+    ///     above names an interface to implement, an interface of another assembly whose generic definition has
+    ///     the same full name stands for it; where a condition names a type to be or to derive from, a type of
+    ///     another assembly whose generic definition has the same full name stands for it. The full name counts
+    ///     in that place only: a class that has the full name of one of the five interfaces, and a type that
+    ///     implements an interface with the full name of a frozen type or of a wrapper, meet no condition by
+    ///     that. The case this is for is a second loaded copy of the framework assembly that declares the
+    ///     immutable and the frozen collections: the types of the copy have the full names of the framework's
+    ///     types and are not those types.
     ///     A <c>ReadOnlyCollection&lt;T&gt;</c> and a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> are views of the
     ///     collection that they wrap, as is the <c>ReadOnlySet&lt;T&gt;</c> of .NET 9. An instance of such a type,
     ///     or of a class derived from one, passes whatever it wraps: the method does not look at the wrapped
@@ -972,20 +979,21 @@ public static class Contract
             // An array type is reported as mutable, whatever its element type, and the test for it comes first so
             // that nothing else is read from an array type: on .NET 8, under the JIT, reading the interfaces of the
             // type delegate*<void>[] throws ArgumentException, and reading its namespace throws
-            // BadImageFormatException.
-            // For a type that is not an array, the three helpers compare the full name of a generic type
-            // definition (Type.FullName, whole and ordinal), not the type. Such a type passes when it implements
-            // a generic interface whose definition has the full name of IImmutableList<T>, IImmutableSet<T>,
-            // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
-            // from a generic type whose definition has the full name of FrozenSet<T> or
-            // FrozenDictionary<TKey, TValue>, or it is or derives from a generic type whose definition has the
-            // full name of ReadOnlyCollection<T> or ReadOnlyDictionary<TKey, TValue>, or the full name
-            // System.Collections.ObjectModel.ReadOnlySet`1. The assembly that declares the definition is not
-            // compared: a generic type of another assembly whose definition has one of these full names meets
-            // the condition too, a second loaded copy of the framework assembly being the case this is for. A
-            // type that is not an array and meets none of these conditions is a violation: a part of a name,
-            // such as the namespace or the start of the name, does not decide. No element and no state of the
-            // instance is read.
+            // BadImageFormatException. For a type that is not an array, the three helpers compare the full name
+            // of a generic type definition (Type.FullName, whole and ordinal), not the type. Such a type passes
+            // when it implements a generic interface whose definition has the full name of IImmutableList<T>,
+            // IImmutableSet<T>, IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>,
+            // or it is or derives from a generic type whose definition has the full name of FrozenSet<T>,
+            // FrozenDictionary<TKey, TValue>, ReadOnlyCollection<T> or ReadOnlyDictionary<TKey, TValue>, or the
+            // full name System.Collections.ObjectModel.ReadOnlySet`1. The assembly that declares the definition
+            // is not compared: an interface to implement, or a type to be or to derive from, of another assembly
+            // whose generic definition has the same full name stands for the one that the condition names, in
+            // that place only. A class with the full name of one of the five interfaces, and a type that
+            // implements an interface with the full name of a frozen type or of a wrapper, meet no condition by
+            // that. The case this is for is a second loaded copy of the framework assembly that declares the
+            // immutable and the frozen collections. A type that meets none of the conditions is a violation: a
+            // part of a name, such as the namespace or the start of the name, does not decide. No element and no
+            // state of the instance is read.
             bool typePasses =
                 !collectionType.IsArray
                 && (
@@ -1619,6 +1627,8 @@ public static class Contract
         }
     }
 
+    // Compares full names, for EnsureImmutableCollection. SharedTypes.IsFrozenSetOrDictionary compares types, for
+    // the comparison of EnsureAssignable. The two are kept apart on purpose.
     private static bool _IsFrozenSetOrDictionary(Type type)
     {
         for (Type? current = type; current is not null; current = current.BaseType)

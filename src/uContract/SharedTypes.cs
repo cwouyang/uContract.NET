@@ -119,10 +119,10 @@ internal static class SharedTypes
     // Contract.EnsureImmutableCollection does not call this helper or read a member of this class: it compares
     // full names with helpers of its own, in Contract, so a call of it does not run the initialiser of this
     // class. That matters because the initialiser builds the lists of shared types, which refer to types of
-    // other framework assemblies. Measured on .NET 8, under the JIT, when that method still called this helper
-    // (which reads no static field of this class): a call of Contract.EnsureImmutableCollection loaded none of
-    // System.Net.Http, System.Net.Sockets, System.ComponentModel.Primitives and
-    // System.Text.RegularExpressions, and a call of Contract.Old or Contract.EnsureAssignable loaded them.
+    // other framework assemblies. Measured on .NET 8, under the JIT: a call of
+    // Contract.EnsureImmutableCollection loaded none of System.Net.Http, System.Net.Sockets,
+    // System.ComponentModel.Primitives and System.Text.RegularExpressions, and a call of Contract.Old or
+    // Contract.EnsureAssignable loaded them.
     internal static bool IsFrozenSetOrDictionary(Type type)
     {
         return DerivesFromGeneric(type, typeof(FrozenSet<>)) || DerivesFromGeneric(type, typeof(FrozenDictionary<,>));
