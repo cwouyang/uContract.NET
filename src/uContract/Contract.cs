@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
@@ -29,7 +30,8 @@ namespace uContract;
 public static class Contract
 {
     // The framework declares ReadOnlySet<T>, a read-only wrapper of a set, from .NET 9; this library is built for
-    // .NET 8, so EnsureImmutableCollection matches that type by the full name of its generic type definition.
+    // .NET 8 and cannot refer to that type, so the full name of its generic type definition is written out here.
+    // EnsureImmutableCollection reads the other full names that it compares from the types of the framework.
     private const string ReadOnlySetFullName = "System.Collections.ObjectModel.ReadOnlySet`1";
 
     private static readonly ContractConfiguration Config = new();
@@ -868,7 +870,8 @@ public static class Contract
     ///     <c>IImmutableSet&lt;T&gt;</c>, <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>,
     ///     <c>IImmutableStack&lt;T&gt;</c> or <c>IImmutableQueue&lt;T&gt;</c>, or is or derives from a
     ///     <c>FrozenSet&lt;T&gt;</c>, <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, <c>ReadOnlyCollection&lt;T&gt;</c>,
-    ///     <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> or <c>System.Collections.ObjectModel.ReadOnlySet&lt;T&gt;</c>.
+    ///     <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> or <c>System.Collections.ObjectModel.ReadOnlySet&lt;T&gt;</c>,
+    ///     each of these types being matched by the full name of its generic type definition.
     ///     Returns the argument if it does, or throws <see cref="PostconditionViolationException" /> if it does not.
     ///     In a call that does not check the collection, returns the argument as it is.
     /// </summary>
@@ -892,24 +895,33 @@ public static class Contract
     /// <remarks>
     ///     This method checks the runtime type of <paramref name="collection" /> against the conditions given here.
     ///     That type decides: no element of the collection is read, and neither is the state of the instance.
-    ///     An array type is reported as mutable, whatever its element type. A type that is not an array passes when
-    ///     it implements <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
+    ///     An array type is reported as mutable, whatever its element type. For a type that is not an array, the
+    ///     method compares the full name of a generic type definition, as <c>Type.FullName</c> gives it (for
+    ///     example <c>System.Collections.Immutable.IImmutableList`1</c>), with the full names of the generic type
+    ///     definitions of the types named here; it compares the whole name, ordinally. A type that is not an array
+    ///     passes when it implements a generic interface whose definition has the full name of
+    ///     <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
     ///     <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>, <c>IImmutableStack&lt;T&gt;</c> or
     ///     <c>IImmutableQueue&lt;T&gt;</c>, whether the type or a base class declares the interface and whether
     ///     the implementation is explicit. A type that is not an array also passes when it is or derives from a
-    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, and when it is or
-    ///     derives from a <c>ReadOnlyCollection&lt;T&gt;</c> or a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c>,
-    ///     or from a generic type whose definition has the full name
+    ///     generic type whose definition has the full name of <c>FrozenSet&lt;T&gt;</c> or
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, and when it is or derives from a generic type whose
+    ///     definition has the full name of <c>ReadOnlyCollection&lt;T&gt;</c> or
+    ///     <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c>, or the full name
     ///     <c>System.Collections.ObjectModel.ReadOnlySet`1</c>. The framework declares <c>ReadOnlySet&lt;T&gt;</c>,
-    ///     a read-only wrapper of a set, from .NET 9; this library is built for .NET 8, so it matches that type by
-    ///     the full name of the generic definition. It compares that full name only: a generic type declared in
-    ///     another assembly whose definition has the same full name passes too.
+    ///     a read-only wrapper of a set, from .NET 9; this library is built for .NET 8 and cannot refer to that
+    ///     type, so it holds that full name as text.
+    ///     The method does not compare the assembly that declares a generic type definition: where a condition
+    ///     above names a type, a generic type of another assembly whose definition has the same full name meets
+    ///     the condition too. The case this is for is a second loaded copy of the framework assembly: the types of
+    ///     the copy have the full names of the framework's types and are not those types.
     ///     A <c>ReadOnlyCollection&lt;T&gt;</c> and a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> are views of the
     ///     collection that they wrap, as is the <c>ReadOnlySet&lt;T&gt;</c> of .NET 9. An instance of such a type,
     ///     or of a class derived from one, passes whatever it wraps: the method does not look at the wrapped
     ///     collection, which may be one that its owner can change.
-    ///     A type that is not an array and meets none of these conditions is reported as mutable: neither the
-    ///     namespace nor the name of the type is read, except the full name given above. So the
+    ///     A type that is not an array and meets none of these conditions is reported as mutable: the method
+    ///     compares whole full names of generic type definitions, and a part of a name, such as the namespace or
+    ///     the start of the name, does not decide. So the
     ///     <c>ImmutableList&lt;T&gt;.Builder</c> of an immutable list is reported as mutable, and so is a class or
     ///     a value type, such as <c>ReadOnlyMemory&lt;T&gt;</c>, whose name starts with "Immutable" or "ReadOnly"
     ///     and that meets none of the conditions.
@@ -961,20 +973,24 @@ public static class Contract
             // that nothing else is read from an array type: on .NET 8, under the JIT, reading the interfaces of the
             // type delegate*<void>[] throws ArgumentException, and reading its namespace throws
             // BadImageFormatException.
-            // A type that is not an array passes when it implements IImmutableList<T>, IImmutableSet<T>,
+            // For a type that is not an array, the three helpers compare the full name of a generic type
+            // definition (Type.FullName, whole and ordinal), not the type. Such a type passes when it implements
+            // a generic interface whose definition has the full name of IImmutableList<T>, IImmutableSet<T>,
             // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
-            // from a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or it is or derives from a
-            // ReadOnlyCollection<T>, a ReadOnlyDictionary<TKey, TValue> or a generic type whose definition has the
-            // full name System.Collections.ObjectModel.ReadOnlySet`1. That full name is the only name that is
-            // compared: a generic type of another assembly whose definition has it passes too. A type that is not
-            // an array and meets none of these conditions is a violation, whatever its name. Neither the
-            // namespace nor the name of the type is read, except that full name. No element and no state of the
+            // from a generic type whose definition has the full name of FrozenSet<T> or
+            // FrozenDictionary<TKey, TValue>, or it is or derives from a generic type whose definition has the
+            // full name of ReadOnlyCollection<T> or ReadOnlyDictionary<TKey, TValue>, or the full name
+            // System.Collections.ObjectModel.ReadOnlySet`1. The assembly that declares the definition is not
+            // compared: a generic type of another assembly whose definition has one of these full names meets
+            // the condition too, a second loaded copy of the framework assembly being the case this is for. A
+            // type that is not an array and meets none of these conditions is a violation: a part of a name,
+            // such as the namespace or the start of the name, does not decide. No element and no state of the
             // instance is read.
             bool typePasses =
                 !collectionType.IsArray
                 && (
                     _ImplementsImmutableCollectionInterface(collectionType)
-                    || SharedTypes.IsFrozenSetOrDictionary(collectionType)
+                    || _IsFrozenSetOrDictionary(collectionType)
                     || _IsReadOnlyWrapper(collectionType)
                 );
 
@@ -1603,6 +1619,28 @@ public static class Contract
         }
     }
 
+    private static bool _IsFrozenSetOrDictionary(Type type)
+    {
+        for (Type? current = type; current is not null; current = current.BaseType)
+        {
+            if (!current.IsGenericType)
+            {
+                continue;
+            }
+
+            Type definition = current.GetGenericTypeDefinition();
+            if (
+                _HasFullNameOf(definition, typeof(FrozenSet<>))
+                || _HasFullNameOf(definition, typeof(FrozenDictionary<,>))
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool _IsReadOnlyWrapper(Type type)
     {
         for (Type? current = type; current is not null; current = current.BaseType)
@@ -1614,8 +1652,8 @@ public static class Contract
 
             Type definition = current.GetGenericTypeDefinition();
             if (
-                definition == typeof(ReadOnlyCollection<>)
-                || definition == typeof(ReadOnlyDictionary<,>)
+                _HasFullNameOf(definition, typeof(ReadOnlyCollection<>))
+                || _HasFullNameOf(definition, typeof(ReadOnlyDictionary<,>))
                 || string.Equals(definition.FullName, ReadOnlySetFullName, StringComparison.Ordinal)
             )
             {
@@ -1642,11 +1680,11 @@ public static class Contract
 
             Type definition = implemented.GetGenericTypeDefinition();
             if (
-                definition == typeof(IImmutableList<>)
-                || definition == typeof(IImmutableSet<>)
-                || definition == typeof(IImmutableDictionary<,>)
-                || definition == typeof(IImmutableStack<>)
-                || definition == typeof(IImmutableQueue<>)
+                _HasFullNameOf(definition, typeof(IImmutableList<>))
+                || _HasFullNameOf(definition, typeof(IImmutableSet<>))
+                || _HasFullNameOf(definition, typeof(IImmutableDictionary<,>))
+                || _HasFullNameOf(definition, typeof(IImmutableStack<>))
+                || _HasFullNameOf(definition, typeof(IImmutableQueue<>))
             )
             {
                 return true;
@@ -1654,6 +1692,11 @@ public static class Contract
         }
 
         return false;
+    }
+
+    private static bool _HasFullNameOf(Type definition, Type frameworkDefinition)
+    {
+        return string.Equals(definition.FullName, frameworkDefinition.FullName, StringComparison.Ordinal);
     }
 
     // Note: The value-based null-check methods (RequireNotNull<T>, RequireNotEmpty, EnsureNotNull<T>,

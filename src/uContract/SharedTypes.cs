@@ -116,13 +116,13 @@ internal static class SharedTypes
     ///     array is not a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and does
     ///     not derive from one.
     /// </summary>
-    // Contract.EnsureImmutableCollection calls this helper, so a type added to it is accepted by that method too.
-    // The helper reads no static field of this class: an explicit static constructor on the class, or a static
-    // field read here, would make that method run the initialiser of the class. That matters because the
-    // initialiser builds the lists of shared types, which refer to types of other framework assemblies. Measured
-    // on .NET 8, under the JIT: a call of Contract.EnsureImmutableCollection loaded none of System.Net.Http,
-    // System.Net.Sockets, System.ComponentModel.Primitives and System.Text.RegularExpressions, and a call of
-    // Contract.Old or Contract.EnsureAssignable loaded them.
+    // Contract.EnsureImmutableCollection does not call this helper or read a member of this class: it compares
+    // full names with helpers of its own, in Contract, so a call of it does not run the initialiser of this
+    // class. That matters because the initialiser builds the lists of shared types, which refer to types of
+    // other framework assemblies. Measured on .NET 8, under the JIT, when that method still called this helper
+    // (which reads no static field of this class): a call of Contract.EnsureImmutableCollection loaded none of
+    // System.Net.Http, System.Net.Sockets, System.ComponentModel.Primitives and
+    // System.Text.RegularExpressions, and a call of Contract.Old or Contract.EnsureAssignable loaded them.
     internal static bool IsFrozenSetOrDictionary(Type type)
     {
         return DerivesFromGeneric(type, typeof(FrozenSet<>)) || DerivesFromGeneric(type, typeof(FrozenDictionary<,>));
