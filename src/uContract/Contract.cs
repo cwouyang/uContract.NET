@@ -1633,12 +1633,13 @@ public static class Contract
     // definition with the framework's type and reads no name, and then, when that gave no match, with
     // byFullName true, which compares full names. A definition that is the framework's type has the framework's
     // full name, so the first call changes no answer; it spares the reads of Type.FullName, which allocate under
-    // Native AOT (measured on .NET 8).
+    // Native AOT (measured on .NET 8). The two walks of the base classes come before the read of the interfaces,
+    // so that a type that matches in a walk does not read its interfaces in that call.
     private static bool _MeetsImmutableCollectionCondition(Type type, bool byFullName)
     {
-        return _ImplementsImmutableCollectionInterface(type, byFullName)
-            || _IsFrozenSetOrDictionary(type, byFullName)
-            || _IsReadOnlyWrapper(type, byFullName);
+        return _IsFrozenSetOrDictionary(type, byFullName)
+            || _IsReadOnlyWrapper(type, byFullName)
+            || _ImplementsImmutableCollectionInterface(type, byFullName);
     }
 
     // Compares types or full names, for EnsureImmutableCollection. SharedTypes.IsFrozenSetOrDictionary compares
