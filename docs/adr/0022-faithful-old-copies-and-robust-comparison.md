@@ -3268,9 +3268,12 @@ to B8 and R0–R8 are not changed: in `SharedTypes.cs` the change touches commen
   copy has the full name of the framework's type and is not that type (measured for
   `ImmutableList<int>` and for the type of a frozen set).
 - **Before the work**: the library on `master` as the work for #61 found it. **The final code**: the
-  library and the smoke program as this change leaves them. **2.0.0**: the 2.0.0 package of
-  nuget.org; the SHA512 of the restored package was compared with the one that nuget.org gives, and
-  they are equal.
+  library and the smoke program as this change leaves them. The runs on the inputs, the mutation
+  check and the allocation runs were made on states of this work whose library code is the final
+  one: what came after them changed comments, added one smoke check and changed documents. The
+  publishes that ADR-0021 records were made with that smoke check in place. **2.0.0**: the 2.0.0
+  package of nuget.org; the SHA512 of the restored package was compared with the one that nuget.org
+  gives, and they are equal.
 - **A throwaway program**: a program or a test that is not in the repository. Its result files are
   not in the repository either.
 - **Accepted** and **violation**: the method returns its argument, or throws
@@ -3330,13 +3333,17 @@ Its result tables and its other statements are the dated record of #57 and stay.
 - In the code: "`SharedTypes.IsFrozenSetOrDictionary(Type)` is the test for the two types." It still
   is, for the comparison of `EnsureAssignable<T>()`, and it compares types. The method has a test of
   its own, `Contract._IsFrozenSetOrDictionary`, which compares types and then full names. A comment
-  there says that the two are kept apart on purpose.
+  there says that the two are kept apart on purpose. The #57 amendment repeats the statement under
+  "Still true in the #49 amendment" ("`SharedTypes.IsFrozenSetOrDictionary` is still the test for
+  the two" types), and the same holds for that place.
 
 **Qualified in the #52 amendment.** The statement is quoted by its opening words:
 
 - Check 64: "It is the only test of that method with postconditions off." Check 64 gave its two
-  results again at the final code. Checks 85 to 91 call the method with `DBC_POST=off` too, and each
-  expects no exception there.
+  results again at the final code. It is not the one check that calls the method with
+  `DBC_POST=off`. Checks 17 and 18 do so, and ADR-0021 records that for 2.0.0 already; checks 85 to
+  91 do so now. Each of these nine checks expects no exception there, and each gave none in the
+  Native AOT publishes of this change.
 
 **A frozen collection of a second copy: three criteria.** This is a limit. The method, `Old<T>()` and
 the comparison of `EnsureAssignable<T>()` each test for a frozen collection in another way. Measured
@@ -3359,8 +3366,8 @@ filed when this amendment was written.
 **Decisions.** The maintainer made them on 2026-10-12, on the measurements below:
 
 - **The cost of a call is accepted.** The numbers are recorded below and in the CHANGELOG.
-- **One smoke check for the comparison by full name.** It is check 91, the seventh check for the
-  method; ADR-0021 lists the seven. No check that bounds the allocation is added.
+- **One smoke check for the comparison by full name.** It is check 91, the seventh of the checks
+  that this change adds for the method; ADR-0021 lists the seven. No check that bounds the allocation is added.
 - **Follow-up issues.** These are to be opened, and none was filed when this amendment was written:
   a trimmed publish in CI; a standing check that a call of the method does not run the type
   initialiser of `SharedTypes`; a standing check for what the mutation check below leaves open; and
@@ -3368,11 +3375,21 @@ filed when this amendment was written.
 
 **Measured results, unit tests.** JIT, whole suite. The suite had 994 tests before the work and has
 1103 at the final code; the Debug and the Release configuration gave the same total each time, with
-0 failed. The 109 added tests are in five new test files: `EnsureImmutableCollectionArrayTests.cs`,
-`EnsureImmutableCollectionFrozenTests.cs`, `EnsureImmutableCollectionInterfaceTests.cs`,
-`EnsureImmutableCollectionWrapperTests.cs` and `EnsureImmutableCollectionFullNameTests.cs`.
+0 failed. The 109 added tests are in five new test files of `tests/uContract.Tests`. These are the
+tests of the repository that hold the rule:
 
-**Measured results, the inputs.** With throwaway tests, under the JIT on .NET 8:
+| File | Tests | Inputs that its tests hold, in short |
+|---|---|---|
+| `EnsureImmutableCollectionArrayTests.cs` | 13 | Arrays, each a violation: of immutable collections, of read-only wrappers, of `ReadOnlyMemory<int>`, of frozen sets, of classes of the test assembly, and three array types of function pointers. |
+| `EnsureImmutableCollectionFrozenTests.cs` | 21 | Frozen sets and frozen dictionaries, and the `Keys`, the `Values` and the `Items` of them: accepted. Their enumerators, a class and a struct that the test assembly declares in the namespace `System.Collections.Frozen`, and a class named `FrozenSet<T>` that derives from no frozen type: violations. |
+| `EnsureImmutableCollectionInterfaceTests.cs` | 27 | Classes and a struct of the test assembly that implement one of the five interfaces, also through a base class and explicitly: accepted. Builders and enumerators of immutable collections, the `Keys` and the `Values` of an `ImmutableDictionary<int, int>`, a class with `IsReadOnly` true, and a class that implements an interface of its own named `IImmutableStack<T>`: violations. |
+| `EnsureImmutableCollectionWrapperTests.cs` | 26 | The read-only wrappers, classes derived from them, and a class of the test assembly with the full name of `ReadOnlySet<T>`: accepted. Types whose name starts with `Immutable` or `ReadOnly` and that meet no condition, what `ArrayList.ReadOnly(...)` returns, and the `Keys` and the `Values` of a `ReadOnlyDictionary<int, int>`: violations. |
+| `EnsureImmutableCollectionFullNameTests.cs` | 22 | A second copy: seven collections accepted, a builder and an array violations. A dynamically built assembly: six types accepted by a full name; four types whose full name is none of the ten names, violations; a full name that differs by letter case only, a violation; a class with the full name of an interface and a class that implements an interface with the full name of a frozen type, violations. |
+
+**Measured results, the inputs.** With throwaway tests, under the JIT on .NET 8. The throwaway runs
+have more inputs than the 109 tests, and they also recorded the answers before the work; the tests
+above hold inputs of each of the three sets in the repository. The tests also hold inputs that are
+in no throwaway run, for example the full name that differs by letter case only.
 
 | Inputs | Result |
 |---|---|
@@ -3494,6 +3511,8 @@ brings a limit next to B3 and R7. The rule itself is in ADR-0012.
 - [Issue #54: `Old` + `EnsureAssignable` in a class derived from a shared type](https://github.com/cwouyang/uContract.NET/issues/54)
 - [Issue #49: Compare frozen collections by elements in `EnsureAssignable`](https://github.com/cwouyang/uContract.NET/issues/49)
 - [Issue #57: `Old` shares an array of frozen collections instead of copying it](https://github.com/cwouyang/uContract.NET/issues/57)
+- [Issue #61: `EnsureImmutableCollection` throws `BadImageFormatException` for an array of function pointers](https://github.com/cwouyang/uContract.NET/issues/61)
+- [`Contract.cs`](../../src/uContract/Contract.cs) — `EnsureImmutableCollection<T>()` and the helpers of its rule
 - [`DeepCopier.cs`](../../src/uContract/DeepCopier.cs) — the copy
 - [`SharedTypes.cs`](../../src/uContract/SharedTypes.cs) — B3
 - [`MemberComparison.cs`](../../src/uContract/MemberComparison.cs) — R0–R8 and the walk
