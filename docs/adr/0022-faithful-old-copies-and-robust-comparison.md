@@ -12,6 +12,7 @@
 - **Amended**: 2026-10-10 — at the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: the call throws `InvalidOperationException` (rule S, #54); the smoke program has 74 checks; see the third Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared element by element, in enumeration order (R7), not by reference (R5), and one of the two types as `T` is compared as a whole; `Old<T>()` and B3 are unchanged (#49); the smoke program has 79 checks; see the fourth Amendment under Implementation Notes
 - **Amended**: 2026-10-11 — `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there (B3 shares the classes of that namespace that are not array types); `EnsureAssignable<T>()` compares an array type or `System.Array` as `T` as a whole, finds two arrays equal only when they have the same rank, and the same length and lower bound in every dimension, and compares two arrays of pointers or of function pointers by address (#57); the smoke program has 84 checks; see the fifth Amendment under Implementation Notes
+- **Amended**: 2026-10-12 — limit 18 of the #57 amendment no longer holds: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type of its argument, and it reports an array of function pointers as a violation (#61, [ADR-0012](0012-dotnet-improvements-over-java.md)); `Old<T>()`, `EnsureAssignable<T>()`, B1 to B8 and R0–R8 are unchanged; this amendment holds the measured results of that change; the smoke program has 91 checks; see the sixth Amendment under Implementation Notes
 
 ---
 
@@ -3246,6 +3247,240 @@ comparison does. `docs/adr/README.md` lists breaking changes under "Requires ADR
 
 **Unchanged.** Every other decision of this ADR.
 
+### Amendment (2026-10-12): EnsureImmutableCollection no longer reads the namespace; the measured results of #61
+
+This amendment follows the #57 amendment above.
+[Issue #61](https://github.com/cwouyang/uContract.NET/issues/61) gives
+`Contract.EnsureImmutableCollection<T>()` ("the method" below) a new rule. The amendment of
+2026-10-12 of [ADR-0012](0012-dotnet-improvements-over-java.md) records the rule, its decisions, the
+rejected alternatives and the limits. That of
+[ADR-0021](0021-postconditions-under-trimming-and-aot.md) records the trimming suppression, the
+seven smoke checks, and what was measured under Native AOT and in a trimmed publish without Native
+AOT. This amendment records four things: the statements of this ADR that no longer hold as written,
+one limit that the rule brings next to `Old<T>()` and `EnsureAssignable<T>()`, the decisions on cost
+and on checks, and the other measured results of the change. `Old<T>()`, `EnsureAssignable<T>()`, B1
+to B8 and R0–R8 are not changed: in `SharedTypes.cs` the change touches comments only.
+
+**Terms.** This amendment uses these terms:
+
+- **A second copy**: a second copy of the assembly `System.Collections.Immutable`, which declares
+  the immutable and the frozen collections, loaded into another `AssemblyLoadContext`. A type of the
+  copy has the full name of the framework's type and is not that type (measured for
+  `ImmutableList<int>` and for the type of a frozen set).
+- **Before the work**: the library on `master` as the work for #61 found it. **The final code**: the
+  library and the smoke program as this change leaves them. **2.0.0**: the 2.0.0 package of
+  nuget.org; the SHA512 of the restored package was compared with the one that nuget.org gives, and
+  they are equal.
+- **A throwaway program**: a program or a test that is not in the repository. Its result files are
+  not in the repository either.
+- **Accepted** and **violation**: the method returns its argument, or throws
+  `PostconditionViolationException`.
+
+Where the result file of a run on .NET 8 names the runtime, it is 8.0.16 under the JIT and 8.0.28
+under Native AOT (the allocation runs).
+
+**Superseded in the #57 amendment.** Each statement is quoted by its opening words:
+
+- Limit 18: "**Another method still reads the namespace.** `Contract.EnsureImmutableCollection<T>()`
+  reads `Type.Namespace` of the runtime type of its argument, and so throws". The method reads
+  neither `Type.Namespace` nor `Type.Name` now. It tests `Type.IsArray` first, and an array of
+  function pointers is a violation, as other arrays are (unit tests for `delegate*<void>[]`,
+  `delegate*<void>[][]` and `delegate*<void>[,]`; smoke check 86).
+- Measured, other results: "and `EnsureImmutableCollection<T>()` (limit 18, measured after the change
+  for the arrays of pointers)". That is the record of its date. Measured again for #61, with
+  throwaway programs: before the work and in 2.0.0 the three array types above ended in
+  `BadImageFormatException`.
+- What stays open: "**`Contract.EnsureImmutableCollection<T>()`** throws `BadImageFormatException`
+  for an array of function pointers (limit 18). No issue was filed for it when this amendment was
+  written." Issue #61 was filed for it on 2026-10-11, and this change is the change for that issue.
+- "It now has 84" and 83. The smoke program has 91 checks in the default build and 90 in the variant
+  with the hidden dictionary entry. The Status line of that amendment ("the smoke program has 84
+  checks") and its Revision History row ("84 smoke checks") state the same count and are superseded
+  with it, and so is "The program has 84 and 83 checks." under "Superseded in the #49 amendment".
+- "Under the JIT the program was run in its `--report` mode at the final state, where it prints 84"
+  and 83 lines. It prints 91 and 90 lines at the final code.
+
+Its result tables and its other statements are the dated record of #57 and stay.
+
+**Qualified in the #57 amendment.** Each statement is quoted by its opening words:
+
+- A12: "No smoke check covers an array of pointers or of function pointers." Under "Not covered by a
+  measurement": "Native AOT for an array of pointers or of function pointers: no smoke check covers
+  one (A12)." Check 86 passes a `delegate*<void>[]` to the method, and ADR-0021 gives its result
+  under Native AOT. No smoke check passes such an array to `Old<T>()` or to `EnsureAssignable<T>()`,
+  and none uses an array of pointers; for those the two statements stand.
+- Change 5: "the classification of B3 read `Type.Namespace` of the array type, and the runtime throws
+  when the innermost element type of an array type is a function pointer". Measured, other results:
+  "**The namespace of an array of function pointers.** Reading `Type.Namespace` throws
+  `BadImageFormatException` for". Both were measured under the JIT. A throwaway program for .NET 8
+  gave these answers under the JIT and published with Native AOT:
+
+  | Read | Array type | JIT | Native AOT |
+  |---|---|---|---|
+  | `Type.Namespace` | `delegate*<void>[]`, `delegate*<void>[][]`, `delegate*<void>[,]` | throws `BadImageFormatException`, each | `null`, each |
+  | `Type.FullName` | the same three | `System.Void()[]`, `System.Void()[][]`, `System.Void()[,]` | `null`, each |
+  | `Type.GetInterfaces()` | `delegate*<void>[]` | throws `ArgumentException` | 6 interfaces, none generic |
+  | `Type.GetInterfaces()` | `delegate*<void>[][]`; `delegate*<void>[,]` | 11 interfaces, 5 of them generic; 6, none generic | the same counts |
+
+  The method reads none of the three from an array type, and smoke check 86 gives the same result
+  under the JIT and under Native AOT: a violation.
+
+**Qualified in the #49 amendment.** The statement is quoted by its opening words:
+
+- In the code: "`SharedTypes.IsFrozenSetOrDictionary(Type)` is the test for the two types." It still
+  is, for the comparison of `EnsureAssignable<T>()`, and it compares types. The method has a test of
+  its own, `Contract._IsFrozenSetOrDictionary`, which compares types and then full names. A comment
+  there says that the two are kept apart on purpose.
+
+**Qualified in the #52 amendment.** The statement is quoted by its opening words:
+
+- Check 64: "It is the only test of that method with postconditions off." Check 64 gave its two
+  results again at the final code. Checks 85 to 91 call the method with `DBC_POST=off` too, and each
+  expects no exception there.
+
+**A frozen collection of a second copy: three criteria.** This is a limit. The method, `Old<T>()` and
+the comparison of `EnsureAssignable<T>()` each test for a frozen collection in another way. Measured
+with a throwaway program, under the JIT on .NET 8, with a `FrozenSet<int>` of a second copy:
+
+| Where | Criterion | Result for a set of a second copy |
+|---|---|---|
+| The method | The full name of the generic definition of the type or of one of its base classes | Accepted. |
+| `Old<T>()` | A class that is declared in the namespace `System.Collections.Frozen` (the namespace category of B3, as the #57 amendment left it) | A holder of such a set is copied, and the copy holds the original's set, as for a set of the framework. |
+| The comparison of `EnsureAssignable<T>()` | The two types of the framework, compared as types (`SharedTypes.IsFrozenSetOrDictionary`) | Two holders with two such sets of equal elements: a violation, where two sets of the framework of equal elements give no exception. Two such sets of different elements: a violation. One such set in both holders: no exception. |
+
+The three results of the last row are those of a comparison by reference. The way out is the one for
+order and comparer: list the member as assignable. Measured: with the member listed, two holders
+with two such sets give no exception, whether the elements are equal or different. Also measured and
+not stated in the user documents: `EnsureAssignable<object>` with two such sets of equal elements as
+`actual` and `expected` gives no exception. The maintainer decided on 2026-10-12 to state the limit
+in the API reference and here, and to open a follow-up issue on the comparison; the issue was not
+filed when this amendment was written.
+
+**Decisions.** The maintainer made them on 2026-10-12, on the measurements below:
+
+- **The cost of a call is accepted.** The numbers are recorded below and in the CHANGELOG.
+- **One smoke check for the comparison by full name.** It is check 91, the seventh check for the
+  method; ADR-0021 lists the seven. No check that bounds the allocation is added.
+- **Follow-up issues.** These are to be opened, and none was filed when this amendment was written:
+  a trimmed publish in CI; a standing check that a call of the method does not run the type
+  initialiser of `SharedTypes`; a standing check for what the mutation check below leaves open; and
+  the comparison of `EnsureAssignable<T>()` for a frozen collection of a second copy.
+
+**Measured results, unit tests.** JIT, whole suite. The suite had 994 tests before the work and has
+1103 at the final code; the Debug and the Release configuration gave the same total each time, with
+0 failed. The 109 added tests are in five new test files: `EnsureImmutableCollectionArrayTests.cs`,
+`EnsureImmutableCollectionFrozenTests.cs`, `EnsureImmutableCollectionInterfaceTests.cs`,
+`EnsureImmutableCollectionWrapperTests.cs` and `EnsureImmutableCollectionFullNameTests.cs`.
+
+**Measured results, the inputs.** With throwaway tests, under the JIT on .NET 8:
+
+| Inputs | Result |
+|---|---|
+| 133 runtime types, before the work and at the final code | Before the work: 62 accepted, 68 violations, 3 ended in `BadImageFormatException`. At the final code: 62 accepted, 71 violations. 55 answers changed: 26 from accepted to violation, 26 from violation to accepted, and the 3 exceptions to violation. Each of the 133 answers at the final code is the one that the design had derived from the rule. |
+| 19 types of a second copy and of a dynamically built assembly | At the final code: 13 accepted, 6 violations, each as the design expected. While the code compared types, 12 of the 13 were violations. |
+| 3 more forms from a dynamically built assembly | A generic class with the full name of `IImmutableStack<T>`: a violation. A class that implements a generic interface with the full name of `FrozenSet<T>`: a violation. A class with the name ``System.Collections.ObjectModel.ReadOnlyCollection`1`` and two type parameters: accepted. |
+
+The amendment of ADR-0012 names the inputs that its rule, its rejected alternatives and its limits
+rest on.
+
+**Measured with the 2.0.0 package.** A throwaway program ran 14 inputs and one value of a second
+copy with the 2.0.0 package and with the final code, on .NET 8.0.16:
+
+| Input | 2.0.0 | Final code |
+|---|---|---|
+| `ImmutableList<int>[]` | accepted | violation |
+| `delegate*<void>[]` | `BadImageFormatException` | violation |
+| `FrozenSet<int>`; `FrozenDictionary<int, int>` | violation, each | accepted, each |
+| `ImmutableList<int>.Builder`; a class named `ImmutableBag` that holds a `List<int>`; `ReadOnlyMemory<int>`; the result of `ArrayList.ReadOnly(...)` for an `ArrayList` | accepted, each | violation, each |
+| a class that implements `IImmutableStack<int>`; a class derived from `ReadOnlyCollection<int>` whose name does not start with `ReadOnly` | violation, each | accepted, each |
+| `ImmutableList<int>`; `ReadOnlyCollection<int>`; a class named `ReadOnlyOrders` derived from `ReadOnlyCollection<int>`; `ImmutableList<int>.Empty` of a second copy | accepted, each | accepted, each |
+| `List<int>` | violation | violation |
+
+A second throwaway program ran 25 more inputs with the same restored 2.0.0 package. For each of the
+25, 2.0.0 gave the answer that the library gave before the work. What the CHANGELOG says of 2.0.0
+for this method comes from these two programs.
+
+**Measured results, allocation.** Bytes allocated per call, measured with throwaway programs. "Types
+only" is the first implementation of the rule, which compared types and compared a name for
+`ReadOnlySet<T>` only. "Names at each comparison" is the first implementation of the comparison by
+full name, which read two names at each comparison. "—" means that no number exists.
+
+| Call | 2.0.0, JIT | Final code, JIT | Types only, Native AOT | Names at each comparison, Native AOT | Final code, Native AOT |
+|---|---|---|---|---|---|
+| `ImmutableList<int>`, accepted | 192 | 312 | 1544 | 7064 | 1544 |
+| `ReadOnlyCollection<int>`, accepted | 192 | 192 | 1024 | 10512 | 192 |
+| `ImmutableDictionary<int, int>`, accepted | 192 | 304 | 1528 | 7928 | 1528 |
+| `FrozenSet<int>`, accepted | — | 192 | 1008 | 11120 | 192 |
+| `ImmutableArray<int>`, accepted | — | 368 | 1560 | 11744 | 1560 |
+| a class of the program with the full name of `ReadOnlySet<T>`, accepted by full name | — | 232 | 824 | — | 984 |
+| `List<int>`, a violation, with the exception | — | 881 | 1800 | — | 3552 |
+| a class of the program that implements one generic interface of the program, a violation, with the exception | — | 768 | 1296 | — | 1792 |
+
+- The first implementation of the comparison by full name allocated 7064 to 11744 bytes for the five
+  accepted rows under Native AOT. That is why the final code compares types first and compares full
+  names only without a match, with names that it reads once. A first correction of that kind still
+  gave 1024 bytes for the `ReadOnlyCollection<int>` and 1608 for the row that is accepted by full
+  name; with the two walks of the base classes put before the read of the interfaces they are 192
+  and 984.
+- At the final code under Native AOT, a call that ends in a violation allocates more than with types
+  only: 3552 against 1800 bytes, and 1792 against 1296.
+- No number exists for 2.0.0 under Native AOT.
+- These are measurements of one program each, and not bounds that the library keeps.
+
+**Measured results, mutation check.** At the final code the library was changed by hand in eight
+ways. No change was committed, and the 124 unit tests that the work selected for the method ran each
+time:
+
+| Change | Tests that fail |
+|---|---|
+| The test for an array is taken out | 1: the test for an array of function pointers, which ends in `ArgumentException` |
+| The condition on the five interfaces is taken out | 29 |
+| The condition on the two frozen types is taken out | 16 |
+| The condition on the wrappers is taken out | 16 |
+| The second call, which compares full names, is taken out | 15 |
+| Simple names are compared in place of full names (the constant for `ReadOnlySet<T>` stays a full name) | 7 |
+| The names are compared without regard to letter case | 1 |
+| The first call, which compares types, is taken out | 0 |
+
+For the first four, the work had listed before the runs which tests must fail, and those failed. The
+last row shows what no test holds: the first call changed no answer of the 124 tests, and it is
+there to spare the reads of `Type.FullName`. No test and no smoke check holds it or the order of the
+walks; the allocation numbers above are the evidence for both.
+
+**Measured, other results.** Each with a throwaway program:
+
+- **The type initialiser of `SharedTypes`.** Under the JIT on .NET 8, with one kind of call in each
+  process: a process that only calls the method loaded none of `System.ComponentModel.Primitives`,
+  `System.Net.Http`, `System.Net.Primitives`, `System.Net.Sockets` and
+  `System.Text.RegularExpressions`; a process that only calls `Old<T>()`, and one that only calls
+  `EnsureAssignable<T>()`, loaded the five. The lists of B3 in `SharedTypes` name types of such
+  assemblies, so the result is taken to show that a call of the method does not run that
+  initialiser. No standing check holds it.
+- **.NET 10.** The library, built for .NET 8, in a program on runtime 10.0.9, under the JIT and
+  published with Native AOT, with the same answers in both: the framework's `ReadOnlySet<int>`, the
+  result of `HashSet<int>.AsReadOnly()`, a class derived from `ReadOnlySet<int>` and a
+  `ReadOnlyCollection<int>` are accepted; a `ReadOnlySet<int>` that is declared in another namespace
+  and a `List<int>` are violations.
+- **The comparison by full name under Native AOT on .NET 8.** In the program of the allocation runs,
+  a class of the program with the full name of `ReadOnlySet<T>` and a class derived from it are
+  accepted; a `List<int>`, a class that implements only a generic interface of the program, and an
+  `ImmutableList<int>.Builder` are violations.
+
+**Not covered by a measurement.**
+
+- 2.0.0 under Native AOT, and the method on .NET 9.
+- A second copy under Native AOT, and a second copy of another version of the assembly.
+- The `linux-x64` publish, which CI runs. It had not run for this change when this amendment was
+  written.
+- What the last row of the mutation check leaves open.
+
+**Why an amendment and not a new ADR.** B1 to B8 and R0–R8 stand, and this change does not touch
+`Old<T>()` or `EnsureAssignable<T>()`. It is recorded here because limit 18 stood here, because the
+measured results of the changes to the postcondition helpers are kept here, and because the rule
+brings a limit next to B3 and R7. The rule itself is in ADR-0012.
+
+**Unchanged.** The decisions of this ADR.
+
 ---
 
 ## References
@@ -3291,3 +3526,4 @@ comparison does. `docs/adr/README.md` lists breaking changes under "Requires ADR
 | 2026-10-10 | Amended     | One instance of a shared type whose state can change, passed as `actual` and as `expected`, throws `InvalidOperationException` (rule S, #54); 74 smoke checks. Decision unchanged. See Implementation Notes > third Amendment. |
 | 2026-10-10 | Amended     | Two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared by element (R7), not by reference (R5), and one of the two types as `T` is compared as a whole (#49); 79 smoke checks. Decision unchanged. See Implementation Notes > fourth Amendment. |
 | 2026-10-11 | Amended     | `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there; an array type or `System.Array` as `T` is compared as a whole; two arrays are equal only with the same rank, lengths and lower bounds; two arrays of pointers or of function pointers are compared by address (#57); 84 smoke checks. Decision unchanged. See Implementation Notes > fifth Amendment. |
+| 2026-10-12 | Amended     | Limit 18 of the #57 amendment is superseded: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type and reports an array of function pointers as a violation (#61; rule in ADR-0012); the measured results of that change; a limit for a frozen collection of a second copy of its assembly; 91 smoke checks. Decision unchanged. See Implementation Notes > sixth Amendment. |

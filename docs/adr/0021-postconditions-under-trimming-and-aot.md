@@ -13,6 +13,7 @@
 - **Amended**: 2026-10-10 — the "no members visible" check for `T` also does not run when one instance of a shared type whose state can change is passed as `actual` and as `expected` (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — the "no members visible" check for `T` also does not run when `T` is a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, and the rule can fire for an element of two such values that a member or element holds (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fifth Amendment under Implementation Notes
 - **Amended**: 2026-10-11 — the "no members visible" check for `T` also does not run when `T` is an array type or `System.Array`; below such a `T` the path in the "cannot compare" message starts with the parameter name `actual`; and the rule can fire below an array whose element type is declared in `System.Collections.Frozen` (#57, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the sixth Amendment under Implementation Notes
+- **Amended**: 2026-10-12 — the library has one more `IL2070` suppression, on the private method that reads the interfaces of the runtime type for `EnsureImmutableCollection<T>()`; the smoke program gains checks 85 to 91 for that method, measured under Native AOT and in a trimmed publish without Native AOT; CI repeats the Native AOT publish only (#61, [ADR-0012](0012-dotnet-improvements-over-java.md)); see the seventh Amendment under Implementation Notes
 
 ---
 
@@ -494,6 +495,91 @@ In check 82 each of the two arrays holds its own `HiddenLeaf`, and the two have 
 
 Unchanged: the "no members visible" rule itself, its message when the type is `T`, the statement that `System.Object` is exempt, and every other decision of this ADR.
 
+### Amendment (2026-10-12): The trimming suppression of EnsureImmutableCollection and its smoke checks (#61)
+
+The decision is unchanged. [Issue #61](https://github.com/cwouyang/uContract.NET/issues/61) gives `EnsureImmutableCollection<T>()` a new rule; the amendment of [ADR-0012](0012-dotnet-improvements-over-java.md) of the same date records it. Under that rule the method reads the interfaces of the runtime type of its argument with `Type.GetInterfaces()`, and the build reports trimming warning `IL2070` for that read. This amendment records the suppression of that warning, the seven smoke checks that were added for the method, what was measured under Native AOT and in a trimmed publish without Native AOT, and what the continuous integration repeats. The amendment of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) of the same date records the other measured results of the change and points here for these.
+
+**The suppression.** `[UnconditionalSuppressMessage]` with the category `Trimming` and the id `IL2070` is on the private method `Contract._ImplementsImmutableCollectionInterface`, which holds the read. The public method has no trimming attribute, and its signature is unchanged. The justification of the suppression makes five statements. Each is given here with what holds it:
+
+| # | Statement of the justification | What holds it |
+|---|---|---|
+| 1 | No caller is annotated: the signature and the attributes of `EnsureImmutableCollection` are not to change, and an annotation on that method, for example `[RequiresUnreferencedCode]`, would put a trimming diagnostic on callers of a method that only reads the runtime type of its argument. | A decision of the maintainer (I7 in the amendment of ADR-0012). Measured with a throwaway project, with the trim analyzer on: `[RequiresUnreferencedCode]` on a method gave `IL2026` at the calls of it that the project holds, with a concrete argument and with a forwarded type parameter; `[DynamicallyAccessedMembers]` for the interfaces on its type parameter gave no diagnostic for a call with a concrete type argument, and `IL2091` where a generic caller forwarded its own type parameter without the annotation. |
+| 2 | The library itself refers to the five interface types, in the `typeof` expressions of this method. | Read from the code: the method names `IImmutableList<>`, `IImmutableSet<>`, `IImmutableDictionary<,>`, `IImmutableStack<>` and `IImmutableQueue<>` in `typeof` expressions. |
+| 3 | The Native AOT smoke program of the repository holds a check that calls the method with an instance of a class of that program that implements one of the five interfaces, and expects it to be accepted. | Check 89 below. A comment at the check points back to the justification. |
+| 4 | The measured results are recorded in ADR-0021. | "Measured" below. |
+| 5 | If one of the five interfaces were missing from what the runtime returns here, a type that implements only that interface among the five and passes by no other condition would be reported as a violation, not accepted. | Read from the code: without a match the method answers "violation". No publish was measured in which an interface was missing. |
+
+**The checks.** Checks 85 to 91 of the smoke program call `EnsureImmutableCollection<T>()`:
+
+| # | Check | Expected under Native AOT, postconditions enabled |
+|---|---|---|
+| 85 | `EnsureImmutableCollection` on an array of immutable lists (`ImmutableList<int>[]`) | `PostconditionViolationException` |
+| 86 | `EnsureImmutableCollection` on an array of function pointers (`delegate*<void>[]`) | `PostconditionViolationException` |
+| 87 | `EnsureImmutableCollection` on a frozen set of strings | no exception |
+| 88 | `EnsureImmutableCollection` on the builder of an immutable list | `PostconditionViolationException` |
+| 89 | `EnsureImmutableCollection` on a class of the program that implements `IImmutableStack<int>`; its members throw | no exception |
+| 90 | `EnsureImmutableCollection` on a `ReadOnlyCollection<int>` over a list | no exception |
+| 91 | `EnsureImmutableCollection` on a class of the program with the full name ``System.Collections.ObjectModel.ReadOnlySet`1`` | no exception |
+
+With `DBC_POST=off`, each of the seven expects no exception. The default build of the program and its variant with the hidden dictionary entry (`-p:AotSmokeHiddenDictionaryEntry=true`) both hold the seven checks.
+
+Check 89 is the check that the justification names. Its class is passed as its own type, so the method reads the interfaces of that class.
+
+Check 91 adds the comparison by full name. The program is built for `net8.0` and declares a class `ReadOnlySet<T>` in the namespace `System.Collections.ObjectModel`; the library has no reference to a type of that name and holds the name as text. Checks 87, 89 and 90 pass a type that is, derives from or implements a type that the library refers to, and the library accepts such a type by comparing types, before it compares a name (see the amendment of ADR-0012). So check 91 is the one check of the program whose result comes from the comparison by full name. Measured under the JIT: with the comparison by full name taken out of the library, check 91 reported a violation, and checks 87, 89 and 90 still reported no exception.
+
+**Measured.** At the final code of the change, on `win-x64`, with the .NET 8 SDK.
+
+Native AOT. Each publish ran `dotnet publish tests\uContract.AotSmoke\uContract.AotSmoke.csproj -c Release -r win-x64 -warnaserror`, with switches that make the build sequential and name the output folder, and with `-p:AotSmokeHiddenDictionaryEntry=true` for the variant. Neither publish log names a diagnostic:
+
+| Publish | With postconditions on | With `DBC_POST=off` |
+|---|---|---|
+| Default | 91 `PASS`, no `FAIL` | 91 `PASS`, no `FAIL` |
+| Variant with the hidden dictionary entry | 90 `PASS`, no `FAIL` | 90 `PASS`, no `FAIL` |
+
+These are the seven lines of the default publish with postconditions on; the variant gave the same seven lines. With `DBC_POST=off`, each of the seven lines ends `expected=no exception got=no exception`, in both publishes:
+
+```text
+PASS 85 EnsureImmutableCollection array of immutable lists expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: Ensure resultingCollection is an immutable collection
+PASS 86 EnsureImmutableCollection array of function pointers expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: Ensure resultingCollection is an immutable collection
+PASS 87 EnsureImmutableCollection frozen set of strings expected=no exception got=no exception
+PASS 88 EnsureImmutableCollection builder of an immutable list expected=PostconditionViolationException got=PostconditionViolationException Postcondition violated: Ensure resultingCollection is an immutable collection
+PASS 89 EnsureImmutableCollection class that implements IImmutableStack expected=no exception got=no exception
+PASS 90 EnsureImmutableCollection read-only collection over a list expected=no exception got=no exception
+PASS 91 EnsureImmutableCollection class with the full name of ReadOnlySet expected=no exception got=no exception
+```
+
+Trimmed, not Native AOT. The publish was made by hand: the smoke project, default build, published self-contained for `win-x64` with `-p:PublishAot=false -p:PublishTrimmed=true -p:TrimMode=full`. The publish log names no diagnostic. The program was run with postconditions on, and it printed its results in report mode (`INFO` lines). Ten checks of the program call the method: 17, 18, 64 and 85 to 91. Each of the ten printed the same result as in the JIT run of the same code:
+
+| Checks | Result in the trimmed publish, postconditions on |
+|---|---|
+| 17, 87, 89, 90, 91 | no exception |
+| 18, 85, 86, 88 | `PostconditionViolationException` |
+| 64 (a `null` `collection`) | `ArgumentNullException` naming `collection` |
+
+The trimmed publish was not run with `DBC_POST=off`, and the variant was not published trimmed.
+
+JIT. In its `--report` mode the program prints 91 lines in the default build and 90 in the variant. Checks 85 to 91 gave the same results as under Native AOT, with postconditions on and with `DBC_POST=off`.
+
+So the class of check 89 was accepted in the two Native AOT publishes, in the trimmed publish and under the JIT.
+
+**What the continuous integration repeats.** `build-and-test.yml` has three steps for the smoke program, and they run on the Linux runner only. One publishes the default build with Native AOT for `linux-x64`, with `-warnaserror`. Two run the published program with `--assert`: one with the defaults and one with `DBC_POST=off`. So CI repeats checks 85 to 91 of the default build under Native AOT. It does not publish the variant, and it has no step that publishes the program trimmed without Native AOT: the trimmed result above is a hand measurement. The workflow had not run for this change when this amendment was written. A trimmed publish in CI is to be proposed in a follow-up issue, which was not filed when this amendment was written.
+
+**Not measured.** The `linux-x64` publish locally. A publish in which the trimmer removes one of the five interfaces from a type that is passed to the method.
+
+**Qualified in the accepted text.** Each statement is quoted by its opening words:
+
+- Decision 5: "Two things are **not** protected by CI. Trimmed, non-AOT behaviour was measured by hand once." CI still does not protect it. It was measured by hand again for this change, for the ten checks that call `EnsureImmutableCollection<T>()`; "Measured" above gives the publish at the final code.
+- Measurements, "Trimmed, not Native AOT": the table there has no row for checks 17 and 18. In the trimmed publish of this change, check 17 gave no exception and check 18 gave `PostconditionViolationException`.
+- Implementation Notes: "**Annotating only the two type parameters is sufficient.** The method that reads metadata from a `Type` is not annotated and keeps its `IL2070` suppression". That is said of the comparison of `EnsureAssignable<T>()`, and it stands. The library now has one more `IL2070` suppression, in `Contract`, with a justification of its own.
+
+**Still true in the accepted text.** The rows of checks 17 and 18 in the table of the smoke program: in the two Native AOT publishes of this change, check 17 gave no exception and check 18 gave `PostconditionViolationException`.
+
+**Qualified in the sixth Amendment (#57).** The statement is quoted by its opening words:
+
+- "`System.Array` as `T` and an array of pointers or of function pointers were not measured under Native AOT." That stands for `EnsureAssignable<T>()` and for `Old<T>()`. Check 86 passes a `delegate*<void>[]` to `EnsureImmutableCollection<T>()` under Native AOT, and the method reports a violation.
+
+Unchanged: the "no members visible" rule, the unreadable-property rule, the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`, and the other decisions of this ADR.
+
 ---
 
 ## References
@@ -526,3 +612,4 @@ Unchanged: the "no members visible" rule itself, its message when the type is `T
 | 2026-10-10 | Amended     | The check for `T` also does not run for one instance of a shared type whose state can change, passed as `actual` and as `expected` (#54); decision in ADR-0022. Decision unchanged. See Implementation Notes > fourth Amendment. |
 | 2026-10-10 | Amended     | The check for `T` also does not run for a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` as `T`; the elements of two such values that a member or element holds are reached (#49); decision in ADR-0022. Decision unchanged. See Implementation Notes > fifth Amendment. |
 | 2026-10-11 | Amended     | The check for `T` also does not run for an array type or `System.Array` as `T`; below such a `T` the path in the message starts with `actual`; an array whose element type is declared in `System.Collections.Frozen` is no longer decided by reference (#57); decision in ADR-0022. Decision unchanged. See Implementation Notes > sixth Amendment. |
+| 2026-10-12 | Amended     | One more `IL2070` suppression, for the interface read of `EnsureImmutableCollection<T>()`; smoke checks 85 to 91, measured under Native AOT and in a trimmed publish without Native AOT; CI repeats the Native AOT publish only (#61); decision in ADR-0012. Decision unchanged. See Implementation Notes > seventh Amendment. |
