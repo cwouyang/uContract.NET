@@ -901,16 +901,14 @@ public static class Contract
     ///     example <c>System.Collections.Immutable.IImmutableList`1</c>): that of each generic interface that the
     ///     type implements with those of the five interfaces named here, and that of the type and of each of its
     ///     base classes, where generic, with those of the two frozen types and the three wrappers named here. It
-    ///     compares the whole name, ordinally; where a definition is the framework's own type, it takes the names
-    ///     as equal and does not read them. A type that is not an array
-    ///     passes when it implements a generic interface whose definition has the full name of
-    ///     <c>IImmutableList&lt;T&gt;</c>, <c>IImmutableSet&lt;T&gt;</c>,
-    ///     <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>, <c>IImmutableStack&lt;T&gt;</c> or
-    ///     <c>IImmutableQueue&lt;T&gt;</c>, whether the type or a base class declares the interface and whether
-    ///     the implementation is explicit. A type that is not an array also passes when it is or derives from a
-    ///     generic type whose definition has the full name of <c>FrozenSet&lt;T&gt;</c> or
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, and when it is or derives from a generic type whose
-    ///     definition has the full name of <c>ReadOnlyCollection&lt;T&gt;</c> or
+    ///     compares the whole name, ordinally. A type that is not an array passes when it implements a generic
+    ///     interface whose definition has the full name of <c>IImmutableList&lt;T&gt;</c>,
+    ///     <c>IImmutableSet&lt;T&gt;</c>, <c>IImmutableDictionary&lt;TKey, TValue&gt;</c>,
+    ///     <c>IImmutableStack&lt;T&gt;</c> or <c>IImmutableQueue&lt;T&gt;</c>, whether the type or a base class
+    ///     declares the interface and whether the implementation is explicit. A type that is not an array also
+    ///     passes when it is or derives from a generic type whose definition has the full name of
+    ///     <c>FrozenSet&lt;T&gt;</c> or <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, and when it is or derives
+    ///     from a generic type whose definition has the full name of <c>ReadOnlyCollection&lt;T&gt;</c> or
     ///     <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c>, or the full name
     ///     <c>System.Collections.ObjectModel.ReadOnlySet`1</c>. The framework declares <c>ReadOnlySet&lt;T&gt;</c>,
     ///     a read-only wrapper of a set, from .NET 9; this library is built for .NET 8 and cannot refer to that
@@ -921,19 +919,19 @@ public static class Contract
     ///     another assembly whose generic definition has the same full name stands for it. A full name counts
     ///     only in the place that its condition gives it: a class that has the full name of one of the five
     ///     interfaces, and a type that implements an interface with the full name of a frozen type or of a
-    ///     wrapper, meet no condition by that. The case this is for is a second loaded copy of the framework assembly that declares the
-    ///     immutable and the frozen collections: the types of the copy have the full names of the framework's
-    ///     types and are not those types.
+    ///     wrapper, meet no condition by that. The case this is for is a second loaded copy of the framework
+    ///     assembly that declares the immutable and the frozen collections: the types of the copy have the full
+    ///     names of the framework's types and are not those types.
     ///     A <c>ReadOnlyCollection&lt;T&gt;</c> and a <c>ReadOnlyDictionary&lt;TKey, TValue&gt;</c> are views of the
     ///     collection that they wrap, as is the <c>ReadOnlySet&lt;T&gt;</c> of .NET 9. An instance of such a type,
     ///     or of a class derived from one, passes whatever it wraps: the method does not look at the wrapped
     ///     collection, which may be one that its owner can change.
     ///     A type that is not an array and meets none of these conditions is reported as mutable: the method
     ///     compares whole full names of generic type definitions, and a part of a name, such as the namespace or
-    ///     the start of the name, does not decide. So the
-    ///     <c>ImmutableList&lt;T&gt;.Builder</c> of an immutable list is reported as mutable, and so is a class or
-    ///     a value type, such as <c>ReadOnlyMemory&lt;T&gt;</c>, whose name starts with "Immutable" or "ReadOnly"
-    ///     and that meets none of the conditions.
+    ///     the start of the name, does not decide. So the <c>ImmutableList&lt;T&gt;.Builder</c> of an immutable
+    ///     list is reported as mutable, and so is a class or a value type, such as
+    ///     <c>ReadOnlyMemory&lt;T&gt;</c>, whose name starts with "Immutable" or "ReadOnly" and that meets none of
+    ///     the conditions.
     ///     A pass is a statement about the runtime type and not a proof that the content cannot change, although the
     ///     name of the method and the message of the violation say "immutable": the elements of an accepted
     ///     collection are not examined, a <c>ReadOnlyCollection&lt;T&gt;</c> passes whatever list it wraps, which
@@ -982,11 +980,11 @@ public static class Contract
             // that nothing else is read from an array type: on .NET 8, under the JIT, reading the interfaces of the
             // type delegate*<void>[] throws ArgumentException, and reading its namespace throws
             // BadImageFormatException. For a type that is not an array, the helpers compare generic type
-            // definitions: first with the framework's types, which reads no name, and then by full name
-            // (Type.FullName, whole and ordinal). Such a type passes
-            // when it implements a generic interface whose definition has the full name of IImmutableList<T>,
-            // IImmutableSet<T>, IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>,
-            // or it is or derives from a generic type whose definition has the full name of FrozenSet<T>,
+            // definitions: first with the nine framework types that the library refers to, which reads no name,
+            // and then by full name (Type.FullName, whole and ordinal). Such a type passes when it implements a
+            // generic interface whose definition has the full name of IImmutableList<T>, IImmutableSet<T>,
+            // IImmutableDictionary<TKey, TValue>, IImmutableStack<T> or IImmutableQueue<T>, or it is or derives
+            // from a generic type whose definition has the full name of FrozenSet<T>,
             // FrozenDictionary<TKey, TValue>, ReadOnlyCollection<T> or ReadOnlyDictionary<TKey, TValue>, or the
             // full name System.Collections.ObjectModel.ReadOnlySet`1. The assembly that declares the definition
             // is not compared: an interface to implement, or a type to be or to derive from, of another assembly
@@ -1630,10 +1628,11 @@ public static class Contract
     }
 
     // EnsureImmutableCollection calls this twice: first with byFullName false, which compares each generic type
-    // definition with the framework's type and reads no name, and then, when that gave no match, with
-    // byFullName true, which compares full names. A definition that is the framework's type has the framework's
-    // full name, so the first call changes no answer; it spares the reads of Type.FullName, which allocate under
-    // Native AOT (measured on .NET 8). The two walks of the base classes come before the read of the interfaces,
+    // definition with the nine framework types that the library refers to and reads no name, and then, when
+    // that gave no match, with byFullName true, which compares full names. A definition that is one of the
+    // nine types has the full name of that type, so the first call changes no answer; for a type that matches
+    // in it, it spares the reads of Type.FullName, which allocate under Native AOT (measured on .NET 8). The
+    // two walks of the base classes come before the read of the interfaces,
     // so that a type that matches in a walk does not read its interfaces in that call.
     private static bool _MeetsImmutableCollectionCondition(Type type, bool byFullName)
     {
@@ -1741,9 +1740,9 @@ public static class Contract
         return false;
     }
 
-    // The full names that EnsureImmutableCollection compares, read once from the types of the framework when the
-    // method first compares by full name. The arrays are filled here and not changed afterwards. They are in a
-    // class of their own so that the other methods of Contract do not run these reads.
+    // The full names that EnsureImmutableCollection compares. They are read from the types of the framework in
+    // the initialiser of this class, which runs once. The arrays are filled here and not changed afterwards.
+    // They are not fields of Contract, so the initialiser of Contract does not hold these reads.
     private static class ImmutableCollectionFullNames
     {
         internal static readonly string?[] Interfaces =
