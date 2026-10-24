@@ -3614,11 +3614,12 @@ original: the copy is complete, and the gap is in the comparison. Cause, read fr
 `GetFields(Public | NonPublic | Instance)` of the compared type only. Reflection does not return
 there the private fields of a base class, and the backing field of an auto-property is private.
 The same function lists the members of `T` (`typeof(T)`, in `Contract.EnsureAssignable<T>()`) and
-of each nested object the walk enters (its runtime type, in `MemberComparison.StartMembers`), so
-the limit holds for a nested object too, where a second pair with `T` = the base class does not
-reach it; this was read from the code and not measured. `DeepCopier` walks `BaseType`. This is item 1 of #40. The XML documentation of
-`EnsureAssignable<T>()` already stated it ("Private fields declared on a base class are not
-compared"); the user documents did not.
+of each nested object that is compared by its members (its runtime type, in
+`MemberComparison.StartMembers`), so the limit holds for such a nested object too, and a second
+pair on the owning object, with `T` = the base class of the owning class, does not reach it; this
+was read from the code and not measured. `DeepCopier` walks `BaseType`. This is item 1 of #40. The
+XML documentation of `EnsureAssignable<T>()` already stated it ("Private fields declared on a base
+class are not compared"); the user documents did not.
 
 **A `Stream` as `T`.** `EnsureAssignable<Stream>` with two different `MemoryStream`s threw
 `TargetInvocationException`, with the inner `InvalidOperationException` "Timeouts are not supported
@@ -3690,22 +3691,24 @@ as it was written.
 - `docs/examples/USAGE_EXAMPLES.md`: the base-class members (for the pair on the owning object) and
   the `Stream` (for a member replaced by another stream). The class derived from a shared type is
   covered there by the existing advice to check the member with `Contract.Ensure`.
-- The `[Unreleased]` section of `CHANGELOG.md`: the base-class members and the `Stream`, in the
-  entry for #52 and #57. The class derived from a fixed shared type is covered by the migration
-  sentence quoted below, unchanged.
+- The `[Unreleased]` section of `CHANGELOG.md`, in the entry for #52 and #57: the base-class
+  members, the `Stream`, and the getter that throws for one instance of a class derived from `Type`
+  or `MemberInfo`. The rest of the case of a class derived from a fixed shared type is covered by
+  the migration sentence quoted below, unchanged.
 - The XML documentation of `Old<T>()`: the class derived from a fixed shared type. That of
-  `EnsureAssignable<T>()`: the `Stream` and a pointer to `Old<T>()` for the derived class; it
-  already stated the base-class limit, and now also says that it holds for nested objects and gives
-  the ways out.
+  `EnsureAssignable<T>()`: the `Stream`; the throw for one instance of a class derived from `Type`
+  or `MemberInfo` (measured), with a pointer to `Old<T>()`; and the base-class limit, which it
+  already stated, now with the auto-property that is not public, the nested objects that are
+  compared by their members, and the ways out.
 
-The ways out:
-for base-class private members, a second pair with `T` = the base class (measured for a private
-field) or `Contract.Ensure`, and for those of a nested object `Contract.Ensure` only; for two streams as `T`, the throwing properties listed as assignable
-or `Contract.Ensure`; for a class derived from a fixed shared type, `Contract.Ensure` with a value
-taken with `Old`, as for a class derived from a type whose state can change. The migration
-sentence of the CHANGELOG, "In a class that derives from a type that `Old<T>()` shares, replace the
-pair on `this` by `Contract.Ensure` checks of the state members.", names no group and holds for both
-as written.
+The ways out: for base-class private members, a second pair with `T` = the base class (measured
+for a private field) or `Contract.Ensure`, and for those of a nested object `Contract.Ensure` (a
+second pair on the owning object does not reach them); for two streams as `T`, the throwing
+properties listed as assignable or `Contract.Ensure`; for a class derived from a fixed shared
+type, `Contract.Ensure` with a value taken with `Old`, as for a class derived from a type whose
+state can change. The migration sentence of the CHANGELOG, "In a class that derives from a type
+that `Old<T>()` shares, replace the pair on `this` by `Contract.Ensure` checks of the state
+members.", names no group and holds for both as written.
 
 **What stays open.**
 
