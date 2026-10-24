@@ -14,6 +14,7 @@
 - **Amended**: 2026-10-11 — `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there (B3 shares the classes of that namespace that are not array types); `EnsureAssignable<T>()` compares an array type or `System.Array` as `T` as a whole, finds two arrays equal only when they have the same rank, and the same length and lower bound in every dimension, and compares two arrays of pointers or of function pointers by address (#57); the smoke program has 84 checks; see the fifth Amendment under Implementation Notes
 - **Amended**: 2026-10-12 — limit 18 of the #57 amendment no longer holds: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type of its argument, and it reports an array of function pointers as a violation (#61, [ADR-0012](0012-dotnet-improvements-over-java.md)); `Old<T>()`, `EnsureAssignable<T>()`, B1 to B8 and R0–R8 are unchanged; this amendment holds the measured results of that change; the smoke program has 91 checks; see the sixth Amendment under Implementation Notes
 - **Amended**: 2026-10-24 — R7 compares the counts of two dictionaries first: two of different counts are unequal and no entry of either is read (#50); `Old<T>()`, B1 to B8, R0 to R6 and R8 are unchanged; the smoke program has 92 checks; see the seventh Amendment under Implementation Notes
+- **Amended**: 2026-10-24 — records the measurements behind #69: private fields and auto-properties that are not public, declared on a base class of `T`, are not compared; two different `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes the pair on `this` in silence unless a public getter of `T` throws, which corrects one item of the Limits of the #54 amendment; the library is unchanged; see the eighth Amendment under Implementation Notes
 
 ---
 
@@ -3578,6 +3579,148 @@ double was enumerated, and the two others got `InvalidOperationException`.
 
 **Unchanged.** The decisions of this ADR, B1 to B8, and R0 to R6 and R8.
 
+### Amendment (2026-10-24): The measured limits of base-class private members, of a Stream as T and of a class derived from a fixed shared type (#69)
+
+This amendment follows the #50 amendment above.
+[Issue #62](https://github.com/cwouyang/uContract.NET/issues/62) asked, in items 1 to 3, whether
+three limits hold as the issue stated them. They were measured on master `40692cc`, on .NET 8, with
+one scenario source run under the JIT (in an xunit test, Debug) and under Native AOT (in a program
+published for `win-x64`, Release). The results are in
+[a comment on #62](https://github.com/cwouyang/uContract.NET/issues/62#issuecomment-6381014514);
+the measuring code was not committed.
+[Issue #69](https://github.com/cwouyang/uContract.NET/issues/69) changes the documentation from
+them. The library does not change. The results are the same in both runtimes unless a line says
+otherwise.
+
+**Private members declared on a base class.** With `T` = a derived class, the pair
+`var old = Contract.Old(() => this);`, a change of one member of the base class, and
+`Contract.EnsureAssignable(this, old);`:
+
+| Member of the base class that changed | Result |
+|---|---|
+| a private field | no exception |
+| a private auto-property | no exception |
+| a protected auto-property | no exception |
+| a protected field | violation: "- _prot" |
+| an internal field | violation: "- _internal" |
+| a public field | violation: "- PubField" |
+| a public auto-property with a private setter | violation: "- PubAutoPrivateSet" |
+
+Controls: a change of a private field declared on the derived class gave a violation that names it.
+The change of the private field of the base class, with `T` = the base class, gave a violation that
+names it ("- _secret"). Read through the base class, that field held 0 in `old` and 1 in the
+original: the copy is complete, and the gap is in the comparison. Cause, read from the code:
+`MemberComparison.GetOrCacheMetadata` lists `GetProperties(Public | Instance)` and
+`GetFields(Public | NonPublic | Instance)` of the compared type only. Reflection does not return
+there the private fields of a base class, and the backing field of an auto-property is private.
+The same function lists the members of `T` (`typeof(T)`, in `Contract.EnsureAssignable<T>()`) and
+of each nested object that is compared by its members (its runtime type, in
+`MemberComparison.StartMembers`), so the limit holds for such a nested object too, and a second
+pair on the owning object, with `T` = the base class of the owning class, does not reach it; this
+was read from the code and not measured. `DeepCopier` walks `BaseType`. This is item 1 of #40. The
+XML documentation of `EnsureAssignable<T>()` already stated it ("Private fields declared on a base
+class are not compared"); the user documents did not.
+
+**A `Stream` as `T`.** `EnsureAssignable<Stream>` with two different `MemoryStream`s threw
+`TargetInvocationException`, with the inner `InvalidOperationException` "Timeouts are not supported
+on this stream." from `Stream.get_ReadTimeout`, for equal content, for different content and for
+different lengths. `T` = `MemoryStream`, measured with equal content only, threw the same. As
+`T` = `Stream`:
+
+| Two streams | Result |
+|---|---|
+| of a class of the measuring program that keeps the timeout getters of `Stream` | `TargetInvocationException`, inner from `ReadTimeout` |
+| of a class of the measuring program whose `Length` throws | `TargetInvocationException`, inner `NotSupportedException` from `Length` |
+| two `GZipStream`s | `TargetInvocationException`, inner `NotSupportedException` "This operation is not supported."; from `GZipStream.get_Length` under the JIT, getter not identified under Native AOT |
+| two `MemoryStream`s of the same length, different content, pattern `Timeout$` | no exception |
+| two `MemoryStream`s of different lengths, pattern `Timeout$` | violation: "- Length" |
+| of the class whose `Length` throws, pattern `^(Length\|Position\|ReadTimeout\|WriteTimeout)$` | no exception |
+
+With the pattern `Timeout$` and `T` = `MemoryStream`, two streams of different content gave a
+violation that names `_buffer`. A variable typed `Stream` infers `T` = `Stream`. A `Stream` that a
+member holds is compared by reference (R5): replacing it by another stream is a violation that
+names the member, and writing to the same stream passes. One stream on both sides throws the
+`InvalidOperationException` of rule S, with `T` = `Stream` and with `T` = `object`. Cause, read
+from the code: as `T`, a `Stream` is compared by its members, and `PropertyInfo.GetValue` wraps the
+exception of a getter; R5 applies to a member or an element, not to `T`. This is the part of item 2
+of #40 that the #54 amendment left there ("two different instances of a shared type as `T`").
+
+**A class derived from a fixed shared type.** Three classes were measured: one derived from
+`Regex`, with a field `Uses`; one derived from `TypeDelegator`, over `typeof(int)`, with a field
+`Tag`; one derived from `MemberInfo` that does not override `Module`, with a field `Tag`. In each,
+`Old(() => this)` returned `this`. After the field changed, `EnsureAssignable(this, old)`:
+
+| Class | Result |
+|---|---|
+| derived from `Regex` | no exception |
+| derived from `TypeDelegator` | `TargetInvocationException`; inner `InvalidOperationException` from `Type.get_GenericParameterPosition` under the JIT; under Native AOT the inner message was "There is no metadata token available for the given member." and the getter was not identified |
+| derived from `MemberInfo` | `TargetInvocationException`; inner `NotImplementedException` from `MemberInfo.get_Module` |
+
+Controls. Two different instances of the `Regex` class, `Uses` 0 and 1: under the JIT a violation,
+"- Uses"; under Native AOT `InvalidOperationException` "EnsureAssignable cannot compare
+System.Text.RegularExpressions.RegexInterpreterFactory (reached through 'CountingRegex.factory'):
+no properties or fields are visible to reflection under Native AOT", also for two instances with
+`Uses` 0 (R8). The `MemberInfo` class with the pattern `^(CustomAttributes|MetadataToken|Module)$`:
+the same instance passed after `Tag` changed, and two different instances, `Tag` 0 and 1, gave a
+violation, "- Tag"; without the pattern, two different instances threw as the same instance did.
+Cause, read from the code: B3 matches the types derived from the listed types, and `Regex` and the
+reflection types are not among those whose state can change (`SharedTypes.ListedWithChangingState`),
+so rule S does not apply. The public properties of `T` are read on the one instance, and each
+member is equal to itself. Not measured: classes derived from `Assembly` or `Module`, a class of
+yours declared in `System.Collections.Frozen`, `TypeDelegator` itself, the `System.Reflection.Emit`
+builders and `DynamicMethod`.
+
+**Corrected.** Each statement is quoted by its opening words. The text of the #54 amendment is left
+as it was written.
+
+- In the #54 amendment, under "**Limits.** Each of these passes in silence before and after this
+  change", the item "A user class derived from a fixed shared type, and the framework's own mutable
+  reflection types". Such a class does not always pass in silence. In the measured cases it passes
+  in silence unless a getter of a public property of `T` throws: the classes derived from
+  `TypeDelegator` and from `MemberInfo` threw `TargetInvocationException` from a getter that they
+  inherit. For the framework's own types of that item nothing was measured.
+- In the #54 amendment, under "**Rejected alternatives.**", the item "Tell a user class derived from
+  a fixed shared type from a framework class.", the sentence "A user class derived from `Regex`,
+  `Type` or `MemberInfo` that adds mutable fields still passes in silence." It holds for the
+  measured `Regex` class; the measured `Type` and `MemberInfo` classes threw as above. The decision
+  of that item stands: it stays a documented limit.
+
+**The documentation.** #69 states each limit where it applies:
+
+- `README.md` and `docs/examples/API_REFERENCE.md`: all three.
+- `docs/examples/USAGE_EXAMPLES.md`: the base-class members (for the pair on the owning object) and
+  the `Stream` (for a member replaced by another stream). The class derived from a shared type is
+  covered there by the existing advice to check the member with `Contract.Ensure`.
+- The `[Unreleased]` section of `CHANGELOG.md`, in the entry for #52 and #57: the base-class
+  members, the `Stream`, and the getter that throws for one instance of a class derived from `Type`
+  or `MemberInfo`. The rest of the case of a class derived from a fixed shared type is covered by
+  the migration sentence quoted below, unchanged.
+- The XML documentation of `Old<T>()`: the class derived from a fixed shared type. That of
+  `EnsureAssignable<T>()`: the `Stream`; the throw for one instance of a class derived from `Type`
+  or `MemberInfo` (measured), with a pointer to `Old<T>()`; and the base-class limit, which it
+  already stated, now with the auto-property that is not public, the nested objects that are
+  compared by their members, and the ways out.
+
+The ways out: for base-class private members, a second pair with `T` = the base class (measured
+for a private field) or `Contract.Ensure`, and for those of a nested object `Contract.Ensure` (a
+second pair on the owning object does not reach them); for two streams as `T`, the throwing
+properties listed as assignable or `Contract.Ensure`; for a class derived from a fixed shared
+type, `Contract.Ensure` with a value taken with `Old`, as for a class derived from a type whose
+state can change. The migration sentence of the CHANGELOG, "In a class that derives from a type
+that `Old<T>()` shares, replace the pair on `this` by `Contract.Ensure` checks of the state
+members.", names no group and holds for both as written.
+
+**What stays open.**
+
+- **[#40](https://github.com/cwouyang/uContract.NET/issues/40)**: item 1 (private fields declared
+  on a base class) and, of item 2, two different instances of a shared type as `T` and the same
+  instance of a fixed shared type. A change there can remove the limits above; the documentation is
+  then to be revised with it.
+- **[#46](https://github.com/cwouyang/uContract.NET/issues/46)** (fields-only comparison) changes
+  which members are compared, and with it whether property getters run.
+
+**Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R8 and rule S.
+
 ---
 
 ## References
@@ -3627,3 +3770,4 @@ double was enumerated, and the two others got `InvalidOperationException`.
 | 2026-10-11 | Amended     | `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there; an array type or `System.Array` as `T` is compared as a whole; two arrays are equal only with the same rank, lengths and lower bounds; two arrays of pointers or of function pointers are compared by address (#57); 84 smoke checks. Decision unchanged. See Implementation Notes > fifth Amendment. |
 | 2026-10-12 | Amended     | Limit 18 of the #57 amendment is superseded: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type and reports an array of function pointers as a violation (#61; rule in ADR-0012); the measured results of that change; a limit for a frozen collection of a second copy of its assembly; 91 smoke checks. Decision unchanged. See Implementation Notes > sixth Amendment. |
 | 2026-10-24 | Amended     | R7 compares the counts of two dictionaries before their entries; two of different counts are unequal without reading an entry (#50); 92 smoke checks. Decision unchanged. See Implementation Notes > seventh Amendment. |
+| 2026-10-24 | Amended     | The measurements behind #69: base-class private members are not compared; two `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes in silence unless a public getter of `T` throws (corrects one item of the Limits of the #54 amendment). Library unchanged. Decision unchanged. See Implementation Notes > eighth Amendment. |
