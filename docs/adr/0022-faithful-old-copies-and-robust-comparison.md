@@ -3613,14 +3613,18 @@ original: the copy is complete, and the gap is in the comparison. Cause, read fr
 `MemberComparison.GetOrCacheMetadata` lists `GetProperties(Public | Instance)` and
 `GetFields(Public | NonPublic | Instance)` of the compared type only. Reflection does not return
 there the private fields of a base class, and the backing field of an auto-property is private.
-`DeepCopier` walks `BaseType`. This is item 1 of #40. The XML documentation of
+The same function lists the members of `T` (`typeof(T)`, in `Contract.EnsureAssignable<T>()`) and
+of each nested object the walk enters (its runtime type, in `MemberComparison.StartMembers`), so
+the limit holds for a nested object too, where a second pair with `T` = the base class does not
+reach it; this was read from the code and not measured. `DeepCopier` walks `BaseType`. This is item 1 of #40. The XML documentation of
 `EnsureAssignable<T>()` already stated it ("Private fields declared on a base class are not
 compared"); the user documents did not.
 
 **A `Stream` as `T`.** `EnsureAssignable<Stream>` with two different `MemoryStream`s threw
 `TargetInvocationException`, with the inner `InvalidOperationException` "Timeouts are not supported
 on this stream." from `Stream.get_ReadTimeout`, for equal content, for different content and for
-different lengths. `T` = `MemoryStream` threw the same. As `T` = `Stream`:
+different lengths. `T` = `MemoryStream`, measured with equal content only, threw the same. As
+`T` = `Stream`:
 
 | Two streams | Result |
 |---|---|
@@ -3680,11 +3684,23 @@ as it was written.
   measured `Regex` class; the measured `Type` and `MemberInfo` classes threw as above. The decision
   of that item stands: it stays a documented limit.
 
-**The documentation.** #69 adds the three limits, with the ways out, to `README.md`,
-`docs/examples/API_REFERENCE.md`, `docs/examples/USAGE_EXAMPLES.md`, the `[Unreleased]` section of
-`CHANGELOG.md` and the XML documentation of `Old<T>()` and `EnsureAssignable<T>()`. The ways out:
+**The documentation.** #69 states each limit where it applies:
+
+- `README.md` and `docs/examples/API_REFERENCE.md`: all three.
+- `docs/examples/USAGE_EXAMPLES.md`: the base-class members (for the pair on the owning object) and
+  the `Stream` (for a member replaced by another stream). The class derived from a shared type is
+  covered there by the existing advice to check the member with `Contract.Ensure`.
+- The `[Unreleased]` section of `CHANGELOG.md`: the base-class members and the `Stream`, in the
+  entry for #52 and #57. The class derived from a fixed shared type is covered by the migration
+  sentence quoted below, unchanged.
+- The XML documentation of `Old<T>()`: the class derived from a fixed shared type. That of
+  `EnsureAssignable<T>()`: the `Stream` and a pointer to `Old<T>()` for the derived class; it
+  already stated the base-class limit, and now also says that it holds for nested objects and gives
+  the ways out.
+
+The ways out:
 for base-class private members, a second pair with `T` = the base class (measured for a private
-field) or `Contract.Ensure`; for two streams as `T`, the throwing properties listed as assignable
+field) or `Contract.Ensure`, and for those of a nested object `Contract.Ensure` only; for two streams as `T`, the throwing properties listed as assignable
 or `Contract.Ensure`; for a class derived from a fixed shared type, `Contract.Ensure` with a value
 taken with `Old`, as for a class derived from a type whose state can change. The migration
 sentence of the CHANGELOG, "In a class that derives from a type that `Old<T>()` shares, replace the
@@ -3751,4 +3767,4 @@ as written.
 | 2026-10-11 | Amended     | `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there; an array type or `System.Array` as `T` is compared as a whole; two arrays are equal only with the same rank, lengths and lower bounds; two arrays of pointers or of function pointers are compared by address (#57); 84 smoke checks. Decision unchanged. See Implementation Notes > fifth Amendment. |
 | 2026-10-12 | Amended     | Limit 18 of the #57 amendment is superseded: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type and reports an array of function pointers as a violation (#61; rule in ADR-0012); the measured results of that change; a limit for a frozen collection of a second copy of its assembly; 91 smoke checks. Decision unchanged. See Implementation Notes > sixth Amendment. |
 | 2026-10-24 | Amended     | R7 compares the counts of two dictionaries before their entries; two of different counts are unequal without reading an entry (#50); 92 smoke checks. Decision unchanged. See Implementation Notes > seventh Amendment. |
-| 2026-10-24 | Amended     | The measurements behind #69: base-class private members are not compared; two `Stream`s as `T` end in `TargetInvocationException`; in the measured cases a class derived from a fixed shared type passes in silence unless a public getter of `T` throws (corrects one item of the Limits of the #54 amendment). Library unchanged. Decision unchanged. See Implementation Notes > eighth Amendment. |
+| 2026-10-24 | Amended     | The measurements behind #69: base-class private members are not compared; two `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes in silence unless a public getter of `T` throws (corrects one item of the Limits of the #54 amendment). Library unchanged. Decision unchanged. See Implementation Notes > eighth Amendment. |
