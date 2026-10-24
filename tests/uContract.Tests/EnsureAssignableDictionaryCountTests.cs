@@ -123,6 +123,8 @@ public class EnsureAssignableDictionaryCountWithoutDynamicCodeTests
         Holder<IDictionary<string, NoMembers>> actual = new() { Items = actualItems };
         Holder<IDictionary<string, NoMembers>> expected = new() { Items = expectedItems };
 
+        // Under WithoutDynamicCode, reading the "apple" entry would end in "cannot compare", so the violation
+        // shows that no entry was read.
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
         PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
@@ -132,7 +134,9 @@ public class EnsureAssignableDictionaryCountWithoutDynamicCodeTests
     [Fact]
     public void EnsureAssignable_WhenMemberHoldsTwoFrozenDictionariesOfDifferentCounts_ReportsTheMemberWithoutReadingAnEntry()
     {
-        // Every key is its own instance, so the first pair of keys read, in whatever order, cannot be compared.
+        // Every key is its own instance, so the first pair of keys read, in whatever order, cannot be compared:
+        // under WithoutDynamicCode reading an entry would end in "cannot compare", so the violation shows that
+        // no entry was read.
         FrozenDictionary<NoMembers, int> actualItems = KeysWithNoMembers(count: 1);
         FrozenDictionary<NoMembers, int> expectedItems = KeysWithNoMembers(count: 2);
         Holder<FrozenDictionary<NoMembers, int>> actual = new() { Items = actualItems };
