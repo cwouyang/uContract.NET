@@ -1148,10 +1148,11 @@ public static class Contract
     ///     This method uses reflection to compare the public instance properties (indexers excluded)
     ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
     ///     base class are not compared, so neither is an auto-property declared there that is not public: its
-    ///     backing field is such a field. This holds for <typeparamref name="T" /> and for each nested object,
-    ///     whose members are listed from its runtime type. For <typeparamref name="T" />, compare a second time
-    ///     with the base class as <typeparamref name="T" />, which compares the fields it declares; for a
-    ///     nested object, check those members with <see cref="Ensure(string, Func{bool})" />. The walk goes
+    ///     backing field is such a field. This holds for <typeparamref name="T" /> and for each nested object
+    ///     that is compared by its members, whose members are listed from its runtime type. For
+    ///     <typeparamref name="T" />, compare a second time with the base class as <typeparamref name="T" />,
+    ///     which compares the fields it declares. A second pair on the owning object does not reach those of a
+    ///     nested object: check them with <see cref="Ensure(string, Func{bool})" />. The walk goes
     ///     deeper into nested objects and collection elements without recursion, so cycles and deep graphs are
     ///     safe.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
