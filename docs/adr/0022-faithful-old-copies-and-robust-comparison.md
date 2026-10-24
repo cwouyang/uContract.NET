@@ -3516,7 +3516,9 @@ of one runtime type or of two (R6 leads two of different runtime types to R7), a
 
 - a `T` such as `Dictionary<TKey, TValue>`, which is compared by its members (its `Count` property
   is one of them);
-- a value type that implements `IDictionary`, which is compared with `Equals` and then by its fields;
+- two values of one value type that implements `IDictionary`, which are compared with `Equals` and
+  then by their fields (a boxed value of such a type and a value of another runtime type are led to
+  R7 by R6, and the count step applies to them);
 - every sequence that is not an `IDictionary`.
 
 **Why.** Under Native AOT (D13) a key or a value whose class has no visible members, and whose
