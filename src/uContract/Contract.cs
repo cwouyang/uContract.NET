@@ -403,7 +403,12 @@ public static class Contract
     ///     frozen collection in the state that is compared, or, when <c>EnsureAssignable</c> compares the members
     ///     of the type that holds it, list that member as assignable.
     ///     A class that derives from a type of the first group is shared too, so <c>Old(() =&gt; this)</c> in
-    ///     such a class returns <c>this</c>. There, check each state member with
+    ///     such a class returns <c>this</c>. So does a class that derives from a type of the second group (a
+    ///     <c>Regex</c>, a <c>Type</c>, a <c>MemberInfo</c>): there <c>EnsureAssignable(this, Old(() =&gt; this))</c>
+    ///     compares the object with itself, so it reports no change of the class's own state, and it throws
+    ///     <see cref="System.Reflection.TargetInvocationException" /> when a getter of a public property of the
+    ///     compared type throws (measured for a class derived from <c>TypeDelegator</c> and one derived from
+    ///     <c>MemberInfo</c>). In both cases, check each state member with
     ///     <see cref="Ensure(string, Func{bool})" /> and a value taken with this method.
     ///     The copy is a read-only snapshot: delegates are shared, so raising an event on the copy notifies the
     ///     original's subscribers. Everything reachable is copied, so <c>Old(() =&gt; _balance)</c> is cheaper than
@@ -1141,8 +1146,10 @@ public static class Contract
     /// <remarks>
     ///     This method uses reflection to compare the public instance properties (indexers excluded)
     ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
-    ///     base class are not compared. The walk goes deeper into nested objects and collection elements
-    ///     without recursion, so cycles and deep graphs are safe.
+    ///     base class are not compared, so neither is an auto-property declared there that is not public: its
+    ///     backing field is such a field. To compare them, compare a second time with the base class as
+    ///     <typeparamref name="T" />, which compares the fields it declares. The walk goes deeper into nested
+    ///     objects and collection elements without recursion, so cycles and deep graphs are safe.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences, which are compared element by element. Two arrays, of
     ///     one runtime type or of two, are equal only when they also have the same rank, and the same length and
@@ -1209,7 +1216,16 @@ public static class Contract
     ///     and so is a type that is shared, and fixed (a <c>Regex</c>), also for one instance on both sides; in
     ///     both cases unless <typeparamref name="T" /> is a string, a delegate type, a <c>FrozenSet&lt;T&gt;</c> or a
     ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or <see cref="Array" />, which are
-    ///     compared as a whole.
+    ///     compared as a whole. The getters of the public properties of <typeparamref name="T" /> then run, also
+    ///     for one instance on both sides, and a getter that throws ends the call with
+    ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
+    ///     <see cref="Exception.InnerException" />. Two different <c>Stream</c>s that keep the <c>ReadTimeout</c>
+    ///     getter of <c>Stream</c>, which throws, end the call so (measured for two <c>MemoryStream</c>s); a
+    ///     stream that cannot seek can throw at <c>Length</c> first. So can one instance of a class derived from
+    ///     <c>Type</c> or <c>MemberInfo</c> on both sides (measured for a class derived from <c>TypeDelegator</c>
+    ///     and one derived from <c>MemberInfo</c>); for that case see <see cref="Old{T}" />. For two streams, list
+    ///     the properties that throw as assignable (for two <c>MemoryStream</c>s, <c>Timeout$</c>), or check the
+    ///     state with <see cref="Ensure(string, Func{bool})" />.
     ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
     ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
     ///     in a class derived from <c>Stream</c>, <c>Task</c> or <c>Component</c> compares the object with

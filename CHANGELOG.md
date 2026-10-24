@@ -198,9 +198,15 @@ AOT](README.md#trimming-and-native-aot) in the README.
   through `T` are compared), and two different instances of a shared type other than `string`, a
   delegate, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` are still compared member by
   member (#40), as is a type that is shared, and fixed (a `Regex`), also for one instance on both
-  sides. One instance of a shared type whose state can change, passed as `actual` and as `expected`,
-  is not compared, whatever `T` is, `object` included: the method throws
-  `InvalidOperationException`; the entry for #54 below gives the ways out. (#52, #57; ADR-0022)
+  sides. The getters of the public properties of `T` then run, and a getter that throws ends the
+  call in `TargetInvocationException`: two `MemoryStream`s as `T` = `Stream` end so, from the
+  `ReadTimeout` getter of `Stream`, and so can one instance of a class derived from `Type` or
+  `MemberInfo` on both sides. For every `T` that is compared by its members, the private fields
+  declared on a base class of `T` are not compared, and neither is an auto-property declared there
+  that is not public (#40). One instance of a shared type whose state can change, passed as
+  `actual` and as `expected`, is not compared, whatever `T` is, `object` included: the method
+  throws `InvalidOperationException`; the entry for #54 below gives the ways out. (#52, #57;
+  ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` finds two arrays equal only when they have the same rank,
   and the same length and lower bound in every dimension. This holds for two arrays that a member
   holds, for two arrays that are elements of a collection or of another array, keys or values of a
