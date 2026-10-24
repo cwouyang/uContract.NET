@@ -335,9 +335,14 @@ internal static class MemberComparison
     // elements.
     private static Walk? StartSequences(IEnumerable actual, IEnumerable expected)
     {
+        // Two dictionaries of different counts are different before any entry is read: under Native AOT an
+        // entry may hold a value that cannot be compared, and a dictionary that only grew or shrank is
+        // still reported as changed.
         if (actual is IDictionary actualDictionary && expected is IDictionary expectedDictionary)
         {
-            return new DictionaryWalk(actualDictionary, expectedDictionary);
+            return actualDictionary.Count == expectedDictionary.Count
+                ? new DictionaryWalk(actualDictionary, expectedDictionary)
+                : null;
         }
 
         // Two arrays of pointers or of function pointers are compared by address, whatever the pointers point
