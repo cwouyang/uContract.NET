@@ -13,6 +13,7 @@
 - **Amended**: 2026-10-10 — two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared element by element, in enumeration order (R7), not by reference (R5), and one of the two types as `T` is compared as a whole; `Old<T>()` and B3 are unchanged (#49); the smoke program has 79 checks; see the fourth Amendment under Implementation Notes
 - **Amended**: 2026-10-11 — `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there (B3 shares the classes of that namespace that are not array types); `EnsureAssignable<T>()` compares an array type or `System.Array` as `T` as a whole, finds two arrays equal only when they have the same rank, and the same length and lower bound in every dimension, and compares two arrays of pointers or of function pointers by address (#57); the smoke program has 84 checks; see the fifth Amendment under Implementation Notes
 - **Amended**: 2026-10-12 — limit 18 of the #57 amendment no longer holds: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type of its argument, and it reports an array of function pointers as a violation (#61, [ADR-0012](0012-dotnet-improvements-over-java.md)); `Old<T>()`, `EnsureAssignable<T>()`, B1 to B8 and R0–R8 are unchanged; this amendment holds the measured results of that change; the smoke program has 91 checks; see the sixth Amendment under Implementation Notes
+- **Amended**: 2026-10-24 — R7 compares the counts of two dictionaries first: two of different counts are unequal and no entry of either is read (#50); `Old<T>()`, B1 to B8, R0 to R6 and R8 are unchanged; the smoke program has 92 checks; see the seventh Amendment under Implementation Notes
 
 ---
 
@@ -3498,6 +3499,85 @@ brings a limit next to B3 and R7. The rule itself is in ADR-0012.
 
 **Unchanged.** The decisions of this ADR.
 
+### Amendment (2026-10-24): Two dictionaries of different counts are different before any entry is read (#50)
+
+This amendment follows the #61 amendment above.
+[Issue #50](https://github.com/cwouyang/uContract.NET/issues/50) found, in the reviews of #45, that
+R7 compared the lengths of two sequences before their elements but walked the entries of two
+dictionaries without comparing their counts first.
+
+**The change.** R7 has a first step for two `IDictionary` values: when their `Count` differs, the
+pair is unequal, and neither dictionary is enumerated, so no key and no value of either is read.
+Two dictionaries of equal `Count` are compared entry by entry, in enumeration order, as before.
+
+**Where it applies.** Wherever R7 compares two dictionaries: a pair that a member or element holds,
+of one runtime type or of two (R6 leads two of different runtime types to R7), and two
+`FrozenDictionary<TKey, TValue>` values as `T`, which are compared as a whole. These do not change:
+
+- a `T` such as `Dictionary<TKey, TValue>`, which is compared by its members (its `Count` property
+  is one of them);
+- two values of one value type that implements `IDictionary`, which are compared with `Equals` and
+  then by their fields (a boxed value of such a type and an `IDictionary` of another runtime type
+  are led to R7 by R6, and the count step applies to them; against a sequence of another runtime
+  type that is not an `IDictionary`, such as a `List<T>`, R7 compares elements and the count step
+  does not apply);
+- every sequence that is not an `IDictionary`.
+
+**Why.** Under Native AOT (D13) a key or a value whose class has no visible members, and whose
+`Equals` says unequal, ends the call with the "cannot compare" message of R8 when the walk reaches
+it. A dictionary that only grew or shrank was therefore reported as "cannot compare" when such an
+entry came before the end of the shorter dictionary, not as a violation of the member that holds it.
+Under the JIT such a pair was already unequal, unless reading an entry threw (read from the code);
+what changes there is that no entry is read.
+
+**Superseded.** Each statement is quoted by its opening words:
+
+- R7: "An `IDictionary` is compared entry by entry, in enumeration order". That now holds for two
+  dictionaries of equal `Count`; two of different counts are unequal without a walk.
+- In the #49 amendment: "a pair of two `FrozenDictionary` values of one runtime type that a member
+  or element holds now goes through the dictionary comparison of R7, so #50 will cover it." It does:
+  the count step applies to that pair.
+- In the #61 amendment: "The smoke program has 91 checks in the default build and 90 in the variant"
+  with the hidden dictionary entry. It has 92 and 91. The Status line of that amendment ("the smoke
+  program has 91 checks") and its Revision History row ("91 smoke checks") state the same count and
+  are superseded with it.
+
+**Checks.**
+
+- Unit tests, in `tests/uContract.Tests/EnsureAssignableDictionaryCountTests.cs`: two dictionaries
+  of different counts that a member holds, with a test double of `IDictionary` that counts every
+  read of its entries (no read); a `Dictionary<,>` and a `SortedDictionary<,>` of different counts,
+  and two `FrozenDictionary<,>` values of different counts, both under
+  `TestRuntime.WithoutDynamicCode` with keys or values of a type without members, so that reading
+  an entry would end in "cannot compare". Each expects `PostconditionViolationException`.
+- Smoke check 92, "Dictionaries of different counts with hidden values": a member of type
+  `Dictionary<string, HiddenLeaf>`, two separate graphs, two entries on one side and one on the
+  other; the common key holds two `HiddenLeaf` instances of equal `Value`. It expects a violation
+  with postconditions on and no exception with `DBC_POST=off`. It is outside the
+  `HIDDEN_DICTIONARY_ENTRY` condition, so both builds hold it.
+
+**Measured results.** On the final code, the unit tests: 1,106, all passed. The smoke program,
+published with Native AOT for `win-x64` with `-warnaserror` (no diagnostic in either publish log):
+
+| Build | Postconditions on | `DBC_POST=off` |
+|---|---|---|
+| Default | 92 `PASS`, no `FAIL` | 92 `PASS`, no `FAIL` |
+| Variant with the hidden dictionary entry | 91 `PASS`, no `FAIL` | 91 `PASS`, no `FAIL` |
+
+With the count step removed from the library and the smoke program unchanged, the default build gave
+91 `PASS` and one `FAIL` with postconditions on: check 92 got `InvalidOperationException`
+"EnsureAssignable cannot compare uContract.AotSmoke.HiddenLeaf (reached through
+'LeafDictionaryHolder.Leaves[]')". The unit tests above failed the same way under the JIT: the test
+double was enumerated, and the two others got `InvalidOperationException`.
+
+**Not covered by a measurement.**
+
+- The `linux-x64` publish, which CI runs. It had not run for this change when this amendment was
+  written.
+- 2.0.0, and the cost of the count step (one `Count` read on each side).
+
+**Unchanged.** The decisions of this ADR, B1 to B8, and R0 to R6 and R8.
+
 ---
 
 ## References
@@ -3546,3 +3626,4 @@ brings a limit next to B3 and R7. The rule itself is in ADR-0012.
 | 2026-10-10 | Amended     | Two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared by element (R7), not by reference (R5), and one of the two types as `T` is compared as a whole (#49); 79 smoke checks. Decision unchanged. See Implementation Notes > fourth Amendment. |
 | 2026-10-11 | Amended     | `Old<T>()` copies an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there; an array type or `System.Array` as `T` is compared as a whole; two arrays are equal only with the same rank, lengths and lower bounds; two arrays of pointers or of function pointers are compared by address (#57); 84 smoke checks. Decision unchanged. See Implementation Notes > fifth Amendment. |
 | 2026-10-12 | Amended     | Limit 18 of the #57 amendment is superseded: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type and reports an array of function pointers as a violation (#61; rule in ADR-0012); the measured results of that change; a limit for a frozen collection of a second copy of its assembly; 91 smoke checks. Decision unchanged. See Implementation Notes > sixth Amendment. |
+| 2026-10-24 | Amended     | R7 compares the counts of two dictionaries before their entries; two of different counts are unequal without reading an entry (#50); 92 smoke checks. Decision unchanged. See Implementation Notes > seventh Amendment. |

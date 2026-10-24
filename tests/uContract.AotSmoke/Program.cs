@@ -364,6 +364,12 @@ internal sealed class FrozenLeavesHolder
     public FrozenSet<HiddenLeaf> Leaves = FrozenSet<HiddenLeaf>.Empty;
 }
 
+// The values are of a hidden type: under Native AOT they cannot be compared member by member.
+internal sealed class LeafDictionaryHolder
+{
+    public Dictionary<string, HiddenLeaf> Leaves = new(StringComparer.Ordinal);
+}
+
 internal sealed class GridHolder
 {
     public int[,] Cells = new int[0, 0];
@@ -1658,6 +1664,35 @@ public static class Program
             "EnsureImmutableCollection class with the full name of ReadOnlySet",
             static () => NoResult(static () => Contract.EnsureImmutableCollection(new ReadOnlySet<int>())),
             Expect.Ok,
+            Expect.Ok
+        );
+
+        // ---- Two dictionaries of different counts are different before any entry is read (issue #50). ----
+
+        // Mutation: Add (two separate graphs; the common key holds two HiddenLeaf instances of equal Value).
+        // Visibility: T; none for HiddenLeaf under Native AOT, where its Equals says unequal: comparing the
+        // common entry would report that it cannot compare the values. The counts differ, so no entry is read.
+        yield return new Check(
+            92,
+            "Dictionaries of different counts with hidden values",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(
+                        new LeafDictionaryHolder
+                        {
+                            Leaves = new(StringComparer.Ordinal)
+                            {
+                                ["a"] = new HiddenLeaf { Value = 1 },
+                                ["b"] = new HiddenLeaf { Value = 2 },
+                            },
+                        },
+                        new LeafDictionaryHolder
+                        {
+                            Leaves = new(StringComparer.Ordinal) { ["a"] = new HiddenLeaf { Value = 1 } },
+                        }
+                    )
+                ),
+            post,
             Expect.Ok
         );
     }
