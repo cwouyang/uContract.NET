@@ -143,7 +143,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   nested class whose `Equals` ignores state (for example entity equality by ID) is compared by that
   `Equals`, so a change to it passes silently, where a JIT build reports a violation and 2.0.0
   reported "cannot compare". Preserve the type with `DynamicDependency` to compare it member by
-  member. (ADR-0022)
+  member. Two dictionaries of different counts are different before any entry is read, in every
+  build: a dictionary that grew or shrank is a violation even when its keys or values are of such a
+  class, and no getter of a key or value runs for it (#50). (ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` no longer throws `ArgumentNullException` for a `null`
   `actual` or `expected`. This is an exception to "parameter validation always runs". With
   postconditions off, or in a call made while another contract check is running, it returns without
