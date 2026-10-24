@@ -403,9 +403,10 @@ public static class Contract
     ///     frozen collection in the state that is compared, or, when <c>EnsureAssignable</c> compares the members
     ///     of the type that holds it, list that member as assignable.
     ///     A class that derives from a type of the first group is shared too, so <c>Old(() =&gt; this)</c> in
-    ///     such a class returns <c>this</c>. So does a class that derives from a type of the second group (a
-    ///     <c>Regex</c>, a <c>Type</c>, a <c>MemberInfo</c>): there <c>EnsureAssignable(this, Old(() =&gt; this))</c>
-    ///     compares the object with itself, so it reports no change of the class's own state, and it throws
+    ///     such a class returns <c>this</c>. The same holds in a class that derives from a type of the second
+    ///     group (a <c>Regex</c>, a <c>Type</c>, a <c>MemberInfo</c>): there
+    ///     <c>EnsureAssignable(this, Old(() =&gt; this))</c> compares the object with itself, so it reports no
+    ///     change of the class's own state, and it throws
     ///     <see cref="System.Reflection.TargetInvocationException" /> when a getter of a public property of the
     ///     compared type throws (measured for a class derived from <c>TypeDelegator</c> and one derived from
     ///     <c>MemberInfo</c>). In both cases, check each state member with
@@ -1147,9 +1148,12 @@ public static class Contract
     ///     This method uses reflection to compare the public instance properties (indexers excluded)
     ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
     ///     base class are not compared, so neither is an auto-property declared there that is not public: its
-    ///     backing field is such a field. To compare them, compare a second time with the base class as
-    ///     <typeparamref name="T" />, which compares the fields it declares. The walk goes deeper into nested
-    ///     objects and collection elements without recursion, so cycles and deep graphs are safe.
+    ///     backing field is such a field. This holds for <typeparamref name="T" /> and for each nested object,
+    ///     whose members are listed from its runtime type. For <typeparamref name="T" />, compare a second time
+    ///     with the base class as <typeparamref name="T" />, which compares the fields it declares; for a
+    ///     nested object, check those members with <see cref="Ensure(string, Func{bool})" />. The walk goes
+    ///     deeper into nested objects and collection elements without recursion, so cycles and deep graphs are
+    ///     safe.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences, which are compared element by element. Two arrays, of
     ///     one runtime type or of two, are equal only when they also have the same rank, and the same length and
@@ -1225,7 +1229,9 @@ public static class Contract
     ///     <c>Type</c> or <c>MemberInfo</c> on both sides (measured for a class derived from <c>TypeDelegator</c>
     ///     and one derived from <c>MemberInfo</c>); for that case see <see cref="Old{T}" />. For two streams, list
     ///     the properties that throw as assignable (for two <c>MemoryStream</c>s, <c>Timeout$</c>), or check the
-    ///     state with <see cref="Ensure(string, Func{bool})" />.
+    ///     state with <see cref="Ensure(string, Func{bool})" />. With <typeparamref name="T" /> = <c>Stream</c>
+    ///     and that pattern, the properties of the stream (<c>Length</c>, <c>Position</c>, ...) are compared, not
+    ///     its content: two <c>MemoryStream</c>s of the same length and different content pass (measured).
     ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
     ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
     ///     in a class derived from <c>Stream</c>, <c>Task</c> or <c>Component</c> compares the object with
