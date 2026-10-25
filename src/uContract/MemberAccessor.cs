@@ -51,8 +51,8 @@ internal sealed class MemberAccessor
     }
 
     /// <summary>
-    ///     Gets the name of the member in violation entries and for assignable patterns: its raw name, with
-    ///     its declaring type in front when it is qualified.
+    ///     Gets the name of the member in violation entries: its raw name, with <see cref="Qualifier" /> in
+    ///     front. Assignable patterns are matched against it and against <see cref="RawName" />.
     /// </summary>
     public string Name { get; private set; }
 
@@ -68,10 +68,16 @@ internal sealed class MemberAccessor
     public string RawName { get; }
 
     /// <summary>
+    ///     Gets the text put in front of the raw name in <see cref="Name" />: the declaring type name and a
+    ///     dot when the member is qualified, otherwise empty.
+    /// </summary>
+    public string Qualifier { get; private set; } = "";
+
+    /// <summary>
     ///     Gets a value indicating whether the member is named with its declaring type, because another
     ///     member of the compared type has the same raw name.
     /// </summary>
-    public bool IsQualified { get; private set; }
+    public bool IsQualified => Qualifier.Length > 0;
 
     /// <summary>
     ///     Gets the type that declares the member.
@@ -85,9 +91,9 @@ internal sealed class MemberAccessor
     /// <param name="declaringTypeName">The name of the declaring type to put in front</param>
     public void Qualify(string declaringTypeName)
     {
-        Name = declaringTypeName + "." + RawName;
-        PathName = declaringTypeName + "." + MemberComparison.SourceName(RawName);
-        IsQualified = true;
+        Qualifier = declaringTypeName + ".";
+        Name = Qualifier + RawName;
+        PathName = Qualifier + MemberComparison.SourceName(RawName);
     }
 
     /// <summary>

@@ -269,9 +269,9 @@ internal static class MemberComparison
     {
         string path = $"{comparedType.Name}.{topLevelMember.PathName}{hidden.PathBelowTopLevelMember}";
 
-        // Patterns are matched against Name, not against the path form; for a qualified member Name holds a
-        // declaring type, whose FullName may hold "+" (nested type) or "[[...]]" (closed generic), so the advised
-        // pattern is escaped.
+        // Patterns are matched against Name (see IsAssignable), not against the path form; for a qualified member
+        // Name holds a declaring type, whose FullName may hold "+" (nested type) or "[[...]]" (closed generic), so
+        // the advised pattern is escaped.
         string advice = topLevelMember.IsQualified
             ? $"list '{Regex.Escape(topLevelMember.Name)}' as assignable (patterns are regular expressions "
                 + "matched against top-level member names; another member has the same name, so this one carries "
@@ -337,6 +337,9 @@ internal static class MemberComparison
             : memberName;
     }
 
+    // A pattern excuses a member when it matches the raw name, or, for a qualified member, when it matches the
+    // qualified name but not the qualifier alone ("Base." for "Base._state"): a qualifier can narrow a match
+    // but never widen it.
     internal static bool IsAssignable(MemberAccessor member, string[] patterns)
     {
         if (patterns == null || patterns.Length == 0)
@@ -344,7 +347,15 @@ internal static class MemberComparison
             return false;
         }
 
-        return patterns.Any(pattern => Regex.IsMatch(member.Name, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
+        return patterns.Any(pattern =>
+            Matches(member.RawName, pattern)
+            || (member.IsQualified && Matches(member.Name, pattern) && !Matches(member.Qualifier, pattern))
+        );
+    }
+
+    private static bool Matches(string name, string pattern)
+    {
+        return Regex.IsMatch(name, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
     }
 
     // A false return with context.Hidden set means "could not compare" (a type with no visible members

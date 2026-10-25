@@ -40,18 +40,32 @@ public class EnsureAssignableNameCollisionTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenBothPrivateFieldsOfOneNameChangeAndTheAnchoredNameIsAssignable_ReportsBoth()
+    public void EnsureAssignable_WhenBothPrivateFieldsOfOneNameChangeAndTheAnchoredNameIsAssignable_DoesNotThrow()
     {
         Descendant actual = new();
         Descendant expected = new();
         actual.SetAncestorShadowed(Changed);
         actual.SetShadowed(Changed);
 
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "^_shadowed$"));
+
+        Assert.Null(exception);
+    }
+
+    // A qualifier can narrow a match but never widen it: a pattern that matches only the declaring-type part
+    // of a qualified name does not excuse the member.
+    [Fact]
+    public void EnsureAssignable_WhenAPatternMatchesOnlyTheDeclaringTypeOfACollidingMember_ReportsThatMember()
+    {
+        StateDerived actual = new() { BaseCount = Changed };
+        StateDerived expected = new();
+        actual.SetBaseState(Changed);
+
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
-            Contract.EnsureAssignable(actual, expected, "^_shadowed$")
+            Contract.EnsureAssignable(actual, expected, "Base")
         );
 
-        Assert.Equal(Violation + "  - Descendant._shadowed\n  - Ancestor._shadowed", exception.Description);
+        Assert.Equal(Violation + "  - StateBase._state", exception.Description);
     }
 
     // ---- A public field hidden with "new" ----
@@ -64,10 +78,22 @@ public class EnsureAssignableNameCollisionTests
         ((CodeBase)actual).Code = Changed;
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
-            Contract.EnsureAssignable(actual, expected, "^Code$")
+            Contract.EnsureAssignable(actual, expected)
         );
 
         Assert.Equal(Violation + "  - CodeDerived.Code\n  - CodeBase.Code", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAFieldAndTheFieldItHidesChangeAndTheAnchoredNameIsAssignable_DoesNotThrow()
+    {
+        CodeDerived actual = new() { Code = "changed" };
+        CodeDerived expected = new();
+        ((CodeBase)actual).Code = Changed;
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "^Code$"));
+
+        Assert.Null(exception);
     }
 
     // ---- Backing fields of two auto-properties of one name ----
@@ -109,6 +135,25 @@ public class EnsureAssignableNameCollisionTests
     private static string[] MemberNames<T>()
     {
         return MemberComparison.GetOrCacheMetadata(typeof(T)).Members.Select(member => member.Name).ToArray();
+    }
+
+    private class StateBase
+    {
+        private int _state;
+
+        public void SetBaseState(int state)
+        {
+            _state = state;
+        }
+    }
+
+    private sealed class StateDerived : StateBase
+    {
+#pragma warning disable CS0169, CS0649 // Never assigned or read: the field exists to collide with the base field.
+        private int _state;
+#pragma warning restore CS0169, CS0649
+
+        public int BaseCount { get; set; }
     }
 
     private class CodeBase
