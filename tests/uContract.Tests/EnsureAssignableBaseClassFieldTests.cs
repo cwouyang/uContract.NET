@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
+using System.IO.Compression;
 using System.Reflection;
 using uContract.Exceptions;
 
@@ -354,6 +355,32 @@ public class EnsureAssignableBaseClassFieldTests
     }
 
     [Fact]
+    public void Members_WhenTheBaseClassIsDeflateStream_HoldNoPrivateFieldOfIt()
+    {
+        string[] privateFieldsOfDeflateStream = PrivateInstanceFieldNames(typeof(DeflateStream));
+        byte[]? token = typeof(DeflateStream).Assembly.GetName().GetPublicKeyToken();
+
+        string[] names = MemberNames<CompressingStream>();
+
+        Assert.Equal("B77A5C561934E089", Convert.ToHexString(token!));
+        Assert.NotEmpty(privateFieldsOfDeflateStream);
+        Assert.Empty(names.Intersect(privateFieldsOfDeflateStream, StringComparer.Ordinal));
+    }
+
+    // No class signed with 31bf3856ad364e35 is reachable from this net8.0 test project: the token ships in
+    // Microsoft.WindowsDesktop.App (for example WindowsBase), so the token decision itself is pinned, for
+    // both tokens added to the framework stop.
+    [Theory]
+    [InlineData("31bf3856ad364e35")]
+    [InlineData("b77a5c561934e089")]
+    public void IsFrameworkPublicKeyToken_ForATokenOfTheSharedFrameworks_ReturnsTrue(string token)
+    {
+        bool isFramework = MemberComparison.IsFrameworkPublicKeyToken(Convert.FromHexString(token));
+
+        Assert.True(isFramework);
+    }
+
+    [Fact]
     public void Members_WhenTheBaseClassIsList_StillHoldItsNonPrivateSize()
     {
         string[] names = MemberNames<Numbers>();
@@ -549,6 +576,8 @@ public class EnsureAssignableBaseClassFieldTests
     private sealed class OrderRejectedException : Exception;
 
     private sealed class ObservableNumbers : ObservableCollection<int>;
+
+    private sealed class CompressingStream() : DeflateStream(Stream.Null, CompressionMode.Compress);
 
     private sealed class Numbers : List<int>;
 

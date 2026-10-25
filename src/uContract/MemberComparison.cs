@@ -20,13 +20,17 @@ internal static class MemberComparison
 {
     private static readonly ConcurrentDictionary<Type, TypeMetadata> MetadataCache = new();
 
-    // The public key tokens the assemblies of the .NET runtime and libraries are signed with.
+    // The public key tokens the assemblies of the .NET runtime and libraries are signed with: every token that
+    // occurs in the .NET 8 shared frameworks (Microsoft.NETCore.App, Microsoft.AspNetCore.App and
+    // Microsoft.WindowsDesktop.App).
     private static readonly string[] FrameworkPublicKeyTokens =
     [
         "7cec85d7bea7798e",
         "b03f5f7f11d50a3a",
         "cc7b13ffcd2ddd51",
         "adb9793829ddae60",
+        "31bf3856ad364e35",
+        "b77a5c561934e089",
     ];
 
     // The members EnsureAssignable compares, and so the members the trimmer must preserve for its type argument.
