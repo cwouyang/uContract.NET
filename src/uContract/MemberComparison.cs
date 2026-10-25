@@ -67,10 +67,9 @@ internal static class MemberComparison
         FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
         List<MemberAccessor> members = properties
-            .Where(p => p.GetIndexParameters().Length == 0)
-            .Cast<MemberInfo>()
-            .Concat(fields)
-            .Select(m => new MemberAccessor(m))
+            .Where(p => p.GetIndexParameters().Length == 0 && !IsOverriddenByAnother(p, properties))
+            .Select(p => new MemberAccessor(p, ExistingGetter(p)))
+            .Concat(fields.Select(f => new MemberAccessor(f)))
             .ToList();
 
         // GetFields does not return the private fields declared on a base class; they are added after the
@@ -79,6 +78,56 @@ internal static class MemberComparison
         members.AddRange(BaseClassPrivateFields(type, properties).Select(f => new MemberAccessor(f)));
 
         return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
+    }
+
+    // Under Native AOT, GetProperties returns both a setter-only override and the base declaration it
+    // overrides; the two are one member, listed as the override.
+    private static bool IsOverriddenByAnother(PropertyInfo property, PropertyInfo[] properties)
+    {
+        return properties.Any(other =>
+            !ReferenceEquals(other, property)
+            && string.Equals(other.Name, property.Name, StringComparison.Ordinal)
+            && other.DeclaringType is { } otherDeclaringType
+            && property.DeclaringType is { } declaringType
+            && otherDeclaringType.IsSubclassOf(declaringType)
+            && IsOrOverrides(other, property)
+        );
+    }
+
+    // The getter a property is read with. Through a derived type, reflection shows neither a private getter
+    // declared on a base class nor the getter that a setter-only override inherits, so it is looked up on the
+    // declaring type of the property and then on its base classes, framework classes included: the getter of
+    // the nearest declaration that the property is, or overrides. Null when there is none (write-only, or
+    // trimmed away).
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2075",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a getter that the trimmer removed is not found, and reading the property throws the \"no get method\" exception."
+    )]
+    private static MethodInfo? ExistingGetter(PropertyInfo property)
+    {
+        if (property.GetMethod is not null)
+        {
+            return property.GetMethod;
+        }
+
+        for (Type? type = property.DeclaringType; type is not null; type = type.BaseType)
+        {
+            PropertyInfo? declaration = type.GetProperties(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly
+                )
+                .FirstOrDefault(declared =>
+                    declared.GetMethod is not null
+                    && string.Equals(declared.Name, property.Name, StringComparison.Ordinal)
+                    && IsOrOverrides(property, declared)
+                );
+            if (declaration is not null)
+            {
+                return declaration.GetMethod;
+            }
+        }
+
+        return null;
     }
 
     // The private instance fields declared on the base classes of type, up to the first framework class. A

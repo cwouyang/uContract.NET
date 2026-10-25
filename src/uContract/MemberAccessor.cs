@@ -10,6 +10,7 @@ internal sealed class MemberAccessor
 {
     private readonly FieldInfo? _field;
     private readonly PropertyInfo? _property;
+    private readonly MethodInfo? _getter;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="MemberAccessor" /> class.
@@ -17,6 +18,16 @@ internal sealed class MemberAccessor
     /// <param name="member">The PropertyInfo or FieldInfo to wrap</param>
     /// <exception cref="ArgumentException">Thrown when member is neither PropertyInfo nor FieldInfo</exception>
     public MemberAccessor(MemberInfo member)
+        : this(member, (member as PropertyInfo)?.GetMethod) { }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="MemberAccessor" /> class for a property read with the
+    ///     given getter, which may be declared on a base class rather than visible through the compared type.
+    /// </summary>
+    /// <param name="member">The PropertyInfo or FieldInfo to wrap</param>
+    /// <param name="getter">The get method a property is read with; null when it has none</param>
+    /// <exception cref="ArgumentException">Thrown when member is neither PropertyInfo nor FieldInfo</exception>
+    public MemberAccessor(MemberInfo member, MethodInfo? getter)
     {
         Name = member.Name;
 
@@ -24,6 +35,7 @@ internal sealed class MemberAccessor
         {
             case PropertyInfo prop:
                 _property = prop;
+                _getter = getter;
                 break;
             case FieldInfo field:
                 _field = field;
@@ -49,12 +61,12 @@ internal sealed class MemberAccessor
     /// <param name="obj">The object to get the value from</param>
     /// <returns>The value of the member</returns>
     /// <exception cref="InvalidOperationException">
-    ///     Thrown when the member is a property with no get method visible through the compared type
-    ///     (write-only, its getter was trimmed, or its getter is not visible through that type)
+    ///     Thrown when the member is a property with no get method (write-only, or its getter was trimmed)
     /// </exception>
+    /// <exception cref="TargetInvocationException">Thrown when the get method throws</exception>
     public object? GetValue(object obj)
     {
-        if (_property is { GetMethod: null })
+        if (_property is not null && _getter is null)
         {
             throw new InvalidOperationException(
                 $"EnsureAssignable cannot read property {_property.DeclaringType}.{_property.Name}: "
@@ -66,6 +78,6 @@ internal sealed class MemberAccessor
             );
         }
 
-        return _property?.GetValue(obj) ?? _field?.GetValue(obj);
+        return _getter is not null ? _getter.Invoke(obj, null) : _field?.GetValue(obj);
     }
 }
