@@ -46,31 +46,39 @@ internal static class MemberComparison
     )]
     internal static TypeMetadata GetOrCacheMetadata(Type type)
     {
+        // These binding flags must stay within what ComparedMembers preserves. Members are lost silently under
+        // Native AOT if the flags are widened beyond ComparedMembers, or if the constant is narrowed; widening
+        // the constant alone loses nothing.
         return MetadataCache.GetOrAdd(
             type,
-            t =>
-            {
-                // These binding flags must stay within what ComparedMembers preserves. Members are lost
-                // silently under Native AOT if the flags are widened beyond ComparedMembers, or if the
-                // constant is narrowed; widening the constant alone loses nothing.
-                PropertyInfo[] properties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                List<MemberAccessor> members = properties
-                    .Where(p => p.GetIndexParameters().Length == 0)
-                    .Cast<MemberInfo>()
-                    .Concat(fields)
-                    .Select(m => new MemberAccessor(m))
-                    .ToList();
-
-                // GetFields does not return the private fields declared on a base class; they are added after
-                // the members above, which alone decide the "no members visible" rule.
-                int ownMemberCount = members.Count;
-                members.AddRange(BaseClassPrivateFields(t, properties).Select(f => new MemberAccessor(f)));
-
-                return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
-            }
+            t => CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         );
+    }
+
+    // The members of type, given the public instance properties reflection lists for it. Tests pass a listing
+    // of their own to reproduce what Native AOT returns.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
+    )]
+    internal static TypeMetadata CreateMetadata(Type type, PropertyInfo[] properties)
+    {
+        FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+        List<MemberAccessor> members = properties
+            .Where(p => p.GetIndexParameters().Length == 0)
+            .Cast<MemberInfo>()
+            .Concat(fields)
+            .Select(m => new MemberAccessor(m))
+            .ToList();
+
+        // GetFields does not return the private fields declared on a base class; they are added after the
+        // members above, which alone decide the "no members visible" rule.
+        int ownMemberCount = members.Count;
+        members.AddRange(BaseClassPrivateFields(type, properties).Select(f => new MemberAccessor(f)));
+
+        return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
     }
 
     // The private instance fields declared on the base classes of type, up to the first framework class. A
