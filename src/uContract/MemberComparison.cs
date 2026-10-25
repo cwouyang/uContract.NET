@@ -102,7 +102,12 @@ internal static class MemberComparison
     // by its namespace: the walk up the base classes stops at it, and it and the classes above it add nothing.
     private static bool IsFrameworkClass(Type type)
     {
-        byte[]? token = type.Assembly.GetName().GetPublicKeyToken();
+        return IsFrameworkPublicKeyToken(type.Assembly.GetName().GetPublicKeyToken());
+    }
+
+    // True for a public key token that the assemblies of the .NET runtime and libraries are signed with.
+    internal static bool IsFrameworkPublicKeyToken(byte[]? token)
+    {
         return token is { Length: > 0 }
             && FrameworkPublicKeyTokens.Contains(Convert.ToHexString(token), StringComparer.OrdinalIgnoreCase);
     }
