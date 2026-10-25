@@ -269,22 +269,16 @@ internal static class MemberComparison
     {
         string path = $"{comparedType.Name}.{topLevelMember.PathName}{hidden.PathBelowTopLevelMember}";
 
-        // Patterns are matched against Name (see IsAssignable), not against the path form; for a qualified member
-        // Name holds a declaring type, whose FullName may hold "+" (nested type) or "[[...]]" (closed generic), so
-        // the advised pattern is escaped.
-        string advice = topLevelMember.IsQualified
-            ? $"list '{Regex.Escape(topLevelMember.Name)}' as assignable (patterns are regular expressions "
-                + "matched against top-level member names; another member has the same name, so this one carries "
-                + "its declaring type, escaped as a regular expression); "
-            : $"list '{topLevelMember.PathName}' as assignable (patterns are regular expressions "
-                + "matched against top-level member names, so use the plain member name); ";
+        // Patterns are matched against raw names only (see IsAssignable), so the advice names the member without
+        // its qualifier, and a qualified member shares that name with another member, which it excuses too.
+        string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
 
         return new InvalidOperationException(
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
-                + "Ways out: "
-                + advice
+                + $"Ways out: list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
+                + $"matched against top-level member names, so use the plain member name{sharedName}); "
                 + "if the type has members, preserve them, for example with "
                 + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
@@ -337,9 +331,8 @@ internal static class MemberComparison
             : memberName;
     }
 
-    // A pattern excuses a member when it matches the raw name, or, for a qualified member, when it matches the
-    // qualified name but not the qualifier alone ("Base." for "Base._state"): a qualifier can narrow a match
-    // but never widen it.
+    // A pattern excuses a member when it matches its raw name. The declaring type of a qualified name takes no
+    // part, so a pattern excuses every member of the names it matches.
     internal static bool IsAssignable(MemberAccessor member, string[] patterns)
     {
         if (patterns == null || patterns.Length == 0)
@@ -347,10 +340,7 @@ internal static class MemberComparison
             return false;
         }
 
-        return patterns.Any(pattern =>
-            Matches(member.RawName, pattern)
-            || (member.IsQualified && Matches(member.Name, pattern) && !Matches(member.Qualifier, pattern))
-        );
+        return patterns.Any(pattern => Matches(member.RawName, pattern));
     }
 
     private static bool Matches(string name, string pattern)

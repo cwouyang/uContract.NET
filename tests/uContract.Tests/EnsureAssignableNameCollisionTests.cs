@@ -52,8 +52,7 @@ public class EnsureAssignableNameCollisionTests
         Assert.Null(exception);
     }
 
-    // A qualifier can narrow a match but never widen it: a pattern that matches only the declaring-type part
-    // of a qualified name does not excuse the member.
+    // Patterns are matched against raw names only: the declaring type of a qualified name takes no part.
     [Fact]
     public void EnsureAssignable_WhenAPatternMatchesOnlyTheDeclaringTypeOfACollidingMember_ReportsThatMember()
     {
@@ -66,6 +65,20 @@ public class EnsureAssignableNameCollisionTests
         );
 
         Assert.Equal(Violation + "  - StateBase._state", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAPatternSpansTheDeclaringTypeAndTheNameOfACollidingMember_ReportsThatMember()
+    {
+        OrderEntity actual = new() { BaseParentId = Changed };
+        OrderEntity expected = new();
+        ((BaseEntity)actual).Id = Changed;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "Base.*Id")
+        );
+
+        Assert.Equal(Violation + "  - BaseEntity.Id", exception.Description);
     }
 
     // ---- A public field hidden with "new" ----
@@ -135,6 +148,20 @@ public class EnsureAssignableNameCollisionTests
     private static string[] MemberNames<T>()
     {
         return MemberComparison.GetOrCacheMetadata(typeof(T)).Members.Select(member => member.Name).ToArray();
+    }
+
+    private class BaseEntity
+    {
+        public int Id;
+
+        public int BaseParentId;
+    }
+
+    private sealed class OrderEntity : BaseEntity
+    {
+#pragma warning disable CS0649 // Never assigned: the field exists to collide with the base field.
+        public new int Id;
+#pragma warning restore CS0649
     }
 
     private class StateBase
@@ -222,9 +249,6 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
 {
     private const string Violation = "Fields were modified that are not marked as assignable:\n";
 
-    private const string FullNameAdvice =
-        @"uContract\.Tests\.EnsureAssignableNameCollisionWithoutDynamicCodeTests\+Outer\+Item\.<X>k__BackingField";
-
     [Fact]
     public void EnsureAssignable_WhenACollidingBaseBackingFieldCannotBeCompared_NamesItWithItsDeclaringType()
     {
@@ -239,9 +263,9 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
             $"EnsureAssignable cannot compare {typeof(Opaque)} (reached through 'ShelfDerived.ShelfBase.X'): "
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
-                + @"Ways out: list 'ShelfBase\.<X>k__BackingField' as assignable (patterns are regular expressions "
-                + "matched against top-level member names; another member has the same name, so this one carries "
-                + "its declaring type, escaped as a regular expression); "
+                + "Ways out: list 'X' as assignable (patterns are regular expressions "
+                + "matched against top-level member names, so use the plain member name; "
+                + "it also excuses the other members of that name); "
                 + "if the type has members, preserve them, for example with "
                 + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
@@ -272,20 +296,30 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
         );
     }
 
-    [Theory]
-    [InlineData(@"ShelfBase\.<X>k__BackingField")]
-    [InlineData(@"^ShelfBase\.<X>k__BackingField$")]
-    public void EnsureAssignable_WhenTheAdvisedPatternIsAssignable_DoesNotThrow(string pattern)
+    [Fact]
+    public void EnsureAssignable_WhenTheAdvisedPlainNameIsAssignable_DoesNotThrow()
     {
         Opaque shared = new();
         ShelfDerived actual = new(shared, new Opaque());
         ShelfDerived expected = new(shared, new Opaque());
 
-        Exception? exception = TestRuntime.WithoutDynamicCode(() =>
-            Contract.EnsureAssignable(actual, expected, pattern)
-        );
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected, "X"));
 
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyTheQualifiedNameIsAssignable_ReportsTheMember()
+    {
+        Opaque shared = new();
+        ShelfDerived actual = new(shared, null);
+        ShelfDerived expected = new(shared, new Opaque());
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, @"ShelfBase\.<X>k__BackingField")
+        );
+
+        Assert.Equal(Violation + "  - ShelfBase.<X>k__BackingField", exception.Description);
     }
 
     [Fact]
@@ -305,7 +339,7 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
     // ---- Declaring types of one name ----
 
     [Fact]
-    public void EnsureAssignable_WhenTheCollidingMembersAreDeclaredOnTypesOfOneName_AdvisesTheFullNameOfTheDeclaringType()
+    public void EnsureAssignable_WhenTheCollidingMembersAreDeclaredOnTypesOfOneName_NamesTheFullNameInThePath()
     {
         Opaque shared = new();
         Item actual = new(shared, new Opaque());
@@ -314,21 +348,11 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Contains($"Ways out: list '{FullNameAdvice}' as assignable", cannotCompare.Message);
-    }
-
-    [Fact]
-    public void EnsureAssignable_WhenTheFullNameAdviceIsAssignable_DoesNotThrow()
-    {
-        Opaque shared = new();
-        Item actual = new(shared, new Opaque());
-        Item expected = new(shared, new Opaque());
-
-        Exception? exception = TestRuntime.WithoutDynamicCode(() =>
-            Contract.EnsureAssignable(actual, expected, FullNameAdvice)
+        Assert.Contains(
+            "(reached through 'Item.uContract.Tests.EnsureAssignableNameCollisionWithoutDynamicCodeTests+Outer+Item.X'): ",
+            cannotCompare.Message
         );
-
-        Assert.Null(exception);
+        Assert.Contains("Ways out: list 'X' as assignable", cannotCompare.Message);
     }
 
     private static class Outer
