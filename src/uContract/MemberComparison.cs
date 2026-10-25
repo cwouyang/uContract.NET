@@ -20,6 +20,15 @@ internal static class MemberComparison
 {
     private static readonly ConcurrentDictionary<Type, TypeMetadata> MetadataCache = new();
 
+    // The public key tokens the assemblies of the .NET runtime and libraries are signed with.
+    private static readonly string[] FrameworkPublicKeyTokens =
+    [
+        "7cec85d7bea7798e",
+        "b03f5f7f11d50a3a",
+        "cc7b13ffcd2ddd51",
+        "adb9793829ddae60",
+    ];
+
     // The members EnsureAssignable compares, and so the members the trimmer must preserve for its type argument.
     internal const DynamicallyAccessedMemberTypes ComparedMembers =
         DynamicallyAccessedMemberTypes.PublicProperties
@@ -50,9 +59,100 @@ internal static class MemberComparison
                     .Select(m => new MemberAccessor(m))
                     .ToList();
 
-                return new TypeMetadata { Members = members };
+                // GetFields does not return the private fields declared on a base class; they are added after
+                // the members above, which alone decide the "no members visible" rule.
+                int ownMemberCount = members.Count;
+                members.AddRange(BaseClassPrivateFields(t, properties).Select(f => new MemberAccessor(f)));
+
+                return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
             }
         );
+    }
+
+    // The private instance fields declared on the base classes of type, up to the first framework class. A
+    // backing field is left out when one of the compared properties is, or overrides, the property it backs.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2075",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a private field of a base class that the trimmer hides from reflection is not compared."
+    )]
+    private static IEnumerable<FieldInfo> BaseClassPrivateFields(Type type, PropertyInfo[] properties)
+    {
+        for (
+            Type? baseType = type.BaseType;
+            baseType is not null && !IsFrameworkClass(baseType);
+            baseType = baseType.BaseType
+        )
+        {
+            foreach (
+                FieldInfo field in baseType.GetFields(
+                    BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly
+                )
+            )
+            {
+                if (field.IsPrivate && !BacksAComparedProperty(field, baseType, properties))
+                {
+                    yield return field;
+                }
+            }
+        }
+    }
+
+    // A class of the .NET runtime or libraries, told by the public key token its assembly is signed with, not
+    // by its namespace: the walk up the base classes stops at it, and it and the classes above it add nothing.
+    private static bool IsFrameworkClass(Type type)
+    {
+        byte[]? token = type.Assembly.GetName().GetPublicKeyToken();
+        return token is { Length: > 0 }
+            && FrameworkPublicKeyTokens.Contains(Convert.ToHexString(token), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a property of a base class that the trimmer hides from reflection matches no compared property, so its backing field is compared."
+    )]
+    private static bool BacksAComparedProperty(FieldInfo field, Type baseType, PropertyInfo[] properties)
+    {
+        string name = SourceName(field.Name);
+        if (string.Equals(name, field.Name, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return baseType
+            .GetProperties(
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly
+            )
+            .Any(declared =>
+                string.Equals(declared.Name, name, StringComparison.Ordinal)
+                && properties.Any(compared =>
+                    string.Equals(compared.Name, name, StringComparison.Ordinal) && IsOrOverrides(compared, declared)
+                )
+            );
+    }
+
+    // Through a derived type, reflection reports an override as declared on that type, so the declaring type
+    // alone cannot tell whether compared overrides declared. An override, direct or through further overrides,
+    // shares the base definition of its accessors with the property it overrides; a property hidden with "new"
+    // does not.
+    private static bool IsOrOverrides(PropertyInfo compared, PropertyInfo declared)
+    {
+        return HaveSameBaseDefinition(compared.GetMethod, declared.GetMethod)
+            || HaveSameBaseDefinition(compared.SetMethod, declared.SetMethod);
+    }
+
+    private static bool HaveSameBaseDefinition(MethodInfo? compared, MethodInfo? declared)
+    {
+        if (compared is null || declared is null)
+        {
+            return false;
+        }
+
+        MethodInfo comparedBase = compared.GetBaseDefinition();
+        MethodInfo declaredBase = declared.GetBaseDefinition();
+        return comparedBase.DeclaringType == declaredBase.DeclaringType
+            && string.Equals(comparedBase.Name, declaredBase.Name, StringComparison.Ordinal);
     }
 
     internal static InvalidOperationException CannotCompareNested(
@@ -104,10 +204,11 @@ internal static class MemberComparison
     }
 
     // Under Native AOT a type whose members were not preserved reflects as having none, which
-    // would make every comparison of it pass. System.Object genuinely has none (lock objects).
+    // would make every comparison of it pass. System.Object genuinely has none (lock objects). The rule is
+    // decided before the private fields of base classes are added, also when those fields are visible.
     internal static bool MembersAreHidden(Type type, TypeMetadata metadata)
     {
-        return metadata.Members.Count == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
+        return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
     }
 
     // A compiler-generated backing field "<Name>k__BackingField" is shown as the property it backs.
