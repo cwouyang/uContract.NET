@@ -59,6 +59,60 @@ public class EnsureAssignableHiddenGetterTests
         );
     }
 
+    // In the chain TitleBase <- GetterOverride (getter only) <- SetterOverride (setter only), the two overrides
+    // declare no accessor in common; under Native AOT, GetProperties on SetterOverride returns both of them.
+    [Fact]
+    public void Members_WhenTheListingHoldsASetterOnlyOverrideAndTheGetterOnlyOverrideBelowIt_ListTheTitleOnce()
+    {
+        PropertyInfo[] listing =
+        [
+            typeof(SetterOverride).GetProperties().Single(),
+            typeof(GetterOverride).GetProperties().Single(),
+        ];
+
+        TypeMetadata metadata = MemberComparison.CreateMetadata(typeof(SetterOverride), listing);
+
+        Assert.Single(metadata.Members, IsTitle);
+    }
+
+    [Fact]
+    public void Members_WhenTheListingHoldsBothOverridesAndTheBaseDeclaration_ListTheTitleOnce()
+    {
+        PropertyInfo[] listing =
+        [
+            typeof(SetterOverride).GetProperties().Single(),
+            typeof(GetterOverride).GetProperties().Single(),
+            typeof(TitleBase).GetProperties().Single(),
+        ];
+
+        TypeMetadata metadata = MemberComparison.CreateMetadata(typeof(SetterOverride), listing);
+
+        Assert.Single(metadata.Members, IsTitle);
+    }
+
+    [Fact]
+    public void Members_WhenTheListingHoldsBothOverrides_ReadTheTitleThroughTheGetterThatRuns()
+    {
+        PropertyInfo[] listing =
+        [
+            typeof(SetterOverride).GetProperties().Single(),
+            typeof(GetterOverride).GetProperties().Single(),
+        ];
+        SetterOverride instance = new() { Title = "x" };
+
+        MemberAccessor title = Assert.Single(
+            MemberComparison.CreateMetadata(typeof(SetterOverride), listing).Members,
+            IsTitle
+        );
+
+        Assert.Equal(GetterOverride.Prefix + "x", title.GetValue(instance));
+    }
+
+    private static bool IsTitle(MemberAccessor member)
+    {
+        return string.Equals(member.Name, nameof(TitleBase.Title), StringComparison.Ordinal);
+    }
+
     // ---- A getter found on a base class ----
 
     [Fact]
@@ -125,6 +179,26 @@ public class EnsureAssignableHiddenGetterTests
         public override string Label
         {
             set => base.Label = value;
+        }
+    }
+
+    private class TitleBase
+    {
+        public virtual string Title { get; set; } = "";
+    }
+
+    private class GetterOverride : TitleBase
+    {
+        public const string Prefix = "title: ";
+
+        public override string Title => Prefix + base.Title;
+    }
+
+    private sealed class SetterOverride : GetterOverride
+    {
+        public override string Title
+        {
+            set => base.Title = value;
         }
     }
 

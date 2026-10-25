@@ -80,8 +80,8 @@ internal static class MemberComparison
         return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
     }
 
-    // Under Native AOT, GetProperties returns both a setter-only override and the base declaration it
-    // overrides; the two are one member, listed as the override.
+    // Under Native AOT, GetProperties returns both a setter-only override and the declarations below it of the
+    // same virtual property, a getter-only override among them; they are one member, listed as the override.
     private static bool IsOverriddenByAnother(PropertyInfo property, PropertyInfo[] properties)
     {
         return properties.Any(other =>
@@ -90,15 +90,30 @@ internal static class MemberComparison
             && other.DeclaringType is { } otherDeclaringType
             && property.DeclaringType is { } declaringType
             && otherDeclaringType.IsSubclassOf(declaringType)
-            && IsOrOverrides(other, property)
+            && AreOneVirtualProperty(other, property)
         );
+    }
+
+    // Two declarations of one name are one virtual property when their accessors go back to the same first
+    // declaration, whichever accessors each of them declares: in A { virtual P get; set; } <- B { override P
+    // get; } <- C { override P set; }, C.P and B.P declare no accessor in common. A property hidden with "new"
+    // goes back to a declaration of its own.
+    private static bool AreOneVirtualProperty(PropertyInfo first, PropertyInfo second)
+    {
+        return FirstDeclarations(first).Any(declaringType => FirstDeclarations(second).Contains(declaringType));
+    }
+
+    // The types that declare the base definitions of the accessors of property.
+    private static IEnumerable<Type?> FirstDeclarations(PropertyInfo property)
+    {
+        return property.GetAccessors(nonPublic: true).Select(accessor => accessor.GetBaseDefinition().DeclaringType);
     }
 
     // The getter a property is read with. Through a derived type, reflection shows neither a private getter
     // declared on a base class nor the getter that a setter-only override inherits, so it is looked up on the
     // declaring type of the property and then on its base classes, framework classes included: the getter of
-    // the nearest declaration that the property is, or overrides. Null when there is none (write-only, or
-    // trimmed away).
+    // the nearest declaration of the same virtual property (see AreOneVirtualProperty) that has one. Null when
+    // there is none (write-only, or trimmed away).
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2075",
@@ -119,7 +134,7 @@ internal static class MemberComparison
                 .FirstOrDefault(declared =>
                     declared.GetMethod is not null
                     && string.Equals(declared.Name, property.Name, StringComparison.Ordinal)
-                    && IsOrOverrides(property, declared)
+                    && AreOneVirtualProperty(property, declared)
                 );
             if (declaration is not null)
             {
