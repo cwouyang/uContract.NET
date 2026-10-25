@@ -340,12 +340,9 @@ internal static class MemberComparison
             return false;
         }
 
-        return patterns.Any(pattern => Matches(member.RawName, pattern));
-    }
-
-    private static bool Matches(string name, string pattern)
-    {
-        return Regex.IsMatch(name, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+        return patterns.Any(pattern =>
+            Regex.IsMatch(member.RawName, pattern, RegexOptions.None, TimeSpan.FromSeconds(1))
+        );
     }
 
     // A false return with context.Hidden set means "could not compare" (a type with no visible members
