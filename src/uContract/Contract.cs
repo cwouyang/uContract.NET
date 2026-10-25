@@ -1435,11 +1435,7 @@ public static class Contract
             {
                 if (context.Hidden is not null)
                 {
-                    throw MemberComparison.CannotCompareNested(
-                        type,
-                        MemberComparison.SourceName(member.Name),
-                        context.Hidden
-                    );
+                    throw MemberComparison.CannotCompareNested(type, member, context.Hidden);
                 }
 
                 differences.Add(member.Name);

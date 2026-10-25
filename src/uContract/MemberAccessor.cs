@@ -30,6 +30,11 @@ internal sealed class MemberAccessor
     public MemberAccessor(MemberInfo member, MethodInfo? getter)
     {
         Name = member.Name;
+        RawName = member.Name;
+        PathName = MemberComparison.SourceName(member.Name);
+
+        // A property or field reached through a type is always declared on one.
+        DeclaringType = member.DeclaringType!;
 
         switch (member)
         {
@@ -46,9 +51,44 @@ internal sealed class MemberAccessor
     }
 
     /// <summary>
-    ///     Gets the name of the member.
+    ///     Gets the name of the member in violation entries and for assignable patterns: its raw name, with
+    ///     its declaring type in front when it is qualified.
     /// </summary>
-    public string Name { get; }
+    public string Name { get; private set; }
+
+    /// <summary>
+    ///     Gets the name of the member in the path of a "cannot compare" message: as <see cref="Name" />, but a
+    ///     backing field is shown as the property it backs.
+    /// </summary>
+    public string PathName { get; private set; }
+
+    /// <summary>
+    ///     Gets the name reflection gives the member.
+    /// </summary>
+    public string RawName { get; }
+
+    /// <summary>
+    ///     Gets a value indicating whether the member is named with its declaring type, because another
+    ///     member of the compared type has the same raw name.
+    /// </summary>
+    public bool IsQualified { get; private set; }
+
+    /// <summary>
+    ///     Gets the type that declares the member.
+    /// </summary>
+    public Type DeclaringType { get; }
+
+    /// <summary>
+    ///     Names the member with the given declaring type name in front of <see cref="Name" /> and
+    ///     <see cref="PathName" />.
+    /// </summary>
+    /// <param name="declaringTypeName">The name of the declaring type to put in front</param>
+    public void Qualify(string declaringTypeName)
+    {
+        Name = declaringTypeName + "." + RawName;
+        PathName = declaringTypeName + "." + MemberComparison.SourceName(RawName);
+        IsQualified = true;
+    }
 
     /// <summary>
     ///     Gets a value indicating whether the member is a field.

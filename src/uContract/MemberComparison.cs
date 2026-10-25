@@ -77,7 +77,32 @@ internal static class MemberComparison
         int ownMemberCount = members.Count;
         members.AddRange(BaseClassPrivateFields(type, properties).Select(f => new MemberAccessor(f)));
 
+        QualifyCollidingNames(members);
+
         return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
+    }
+
+    // Members of one raw name (ordinal), counted after the declarations of one virtual property are merged,
+    // are named with their declaring type: its Name, or, for the whole group, its FullName when two of them
+    // share a Name. A property and its own backing field ("Id", "<Id>k__BackingField") do not collide.
+    private static void QualifyCollidingNames(List<MemberAccessor> members)
+    {
+        foreach (IGrouping<string, MemberAccessor> sameName in members.GroupBy(m => m.RawName, StringComparer.Ordinal))
+        {
+            MemberAccessor[] collision = [.. sameName];
+            if (collision.Length < 2)
+            {
+                continue;
+            }
+
+            bool typeNamesRepeat =
+                collision.Select(m => m.DeclaringType.Name).Distinct(StringComparer.Ordinal).Count() < collision.Length;
+            foreach (MemberAccessor member in collision)
+            {
+                Type declaringType = member.DeclaringType;
+                member.Qualify(typeNamesRepeat ? declaringType.FullName ?? declaringType.Name : declaringType.Name);
+            }
+        }
     }
 
     // Under Native AOT, GetProperties returns both a setter-only override and the declarations below it of the
@@ -238,18 +263,28 @@ internal static class MemberComparison
 
     internal static InvalidOperationException CannotCompareNested(
         Type comparedType,
-        string topLevelMember,
+        MemberAccessor topLevelMember,
         HiddenMembers hidden
     )
     {
-        string path = $"{comparedType.Name}.{topLevelMember}{hidden.PathBelowTopLevelMember}";
+        string path = $"{comparedType.Name}.{topLevelMember.PathName}{hidden.PathBelowTopLevelMember}";
+
+        // Patterns are matched against Name, not against the path form; for a qualified member Name holds a
+        // declaring type, whose FullName may hold "+" (nested type) or "[[...]]" (closed generic), so the advised
+        // pattern is escaped.
+        string advice = topLevelMember.IsQualified
+            ? $"list '{Regex.Escape(topLevelMember.Name)}' as assignable (patterns are regular expressions "
+                + "matched against top-level member names; another member has the same name, so this one carries "
+                + "its declaring type, escaped as a regular expression); "
+            : $"list '{topLevelMember.PathName}' as assignable (patterns are regular expressions "
+                + "matched against top-level member names, so use the plain member name); ";
 
         return new InvalidOperationException(
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
-                + $"Ways out: list '{topLevelMember}' as assignable (patterns are regular expressions "
-                + "matched against top-level member names, so use the plain member name); "
+                + "Ways out: "
+                + advice
                 + "if the type has members, preserve them, for example with "
                 + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
@@ -765,7 +800,7 @@ internal static class MemberComparison
         private int _index = -1;
         private bool _comparedAny;
 
-        public override string ChildSegment => "." + SourceName(members[_index].Name);
+        public override string ChildSegment => "." + members[_index].PathName;
 
         public override Step Next()
         {
