@@ -1423,7 +1423,7 @@ public static class Contract
 
         foreach (MemberAccessor member in metadata.Members)
         {
-            if (MemberComparison.IsAssignable(member.Name, assignableFieldPatterns))
+            if (MemberComparison.IsAssignable(member, assignableFieldPatterns))
             {
                 continue;
             }

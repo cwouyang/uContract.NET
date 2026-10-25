@@ -337,14 +337,14 @@ internal static class MemberComparison
             : memberName;
     }
 
-    internal static bool IsAssignable(string fieldName, string[] patterns)
+    internal static bool IsAssignable(MemberAccessor member, string[] patterns)
     {
         if (patterns == null || patterns.Length == 0)
         {
             return false;
         }
 
-        return patterns.Any(pattern => Regex.IsMatch(fieldName, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
+        return patterns.Any(pattern => Regex.IsMatch(member.Name, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
     }
 
     // A false return with context.Hidden set means "could not compare" (a type with no visible members
