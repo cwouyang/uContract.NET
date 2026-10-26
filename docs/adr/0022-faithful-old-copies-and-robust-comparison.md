@@ -2755,8 +2755,10 @@ named. "Read from the code" marks a limit that no test or measurement shows.
 15. **Cost.** An array as `T` is now compared element by element, which `82c6255` skipped. One call
     was measured: `EnsureAssignable(new byte[1_000_000], new byte[1_000_000])` with equal content
     allocated 80,781,544 bytes and took about 220 ms, in a Debug build. This is one measurement, not
-    a rate. `Old<T>()` now copies an array of the namespace that it shared before, and the storage
-    of a list of such elements (read from the code; not measured as a cost).
+    a rate. Since #64, two arrays of one primitive or enum element type are compared without boxing an
+    element: the same call allocated 1,152 bytes and took about 0.13 ms (Release, .NET 8.0.16, JIT).
+    `Old<T>()` now copies an array of the namespace that it shared before, and the storage of a list
+    of such elements (read from the code; not measured as a cost).
 16. **Getters below an array as `T`.** The getters of the public properties run for two different
     instances of one class that is neither a shared type nor a sequence, wherever the comparison
     reaches such a pair: as two elements of the arrays, as two elements of a `FrozenSet<T>` that the

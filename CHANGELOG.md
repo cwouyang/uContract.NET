@@ -338,6 +338,10 @@ AOT](README.md#trimming-and-native-aot) in the README.
   the same three, 192 for a `FrozenSet<int>` and 1560 for an `ImmutableArray<int>`, and 3552 with
   its exception for a `List<int>`, a violation; there is no earlier number under Native AOT to
   compare these with. (#61; ADR-0022)
+- `EnsureAssignable<T>()` compares two arrays of one runtime type whose element type is `bool`,
+  `char`, an integer type, `float`, `double` or an enum without boxing an element; every result stays
+  as it was. Measured once, for two `byte[]` of 1,000,000 equal elements as `T` (.NET 8.0.16, JIT,
+  Release): 80,780,176 bytes and about 187 ms before, 1,152 bytes and about 0.13 ms now. (#64)
 - Known limitation: a property that returns a new instance of its own type on every read (for
   example `DirectoryInfo.Root`) now makes the comparison grow without bound, where 2.0.0 overflowed
   the stack. Fields-only comparison ([#46](https://github.com/cwouyang/uContract.NET/issues/46))
