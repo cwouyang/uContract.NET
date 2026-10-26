@@ -13,60 +13,65 @@ public class EnsureAssignablePrimitiveArrayTests
     private const string ItemsChanged =
         "Fields were modified that are not marked as assignable:\n  - Items\n  - <Items>k__BackingField";
 
-    public static TheoryData<Array, Array> ArraysOfEqualContent =>
-        new()
-        {
-            { Of(true, false), Of(true, false) },
-            { Of('a', 'b'), Of('a', 'b') },
-            { Of<sbyte>(-1, 2), Of<sbyte>(-1, 2) },
-            { Of<byte>(1, 2), Of<byte>(1, 2) },
-            { Of<short>(-1, 2), Of<short>(-1, 2) },
-            { Of<ushort>(1, 2), Of<ushort>(1, 2) },
-            { Of(-1, 2), Of(-1, 2) },
-            { Of<uint>(1, 2), Of<uint>(1, 2) },
-            { Of(-1L, 2L), Of(-1L, 2L) },
-            { Of<ulong>(1, 2), Of<ulong>(1, 2) },
-            { Of<nint>(-1, 2), Of<nint>(-1, 2) },
-            { Of<nuint>(1, 2), Of<nuint>(1, 2) },
-            { Of(1.5f, 2f), Of(1.5f, 2f) },
-            { Of(1.5, 2.0), Of(1.5, 2.0) },
-            { Of(ByteColor.Red, ByteColor.Blue), Of(ByteColor.Red, ByteColor.Blue) },
-            { Of(LongSize.Small, LongSize.Huge), Of(LongSize.Small, LongSize.Huge) },
-        };
+    public static TheoryData<ArrayPair> ArraysOfEqualContent =>
+        [
+            new ArrayPair("bool", Of(true, false), Of(true, false)),
+            new ArrayPair("char", Of('a', 'b'), Of('a', 'b')),
+            new ArrayPair("sbyte", Of<sbyte>(-1, 2), Of<sbyte>(-1, 2)),
+            new ArrayPair("byte", Of<byte>(1, 2), Of<byte>(1, 2)),
+            new ArrayPair("short", Of<short>(-1, 2), Of<short>(-1, 2)),
+            new ArrayPair("ushort", Of<ushort>(1, 2), Of<ushort>(1, 2)),
+            new ArrayPair("int", Of(-1, 2), Of(-1, 2)),
+            new ArrayPair("uint", Of<uint>(1, 2), Of<uint>(1, 2)),
+            new ArrayPair("long", Of(-1L, 2L), Of(-1L, 2L)),
+            new ArrayPair("ulong", Of<ulong>(1, 2), Of<ulong>(1, 2)),
+            new ArrayPair("nint", Of<nint>(-1, 2), Of<nint>(-1, 2)),
+            new ArrayPair("nuint", Of<nuint>(1, 2), Of<nuint>(1, 2)),
+            new ArrayPair("float", Of(1.5f, 2f), Of(1.5f, 2f)),
+            new ArrayPair("double", Of(1.5, 2.0), Of(1.5, 2.0)),
+            new ArrayPair("enum : byte", Of(ByteColor.Red, ByteColor.Blue), Of(ByteColor.Red, ByteColor.Blue)),
+            new ArrayPair("enum : long", Of(LongSize.Small, LongSize.Huge), Of(LongSize.Small, LongSize.Huge)),
+        ];
 
-    public static TheoryData<Array, Array> ArraysWithTheLastElementDifferent =>
-        new()
-        {
-            { Of(true, false), Of(true, true) },
-            { Of('a', 'b'), Of('a', 'c') },
-            { Of<sbyte>(-1, 2), Of<sbyte>(-1, 3) },
-            { Of<byte>(1, 2), Of<byte>(1, 3) },
-            { Of<short>(-1, 2), Of<short>(-1, 3) },
-            { Of<ushort>(1, 2), Of<ushort>(1, 3) },
-            { Of(-1, 2), Of(-1, 3) },
-            { Of<uint>(1, 2), Of<uint>(1, 3) },
-            { Of(-1L, 2L), Of(-1L, 3L) },
-            { Of<ulong>(1, 2), Of<ulong>(1, 3) },
-            { Of<nint>(-1, 2), Of<nint>(-1, 3) },
-            { Of<nuint>(1, 2), Of<nuint>(1, 3) },
-            { Of(1f, 1f), Of(1f, 2f) },
-            { Of(1.0, 1.0), Of(1.0, 2.0) },
-            { Of(ByteColor.Red, ByteColor.Blue), Of(ByteColor.Red, ByteColor.Red) },
-            { Of(LongSize.Small, LongSize.Huge), Of(LongSize.Small, LongSize.Small) },
-        };
+    public static TheoryData<ArrayPair> ArraysWithTheLastElementDifferent =>
+        [
+            new ArrayPair("bool", Of(true, false), Of(true, true)),
+            new ArrayPair("char", Of('a', 'b'), Of('a', 'c')),
+            new ArrayPair("sbyte", Of<sbyte>(-1, 2), Of<sbyte>(-1, 3)),
+            new ArrayPair("byte", Of<byte>(1, 2), Of<byte>(1, 3)),
+            new ArrayPair("short", Of<short>(-1, 2), Of<short>(-1, 3)),
+            new ArrayPair("ushort", Of<ushort>(1, 2), Of<ushort>(1, 3)),
+            new ArrayPair("int", Of(-1, 2), Of(-1, 3)),
+            new ArrayPair("uint", Of<uint>(1, 2), Of<uint>(1, 3)),
+            new ArrayPair("long", Of(-1L, 2L), Of(-1L, 3L)),
+            new ArrayPair("ulong", Of<ulong>(1, 2), Of<ulong>(1, 3)),
+            new ArrayPair("nint", Of<nint>(-1, 2), Of<nint>(-1, 3)),
+            new ArrayPair("nuint", Of<nuint>(1, 2), Of<nuint>(1, 3)),
+            new ArrayPair("float", Of(1f, 1f), Of(1f, 2f)),
+            new ArrayPair("double", Of(1.0, 1.0), Of(1.0, 2.0)),
+            new ArrayPair("enum : byte", Of(ByteColor.Red, ByteColor.Blue), Of(ByteColor.Red, ByteColor.Red)),
+            new ArrayPair("enum : long", Of(LongSize.Small, LongSize.Huge), Of(LongSize.Small, LongSize.Small)),
+        ];
 
     // Each pair is equal by float.Equals or double.Equals, though == says otherwise for NaN, and the bits
     // differ for 0.0 and -0.0 and for two different NaNs.
-    public static TheoryData<Array, Array> FloatingPointArraysEqualByEquals =>
-        new()
-        {
-            { Of(float.NaN), Of(float.NaN) },
-            { Of(double.NaN), Of(double.NaN) },
-            { Of(0f), Of(-0f) },
-            { Of(0.0), Of(-0.0) },
-            { Of(float.NaN), Of(BitConverter.Int32BitsToSingle(0x7FC0_0001)) },
-            { Of(double.NaN), Of(BitConverter.Int64BitsToDouble(0x7FF8_0000_0000_0001)) },
-        };
+    public static TheoryData<ArrayPair> FloatingPointArraysEqualByEquals =>
+        [
+            new ArrayPair("float NaN and NaN", Of(float.NaN), Of(float.NaN)),
+            new ArrayPair("double NaN and NaN", Of(double.NaN), Of(double.NaN)),
+            new ArrayPair("float 0 and -0", Of(0f), Of(-0f)),
+            new ArrayPair("double 0 and -0", Of(0.0), Of(-0.0)),
+            new ArrayPair(
+                "float NaNs of different bits",
+                Of(float.NaN),
+                Of(BitConverter.Int32BitsToSingle(0x7FC0_0001))
+            ),
+            new ArrayPair(
+                "double NaNs of different bits",
+                Of(double.NaN),
+                Of(BitConverter.Int64BitsToDouble(0x7FF8_0000_0000_0001))
+            ),
+        ];
 
     [Fact]
     public void EnsureAssignable_WhenTIsAnArrayOfAMillionEqualBytes_AllocatesFarLessThanOneBytePerElement()
@@ -103,13 +108,10 @@ public class EnsureAssignablePrimitiveArrayTests
 
     [Theory]
     [MemberData(nameof(ArraysOfEqualContent))]
-    public void EnsureAssignable_WhenMemberHoldsTwoArraysOfAPrimitiveOrEnumOfEqualContent_DoesNotThrow(
-        Array actualItems,
-        Array expectedItems
-    )
+    public void EnsureAssignable_WhenMemberHoldsTwoArraysOfAPrimitiveOrEnumOfEqualContent_DoesNotThrow(ArrayPair pair)
     {
-        Holder<Array> actual = new() { Items = actualItems };
-        Holder<Array> expected = new() { Items = expectedItems };
+        Holder<Array> actual = new() { Items = pair.Actual };
+        Holder<Array> expected = new() { Items = pair.Expected };
         Assert.NotSame(actual.Items, expected.Items);
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
@@ -120,12 +122,11 @@ public class EnsureAssignablePrimitiveArrayTests
     [Theory]
     [MemberData(nameof(ArraysWithTheLastElementDifferent))]
     public void EnsureAssignable_WhenMemberHoldsTwoArraysOfAPrimitiveOrEnumAndOneElementDiffers_ReportsTheMember(
-        Array actualItems,
-        Array expectedItems
+        ArrayPair pair
     )
     {
-        Holder<Array> actual = new() { Items = actualItems };
-        Holder<Array> expected = new() { Items = expectedItems };
+        Holder<Array> actual = new() { Items = pair.Actual };
+        Holder<Array> expected = new() { Items = pair.Expected };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -137,12 +138,11 @@ public class EnsureAssignablePrimitiveArrayTests
     [Theory]
     [MemberData(nameof(FloatingPointArraysEqualByEquals))]
     public void EnsureAssignable_WhenMemberHoldsTwoFloatingPointArraysOfElementsEqualByEquals_DoesNotThrow(
-        Array actualItems,
-        Array expectedItems
+        ArrayPair pair
     )
     {
-        Holder<Array> actual = new() { Items = actualItems };
-        Holder<Array> expected = new() { Items = expectedItems };
+        Holder<Array> actual = new() { Items = pair.Actual };
+        Holder<Array> expected = new() { Items = pair.Expected };
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
@@ -301,6 +301,12 @@ public class EnsureAssignablePrimitiveArrayTests
         }
 
         return array;
+    }
+
+    // A pair of arrays for a theory row, displayed by its label: the arrays of several element types display alike.
+    public sealed record ArrayPair(string Label, Array Actual, Array Expected)
+    {
+        public override string ToString() => Label;
     }
 
     public enum ByteColor : byte
