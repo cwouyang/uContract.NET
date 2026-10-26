@@ -1925,6 +1925,44 @@ public static class Program
             Expect.Throws<PostconditionViolationException>("is compared as a whole"),
             Expect.Ok
         );
+
+        // Mutation: none (two int[,] of the same shape and elements), then the last element. A multi-dimensional
+        // array is read in place as well.
+        yield return new Check(
+            106,
+            "EnsureAssignable<int[,]> arrays of equal elements",
+            GridArraysEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+        yield return new Check(
+            107,
+            "EnsureAssignable<int[,]> arrays with one element differing",
+            GridArraysDiffer,
+            Expect.Throws<PostconditionViolationException>("is compared as a whole"),
+            Expect.Ok
+        );
+    }
+
+    private static int[,] Grid(int last) =>
+        new[,]
+        {
+            { 1, 2 },
+            { 3, last },
+        };
+
+    private static object? GridArraysEqual()
+    {
+        int[,] actual = Grid(last: 4);
+        int[,] expected = Grid(last: 4);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? GridArraysDiffer()
+    {
+        int[,] actual = Grid(last: 4);
+        int[,] expected = Grid(last: 5);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
     }
 
     private static object? ByteArraysEqual()
