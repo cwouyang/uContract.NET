@@ -15,6 +15,7 @@
 - **Amended**: 2026-10-12 — limit 18 of the #57 amendment no longer holds: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type of its argument, and it reports an array of function pointers as a violation (#61, [ADR-0012](0012-dotnet-improvements-over-java.md)); `Old<T>()`, `EnsureAssignable<T>()`, B1 to B8 and R0–R8 are unchanged; this amendment holds the measured results of that change; the smoke program has 91 checks; see the sixth Amendment under Implementation Notes
 - **Amended**: 2026-10-24 — R7 compares the counts of two dictionaries first: two of different counts are unequal and no entry of either is read (#50); `Old<T>()`, B1 to B8, R0 to R6 and R8 are unchanged; the smoke program has 92 checks; see the seventh Amendment under Implementation Notes
 - **Amended**: 2026-10-24 — records the measurements behind #69: private fields and auto-properties that are not public, declared on a base class of `T`, are not compared; two different `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes the pair on `this` in silence unless a public getter of `T` throws, which corrects one item of the Limits of the #54 amendment; the library is unchanged; see the eighth Amendment under Implementation Notes
+- **Amended**: 2026-10-26 — the private fields declared on base classes that are not part of .NET are compared, a property whose getter is not visible through the compared type is read through the getter that exists, and colliding member names are shown with their declaring type (#40 items 1 and 4, [ADR-0023](0023-comparison-of-base-class-members.md)); the scope statements on items 1 and 4 and the base-class limit of the #69 amendment no longer hold; R8 is decided before the added fields; the smoke program has 100 checks; see the ninth Amendment under Implementation Notes
 
 ---
 
@@ -3721,6 +3722,98 @@ members.", names no group and holds for both as written.
 
 **Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R8 and rule S.
 
+### Amendment (2026-10-26): Base-class private fields, inherited getters and colliding names are compared (#40)
+
+This amendment follows the #69 amendment above.
+[Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), items 1 and 4, changes the
+members that `EnsureAssignable<T>()` lists for a type that it compares by its members.
+[ADR-0023](0023-comparison-of-base-class-members.md) records the decision, the rejected
+alternatives and the limits; [ADR-0021](0021-postconditions-under-trimming-and-aot.md) carries the
+amendment for the unreadable-property rule and the smoke checks.
+
+**The change, in short.**
+
+- The private instance fields declared on the base classes of a compared type are added to its
+  member list: for `T`, for the runtime type of a nested object, and for an element below a `T`
+  that is compared as a whole. The walk up the base classes stops at the first class whose assembly
+  is signed with one of the six public key tokens of the .NET 8 shared frameworks. The backing
+  field of a base auto-property is left out when a compared property is that property or overrides
+  it. Static fields are not compared.
+- A public property whose getter is not visible through the compared type is read with the getter
+  of its declaring type, or of the nearest declaration of the same virtual property that has one,
+  and is listed once in every build.
+- Members whose raw names collide are shown with their declaring type: `_state (declared on
+  StateBase)` in a violation entry, `StateBase._state` as a segment of a "cannot compare" path.
+  Assignable patterns are matched against the raw name, as before.
+
+**Qualified in the accepted text.** Each statement is quoted by its opening words:
+
+- Constraints: "Not in scope: private fields declared on base classes, and members that a runtime
+  type derived from `T` adds at the top level, are still not compared (#40 items 1 and
+  2-top-level)." The first part no longer holds: the private fields declared on base classes that
+  are not part of .NET are compared. The second part stands as the #52 and #57 amendments left it.
+- D6: "#40 items 1, 2-top-level, 4, 6 and 7 stay open." Known Limitations: "**Scope.** #40 items 1,
+  2-top-level, 4, 6 and 7 remain." Items 1 and 4 are now taken. The #52 and #57 amendments quote
+  these statements as "the three scope statements on #40"; what they say about item 2-top-level
+  stands.
+- D9: "Unchanged: public properties and instance fields." The comparison rules: "Unchanged: which
+  members are compared (D9)". The members are still public properties and instance fields. The
+  instance fields of a compared type now include the private ones declared on its base classes, up
+  to the first framework class, so R1 and R2 walk a longer list. R0 to R7 are unchanged.
+- R8: "For a nested class other than `System.Object` with no visible members". "No visible members"
+  is decided on the members listed before the private fields of base classes are added
+  (`TypeMetadata.OwnMemberCount`), at the top level and for nested objects. So a class whose only
+  state is such fields still meets R8 under Native AOT, also when its base class is preserved. In
+  the path of the R8 message, a member whose raw name collides is shown as
+  `<declaring type>.<name>`, at any level; when the top-level member is one of them, "so use the
+  plain member name" is followed by "; it also excuses the other members of that name".
+
+**Still true in the accepted text.** "What held": "A base class's private field is hidden. Its
+bitwise value is kept and its reference is shared." Under Native AOT a private field of a base
+class that the application does not preserve is not compared either: smoke check 96 shows a change
+of one passing. Preserved with
+`[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]`, it is compared
+(check 97), and the objects it holds are then compared by their members, so their types need
+preserving too: otherwise two unequal instances end in "cannot compare" (R8; read from the code,
+not measured).
+
+**Qualified in the #69 amendment.** Its measurements, on master `40692cc`, stay as the record of
+that state. Each statement is quoted by its opening words:
+
+- The Status line of 2026-10-24: "private fields and auto-properties that are not public, declared
+  on a base class of `T`, are not compared". Under the JIT they are now compared when the base class
+  is not part of .NET. The Revision History row of that date says "base-class private members are
+  not compared", and the same holds for it.
+- The table under "**Private members declared on a base class.**": the rows "a private field", "a
+  private auto-property" and "a protected auto-property" gave no exception. Now each gives a
+  violation, which names the field, or for an auto-property its backing field (in the unit test,
+  `<PrivateNote>k__BackingField`). Unit tests hold the three cases. The other rows stand.
+- "Cause, read from the code: `MemberComparison.GetOrCacheMetadata` lists `GetProperties(Public |
+  Instance)` and `GetFields(Public | NonPublic | Instance)` of the compared type only." The list is
+  now built by `MemberComparison.CreateMetadata`, which adds the private fields of the base classes
+  after those two listings. "the limit holds for such a nested object too" no longer holds under
+  the JIT: a unit test shows a change of a base private field of a nested object reported as the
+  top-level member that holds it.
+- "The ways out: for base-class private members, a second pair with `T` = the base class (measured
+  for a private field) or `Contract.Ensure`, and for those of a nested object `Contract.Ensure`".
+  Under the JIT no way out is needed. Under Native AOT the way out is to preserve the base class, as
+  above. A member whose change is intended is listed as assignable.
+- "**What stays open.**": "item 1 (private fields declared on a base class)". Item 1 is taken. As
+  that item asked, the documentation was revised with it: `README.md`, `docs/examples/`, the
+  `[Unreleased]` section of `CHANGELOG.md` and the XML documentation of `EnsureAssignable<T>()`. The
+  rest of that list stands: of item 2, two different instances of a shared type as `T` and the same
+  instance of a fixed shared type, and #46.
+
+**Checks.** Unit tests in `EnsureAssignableBaseClassFieldTests.cs`,
+`EnsureAssignableHiddenGetterTests.cs` and `EnsureAssignableNameCollisionTests.cs`; 1,167 unit
+tests passed in the pull request that closed this work. Smoke checks 93 to 100, which the #40 amendment of ADR-0021 lists: the
+smoke program has 100 checks in the default build, all of which passed in the Native AOT publish
+for `win-x64` in the pull request that closed this work, with postconditions on and with `DBC_POST=off`. The variant with the
+hidden dictionary entry was not published for this change.
+
+**Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R7 and rule S, and R8 apart
+from what is said above.
+
 ---
 
 ## References
@@ -3771,3 +3864,4 @@ members.", names no group and holds for both as written.
 | 2026-10-12 | Amended     | Limit 18 of the #57 amendment is superseded: `Contract.EnsureImmutableCollection<T>()` no longer reads the namespace of the runtime type and reports an array of function pointers as a violation (#61; rule in ADR-0012); the measured results of that change; a limit for a frozen collection of a second copy of its assembly; 91 smoke checks. Decision unchanged. See Implementation Notes > sixth Amendment. |
 | 2026-10-24 | Amended     | R7 compares the counts of two dictionaries before their entries; two of different counts are unequal without reading an entry (#50); 92 smoke checks. Decision unchanged. See Implementation Notes > seventh Amendment. |
 | 2026-10-24 | Amended     | The measurements behind #69: base-class private members are not compared; two `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes in silence unless a public getter of `T` throws (corrects one item of the Limits of the #54 amendment). Library unchanged. Decision unchanged. See Implementation Notes > eighth Amendment. |
+| 2026-10-26 | Amended     | Base-class private fields up to the first framework class are compared, the two property shapes with a hidden getter are read through the getter that exists, and colliding names are shown with their declaring type (#40 items 1 and 4; decision in ADR-0023); the scope statements on items 1 and 4 and the base-class limit of the #69 amendment no longer hold; 100 smoke checks. Decision unchanged. See Implementation Notes > ninth Amendment. |

@@ -14,6 +14,7 @@
 - **Amended**: 2026-10-10 — the "no members visible" check for `T` also does not run when `T` is a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, and the rule can fire for an element of two such values that a member or element holds (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fifth Amendment under Implementation Notes
 - **Amended**: 2026-10-11 — the "no members visible" check for `T` also does not run when `T` is an array type or `System.Array`; below such a `T` the path in the "cannot compare" message starts with the parameter name `actual`; and the rule can fire below an array whose element type is declared in `System.Collections.Frozen` (#57, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the sixth Amendment under Implementation Notes
 - **Amended**: 2026-10-12 — the library has one more `IL2070` suppression, on the private method that reads the interfaces of the runtime type for `EnsureImmutableCollection<T>()`; the smoke program gains checks 85 to 91 for that method, measured under Native AOT and in a trimmed publish without Native AOT; CI repeats the Native AOT publish only (#61, [ADR-0012](0012-dotnet-improvements-over-java.md)); see the seventh Amendment under Implementation Notes
+- **Amended**: 2026-10-26 — `EnsureAssignable<T>()` reads the two property shapes with a getter that is not visible through the compared type through the getter that exists, and compares the private fields declared on base classes that are not part of .NET, so the Known Limitation on the two property shapes no longer holds, and the one on base-class private fields no longer holds under the JIT (under Native AOT and trimming it still holds unless the base class is preserved, and for framework base classes it still holds); the "no members visible" rule is decided before those fields are added; four more trimming suppressions; smoke checks 93 to 100 (#40, [ADR-0023](0023-comparison-of-base-class-members.md)); see the eighth Amendment under Implementation Notes
 
 ---
 
@@ -580,6 +581,46 @@ So the class of check 89 was accepted in the two Native AOT publishes, in the tr
 
 Unchanged: the "no members visible" rule, the unreadable-property rule, the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`, and the other decisions of this ADR.
 
+### Amendment (2026-10-26): Inherited getters and base-class private fields are compared (#40)
+
+The decision is unchanged. [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), items 1 and 4, changes which members `EnsureAssignable<T>()` lists for a compared type and how it reads them. [ADR-0023](0023-comparison-of-base-class-members.md) records the decision, the rejected alternatives and the limits. In short: a public property whose getter is not visible through the compared type is read with the getter of its declaring type, or of the nearest declaration of the same virtual property that has one, and is listed once in every build; the private instance fields declared on the base classes of a compared type are compared, up to the first class whose assembly is signed with a public key token of the .NET 8 shared frameworks; members whose raw names collide are shown with their declaring type. The trimming annotations do not change. This amendment names the statements of this ADR that it qualifies. Each is quoted by its opening words.
+
+**In the accepted text.**
+
+- Unreadable property: "A property with a non-public getter (`{ private get; set; }`) is compared as before when the getter is declared on the compared type. A getter that is not visible through the compared type". Such a property is no longer reported by this rule: it is read with the getter that exists and compared. The rule now fires only for a property with no getter at all (write-only) or with a getter that trimming removed. The first bullet ("A write-only public property …"), the third and the fourth stand; a getter found this way that throws also surfaces as `TargetInvocationException`.
+- Known Limitations: "**Two property shapes with a getter are reported, not compared.**" That no longer holds, in an ordinary build and under Native AOT (smoke checks 93 and 94). The two characterization tests it names were inverted: `EnsureAssignable_WhenInheritedGetterIsPrivate_ThrowsInvalidOperationException` and `EnsureAssignable_WhenDerivedTypeOverridesOnlyTheSetter_ThrowsInvalidOperationException` are now `…AndValuesMatch_DoesNotThrow`.
+- Questions Raised in Review, question 2: "Actually comparing the two shapes stays with [issue #40]", state "Wording implemented; comparison not done". The comparison is now done. The wording "no get method is visible through the compared type" stays in the message, which is now raised only for the two cases above.
+- Known Limitations: "**Comparison gaps that exist in every build and are not changed here**: private fields declared on a base class are not compared". That part no longer holds for a base class that is not part of .NET: under the JIT its private fields are compared, for `T`, for nested objects and for elements below a `T` that is compared as a whole. The private fields of a framework base class are still not compared. Under Native AOT they are compared only where the application preserves the base class (see "Still true" below; smoke checks 96 and 97). In a trimmed application without Native AOT the same holds, and a base class whose fields the trimmer removed is not detected (read from the code, not measured). This amendment does not change the rest of that item.
+- "`{path}` is `typeof(T).Name`, then `.` and the member name per level". A member whose raw name collides with that of another member of the same compared type is shown in the path as `<declaring type>.<name>`, at any level, for example `ShelfDerived.ShelfBase.X`; when the top-level member is one of them, the nested message adds to "so use the plain member name" the words "; it also excuses the other members of that name". A unit test under the simulated Native AOT runtime holds the whole message.
+- Implementation Notes: "**Annotating only the two type parameters is sufficient.** The method that reads metadata from a `Type` is not annotated and keeps its `IL2070` suppression". That stands, and the annotations did not change. Reading the member list now takes four more suppressions, each with a justification that states the Native AOT consequence: `IL2070` on `MemberComparison.CreateMetadata` and on `MemberComparison.BacksAComparedProperty`, and `IL2075` on `MemberComparison.ExistingGetter` and on `MemberComparison.BaseClassPrivateFields`.
+
+**In the first Amendment (2026-10-04).**
+
+- "**An inherited auto-property is compared once.**" That stays true for a public auto-property declared on a base class, and the sentence on `^Customer$` stands. The reason given there, "its backing field is a private field declared on a base class, and reflection through the derived type does not return such fields", no longer holds: the comparison now lists the private fields of base classes itself. It leaves out the backing field of a base auto-property when a compared property is that property or overrides it. An auto-property declared on a base class that is not public is not a compared property, so it is now compared once, as its backing field (for example `<Note>k__BackingField`). Unit tests hold both.
+
+**Still true.**
+
+- Known Limitations: "**The rule also fires for a type that has nothing to list**", including "a class whose only state is private fields declared on a base class". The "no members visible" rule is decided on the members listed before the private fields of base classes are added (`TypeMetadata.OwnMemberCount`), so such a class still throws under Native AOT, also when its base class is preserved. Two unit tests under the simulated Native AOT runtime hold it, for `T` and for a nested object. Under the JIT such a class is now compared by those fields.
+- Known Limitations: "**Partial metadata is not detected.**" It now also covers the private fields of a base class that the trimmer did not preserve. Smoke check 96 shows a change of such a field passing under Native AOT; check 97 shows that `[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]` makes it a violation.
+- Smoke checks 20 and 21 (an inherited property and an inherited protected field) keep their expectations.
+
+**The checks.** Smoke checks 93 to 100 are added. Each value check returns `none` or the violation entries joined by `|`:
+
+| # | Check | Expected under Native AOT, postconditions enabled |
+|---|---|---|
+| 93 | Inherited property with a private getter changed | `Secret` |
+| 94 | Setter-only override changed | `S` (listed once) |
+| 95 | Setter-only override over a getter-only override changed | `P` (listed once) |
+| 96 | Hidden base private field changed | no exception (the documented limit) |
+| 97 | Preserved base private field changed | `_count` |
+| 98 | Preserved base, overridden auto-property changed, assignable | no exception |
+| 99 | Preserved base, overridden auto-property changed | `P\|<P>k__BackingField` |
+| 100 | Base-class walk stops at a framework class | `Code\|frameworkPrivateFields=items` |
+
+With `DBC_POST=off`, checks 96 and 98 expect no exception, check 100 expects `none|frameworkPrivateFields=items`, and the others `none`. Measured on `win-x64` for the pull request that closed this work, with the Native AOT publish of the default build: 100 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`. The variant with the hidden dictionary entry was not published, no trimmed publish was made, and the CI workflow had not run for this change when this amendment was written.
+
+Unchanged: the "no members visible" rule and its messages apart from the path segment above, the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`, and the other decisions of this ADR.
+
 ---
 
 ## References
@@ -613,3 +654,4 @@ Unchanged: the "no members visible" rule, the unreadable-property rule, the anno
 | 2026-10-10 | Amended     | The check for `T` also does not run for a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` as `T`; the elements of two such values that a member or element holds are reached (#49); decision in ADR-0022. Decision unchanged. See Implementation Notes > fifth Amendment. |
 | 2026-10-11 | Amended     | The check for `T` also does not run for an array type or `System.Array` as `T`; below such a `T` the path in the message starts with `actual`; an array whose element type is declared in `System.Collections.Frozen` is no longer decided by reference (#57); decision in ADR-0022. Decision unchanged. See Implementation Notes > sixth Amendment. |
 | 2026-10-12 | Amended     | One more `IL2070` suppression, for the interface read of `EnsureImmutableCollection<T>()`; smoke checks 85 to 91, measured under Native AOT and in a trimmed publish without Native AOT; CI repeats the Native AOT publish only (#61); decision in ADR-0012. Decision unchanged. See Implementation Notes > seventh Amendment. |
+| 2026-10-26 | Amended     | The two property shapes with a hidden getter are compared through the getter that exists, and the private fields of base classes that are not part of .NET are compared, so the Known Limitation on the two shapes no longer holds and the one on base-class private fields no longer holds under the JIT; the "no members visible" rule is decided before those fields are added; four more trimming suppressions; smoke checks 93 to 100 (#40); decision in ADR-0023. Decision unchanged. See Implementation Notes > eighth Amendment. |

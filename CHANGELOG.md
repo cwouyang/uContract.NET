@@ -17,10 +17,14 @@ of a `JsonElement`, and a lazily evaluated sequence is cloned as an iterator ins
 materialized (capture it with `.ToList()`). `EnsureAssignable<T>()` now reports some differences it
 missed and no longer reports some it raised wrongly; each case is listed under Changed. In a class
 that derives from a type that `Old<T>()` shares, replace the pair on `this` by `Contract.Ensure`
-checks of the state members. Code that catches the `InvalidOperationException` that `Old<T>()` threw
-for a type it could not serialize, or the `JsonException` for a deep graph, can drop that handler:
-`Old<T>()` throws neither. A `null` test or an `ArgumentNullException` handler around the `Old` +
-`EnsureAssignable` pair is no longer needed for the case that postconditions are off. Removing a
+checks of the state members. `EnsureAssignable<T>()` now compares the private fields declared on a
+base class that is not part of .NET (an aggregate base class of yours or of a library), so a
+change of such state, for example a domain event raised into a private list, is a violation: list
+that member as assignable where the change is intended. Code that catches the
+`InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or the
+`JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. A `null` test
+or an `ArgumentNullException` handler around the `Old` + `EnsureAssignable` pair is no longer needed
+for the case that postconditions are off. Removing a
 `null` test changes the result for a member that can be `null`: going from `null` to a value, or
 back, is now a violation that the assignable patterns cannot excuse, so keep the test where that
 change is allowed. Code that caught `ArgumentNullException` or `ArgumentException` from
@@ -93,8 +97,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
 - **BREAKING**: Under Native AOT, a field that is hidden from reflection keeps its bitwise value, so
   the object it refers to is shared with the original. A change to a base-class auto-property (for
   example a `List<Line>`) or to the storage of a collection whose fields are hidden then passes
-  silently. Preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`.
-  (ADR-0022)
+  silently. `EnsureAssignable<T>()` does not compare a private field of a base class that is hidden
+  either (#40). Preserve the type with
+  `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`. (ADR-0022)
 - **BREAKING**: `Old<T>()` no longer throws `InvalidOperationException` for a type that "cannot be
   serialized" or because reflection-based JSON serialization is disabled. It no longer throws
   `JsonException` for a graph deeper than 64 levels, and it no longer translates a
@@ -202,10 +207,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   call in `TargetInvocationException`: two `MemoryStream`s as `T` = `Stream` end so, from the
   `ReadTimeout` getter of `Stream`, and so can one instance of a class derived from `Type` or
   `MemberInfo` on both sides. For every `T` that is compared by its members, the private fields
-  declared on a base class of `T` are not compared, and neither is an auto-property declared there
-  that is not public (#40); read from the code, the same holds for a nested object that is compared
-  by its members. One instance of a shared type whose state can change, passed as
-  `actual` and as `expected`, is not compared, whatever `T` is, `object` included: the method
+  declared on its base classes are compared too (see the entry that begins "`EnsureAssignable<T>()`
+  compares the private fields" below). One instance of a shared type whose state can change, passed
+  as `actual` and as `expected`, is not compared, whatever `T` is, `object` included: the method
   throws `InvalidOperationException`; the entry for #54 below gives the ways out. (#52, #57;
   ADR-0022)
 - **BREAKING**: `EnsureAssignable<T>()` finds two arrays equal only when they have the same rank,
@@ -238,6 +242,53 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `EnsureAssignable(_member, Contract.Old(() => _member))`. Check each state member with
   `Contract.Ensure` and a value taken with `Old`; to check that a reference was not replaced, use
   `ReferenceEquals`. (#54; ADR-0022)
+- **BREAKING**: `EnsureAssignable<T>()` compares the private fields declared on the base classes of
+  each type that it compares by its members: `T`, the runtime type of a nested object, and an
+  element below a `T` that is compared as a whole. The walk up the base classes stops at the first
+  class of the .NET runtime and libraries, a class whose assembly is signed with a public key token
+  of the .NET 8 shared frameworks; a library that is signed otherwise or not signed is walked. A
+  change of a private field declared on a base class that the walk enters, or of an auto-property
+  declared there that is not public (compared as its backing field, `<Note>k__BackingField`), now
+  fails the call,
+  under the JIT and under Native AOT where the base class is preserved. For example, raising a
+  domain event that a base aggregate class keeps in a private `_domainEvents` list is now a
+  violation. List the member as assignable when the change is intended. A public auto-property of
+  a base class is still compared once, through the property. The fields of a framework base class
+  that are not private (`List<T>._size`, `Exception._message`) were compared before and still are;
+  its private fields are not compared. Static fields are not compared, and a nested collection
+  class of yours is still compared by its elements. The private fields of a base class from another
+  library become possible violation entries and pattern targets, and their names can change with
+  that library's versions. The entries most likely to surprise are lazily cached values (for example
+  a cached hash code in a value-object base class, set the first time the object is hashed inside
+  the checked method) and event subscriptions (the backing field of an event declared on a base
+  class that is not part of .NET); inside a nested object, such a change is reported under the
+  top-level member. List the member as assignable, or check with `Contract.Ensure`.
+  Under Native AOT they are not preserved, so they are not compared unless
+  the base class is preserved, for example with
+  `[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]`; the rule for
+  a type with no visible members is decided before they are added. (#40; ADR-0023)
+- **BREAKING**: `EnsureAssignable<T>()` compares a public property whose getter is not visible
+  through the compared type (a private getter declared on a base class, or a virtual property whose
+  derived class overrides only the setter) instead of throwing `InvalidOperationException` ("… no
+  get method is visible through the compared type"). It reads the property with the getter that
+  exists, of its declaring type or of the nearest declaration of the same virtual property that has
+  one, and lists it once in every build. That getter now runs, and a getter that throws ends the
+  call in `TargetInvocationException`, with the getter's exception as `InnerException`. The
+  `InvalidOperationException` remains for a property with no getter at all (write-only) or whose
+  getter trimming removed. (#40; ADR-0023)
+- **BREAKING**: `EnsureAssignable<T>()` shows a member whose name collides with another member of
+  the same compared type (a private field declared on two levels, a field hidden with `new`, two
+  backing fields of one name) with its declaring type: as `<name> (declared on <type>)` in a
+  violation entry, for example `_state (declared on StateBase)`, and as `<type>.<name>` in the path
+  of a "cannot compare" message, whose advice still names the plain name and says that it also
+  excuses the other members of that name. The type is shown by its name, or by its full name when
+  two of the declaring types have the same name. Assignable patterns are unchanged: they are
+  matched against the plain name, so one pattern excuses every member of that name, and one of them
+  cannot be excused alone. This also renames entries that collide in 2.0.0 already (a field hidden
+  with `new`). Members whose names do not collide are shown as before. Under Native AOT the
+  comparison changes only for a property whose getter is not visible through the compared type, in
+  the display of colliding names, and for a base class whose private fields the application
+  preserves. (#40; ADR-0023)
 - **BREAKING**: `EnsureImmutableCollection<T>()` returns a `null` `collection` instead of throwing
   `ArgumentNullException` when it does not check it: with postconditions off, or in a call made
   while another contract check is running. This is a second exception to "parameter validation

@@ -1712,35 +1712,25 @@ public class EnsureAssignableTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenInheritedGetterIsPrivate_ThrowsInvalidOperationException()
+    public void EnsureAssignable_WhenInheritedGetterIsPrivateAndValuesMatch_DoesNotThrow()
     {
         InheritsPrivateGetter first = new() { Secret = "a" };
         InheritsPrivateGetter second = new() { Secret = "a" };
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            Contract.EnsureAssignable(first, second)
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
 
-        Assert.Contains($"{typeof(PrivateGetterBase)}.Secret", exception.Message);
-        Assert.Contains("no get method", exception.Message);
-        Assert.Contains("no get method is visible through the compared type", exception.Message);
-        Assert.Contains("DynamicDependency", exception.Message);
+        Assert.Null(exception);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenDerivedTypeOverridesOnlyTheSetter_ThrowsInvalidOperationException()
+    public void EnsureAssignable_WhenDerivedTypeOverridesOnlyTheSetterAndValuesMatch_DoesNotThrow()
     {
         OverridesOnlyTheSetter first = new() { Label = "a" };
         OverridesOnlyTheSetter second = new() { Label = "a" };
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            Contract.EnsureAssignable(first, second)
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(first, second));
 
-        Assert.Contains($"{typeof(OverridesOnlyTheSetter)}.Label", exception.Message);
-        Assert.Contains("no get method", exception.Message);
-        Assert.Contains("no get method is visible through the compared type", exception.Message);
-        Assert.Contains("DynamicDependency", exception.Message);
+        Assert.Null(exception);
     }
 
     [Fact]
