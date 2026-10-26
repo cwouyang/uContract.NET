@@ -578,8 +578,8 @@ internal static class MemberComparison
             return null;
         }
 
-        // Two arrays of one runtime type whose elements are primitives are compared in place, without boxing an
-        // element; equal elements leave nothing to walk.
+        // Two arrays of one primitive or enum element type (see TryCompareInPlace) are compared in place, without
+        // boxing an element; equal elements leave nothing to walk.
         if (TryCompareInPlace(actual, expected, out bool equalInPlace))
         {
             return equalInPlace ? new CollectionWalk([], []) : null;
