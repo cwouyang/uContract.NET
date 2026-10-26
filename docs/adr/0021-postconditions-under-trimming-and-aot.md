@@ -617,7 +617,7 @@ The decision is unchanged. [Issue #40](https://github.com/cwouyang/uContract.NET
 | 99 | Preserved base, overridden auto-property changed | `P\|<P>k__BackingField` |
 | 100 | Base-class walk stops at a framework class | `Code\|frameworkPrivateFields=items` |
 
-With `DBC_POST=off`, checks 96 and 98 expect no exception, check 100 expects `none|frameworkPrivateFields=items`, and the others `none`. Measured on `win-x64` at `7592874`, with the Native AOT publish of the default build: 100 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`. The variant with the hidden dictionary entry was not published, no trimmed publish was made, and the CI workflow had not run for this change when this amendment was written.
+With `DBC_POST=off`, checks 96 and 98 expect no exception, check 100 expects `none|frameworkPrivateFields=items`, and the others `none`. Measured on `win-x64` for the pull request that closed this work, with the Native AOT publish of the default build: 100 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`. The variant with the hidden dictionary entry was not published, no trimmed publish was made, and the CI workflow had not run for this change when this amendment was written.
 
 Unchanged: the "no members visible" rule and its messages apart from the path segment above, the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`, and the other decisions of this ADR.
 

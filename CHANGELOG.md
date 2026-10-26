@@ -23,7 +23,8 @@ change of such state, for example a domain event raised into a private list, is 
 that member as assignable where the change is intended. Code that catches the
 `InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or the
 `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. A `null` test
-or an `ArgumentNullException` handler around the `Old` + `EnsureAssignable` pair is no longer needed for the case that postconditions are off. Removing a
+or an `ArgumentNullException` handler around the `Old` + `EnsureAssignable` pair is no longer needed
+for the case that postconditions are off. Removing a
 `null` test changes the result for a member that can be `null`: going from `null` to a value, or
 back, is now a violation that the assignable patterns cannot excuse, so keep the test where that
 change is allowed. Code that caught `ArgumentNullException` or `ArgumentException` from
@@ -97,8 +98,8 @@ AOT](README.md#trimming-and-native-aot) in the README.
   the object it refers to is shared with the original. A change to a base-class auto-property (for
   example a `List<Line>`) or to the storage of a collection whose fields are hidden then passes
   silently. `EnsureAssignable<T>()` does not compare a private field of a base class that is hidden
-  either (#40). Preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`.
-  (ADR-0022)
+  either (#40). Preserve the type with
+  `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`. (ADR-0022)
 - **BREAKING**: `Old<T>()` no longer throws `InvalidOperationException` for a type that "cannot be
   serialized" or because reflection-based JSON serialization is disabled. It no longer throws
   `JsonException` for a graph deeper than 64 levels, and it no longer translates a
@@ -246,8 +247,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   element below a `T` that is compared as a whole. The walk up the base classes stops at the first
   class of the .NET runtime and libraries, a class whose assembly is signed with a public key token
   of the .NET 8 shared frameworks; a library that is signed otherwise or not signed is walked. A
-  change of a private field declared on such a base class, or of an auto-property declared there
-  that is not public (compared as its backing field, `<Note>k__BackingField`), now fails the call,
+  change of a private field declared on a base class that the walk enters, or of an auto-property
+  declared there that is not public (compared as its backing field, `<Note>k__BackingField`), now
+  fails the call,
   under the JIT and under Native AOT where the base class is preserved. For example, raising a
   domain event that a base aggregate class keeps in a private `_domainEvents` list is now a
   violation. List the member as assignable when the change is intended. A public auto-property of
@@ -256,7 +258,12 @@ AOT](README.md#trimming-and-native-aot) in the README.
   its private fields are not compared. Static fields are not compared, and a nested collection
   class of yours is still compared by its elements. The private fields of a base class from another
   library become possible violation entries and pattern targets, and their names can change with
-  that library's versions. Under Native AOT they are not preserved, so they are not compared unless
+  that library's versions. The entries most likely to surprise are lazily cached values (for example
+  a cached hash code in a value-object base class, set the first time the object is hashed inside
+  the checked method) and event subscriptions (the backing field of an event declared on a base
+  class that is not part of .NET); inside a nested object, such a change is reported under the
+  top-level member. List the member as assignable, or check with `Contract.Ensure`.
+  Under Native AOT they are not preserved, so they are not compared unless
   the base class is preserved, for example with
   `[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]`; the rule for
   a type with no visible members is decided before they are added. (#40; ADR-0023)

@@ -1168,7 +1168,7 @@ public static class Contract
     ///     below a <typeparamref name="T" /> that is compared as a whole. The walk up the base classes stops at
     ///     the first class of the .NET runtime and libraries, a class whose assembly is signed with one of the
     ///     public key tokens of the .NET 8 shared frameworks (the runtime libraries, ASP.NET Core,
-    ///     <c>Microsoft.Extensions</c>, WPF and Windows Forms); a library that is signed otherwise or not signed
+    ///     <c>Microsoft.Extensions.*</c>, WPF and Windows Forms); a library that is signed otherwise or not signed
     ///     is walked. The fields of a framework class that are not private (<c>List&lt;T&gt;._size</c>) are
     ///     compared, as every inherited field that is not private is; its private fields are not. Static fields are not
     ///     compared. An auto-property declared on a base class that is not public is compared as its backing

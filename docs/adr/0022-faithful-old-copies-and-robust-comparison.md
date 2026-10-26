@@ -3805,10 +3805,10 @@ that state. Each statement is quoted by its opening words:
   instance of a fixed shared type, and #46.
 
 **Checks.** Unit tests in `EnsureAssignableBaseClassFieldTests.cs`,
-`EnsureAssignableHiddenGetterTests.cs` and `EnsureAssignableNameCollisionTests.cs`; 1,165 unit
-tests passed at `7592874`. Smoke checks 93 to 100, which the #40 amendment of ADR-0021 lists: the
+`EnsureAssignableHiddenGetterTests.cs` and `EnsureAssignableNameCollisionTests.cs`; 1,167 unit
+tests passed in the pull request that closed this work. Smoke checks 93 to 100, which the #40 amendment of ADR-0021 lists: the
 smoke program has 100 checks in the default build, all of which passed in the Native AOT publish
-for `win-x64` at `7592874`, with postconditions on and with `DBC_POST=off`. The variant with the
+for `win-x64` in the pull request that closed this work, with postconditions on and with `DBC_POST=off`. The variant with the
 hidden dictionary entry was not published for this change.
 
 **Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R7 and rule S, and R8 apart
