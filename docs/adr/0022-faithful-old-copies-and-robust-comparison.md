@@ -3774,7 +3774,8 @@ class that the application does not preserve is not compared either: smoke check
 of one passing. Preserved with
 `[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]`, it is compared
 (check 97), and the objects it holds are then compared by their members, so their types need
-preserving too (R8).
+preserving too: otherwise two unequal instances end in "cannot compare" (R8; read from the code,
+not measured).
 
 **Qualified in the #69 amendment.** Its measurements, on master `40692cc`, stay as the record of
 that state. Each statement is quoted by its opening words:

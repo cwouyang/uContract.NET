@@ -52,7 +52,7 @@ Since ADR-0022, `Old<T>()` copies the private fields of base classes (`DeepCopie
 2. **Item 4.** A public property whose getter is not visible through the compared type is read with the getter that exists: the getter of its declaring type (private or otherwise), or the getter of the nearest declaration of the same virtual property that has one. The property is listed once in every build: where the listing holds more than one declaration of one virtual property, the declarations are merged. The `InvalidOperationException` "no get method is visible through the compared type" remains for a property with no getter at all (write-only) or with a getter that trimming removed.
 3. **Colliding names.** Two members of a compared type collide when their raw names (`MemberInfo.Name`, ordinal) are equal, counted after the merge of decision 2. A property and its own backing field do not collide. Each member of a colliding group is shown with its declaring type:
    - in a violation entry as `<name> (declared on <type>)`, for example `_state (declared on StateBase)`, so the text before the first space is the raw name;
-   - in the path of a "cannot compare" message as `<type>.<name>`, so the path reads `D.B.X` (compared type, declaring type, member); the advice names the plain name and adds "it also excuses the other members of that name";
+   - in the path of a "cannot compare" message as `<type>.<name>`, at any level, so the path reads `D.B.X` (compared type, declaring type, member); the advice still names the plain name (the raw name, a backing field shown as the property it backs), and when the top-level member is one of a colliding group it adds to "so use the plain member name" the words "; it also excuses the other members of that name";
    - `<type>` is `Type.Name`, or `Type.FullName` for the whole group when two of its declaring types have the same `Name`.
 
    Assignable patterns are matched against the raw name only, as in 2.0.0. One pattern therefore excuses every member of that name.
@@ -88,16 +88,16 @@ The `[Unreleased]` section of `CHANGELOG.md` holds three **BREAKING** bullets th
 ### Neutral Consequences
 
 - ⚖️ No public API signature changed.
-- ⚖️ The "no members visible" rule fires no more and no less often than before.
+- ⚖️ The "no members visible" decision for a type is unchanged: it is made on the members of the 2.0.0 list. Under Native AOT the comparison can now reach that rule through more paths: through the objects that preserved base-class private fields hold, and through the values that the getters of item 4 return.
 
 ---
 
 ## Known Limitations
 
-- **Native AOT and trimmed applications.** The private fields of base classes are not compared unless the base class is preserved, for example with `[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]` (or `All`). Smoke check 96 shows a change of such a field passing under Native AOT; check 97 shows the way out. The objects that those fields hold are compared by their members, so their types must be preserved too; otherwise two unequal instances of such a type end in "cannot compare". In a trimmed application without Native AOT a base class whose fields were removed cannot be told from one that declares none, so the gap is not detected.
+- **Native AOT and trimmed applications.** The private fields of base classes are not compared unless the base class is preserved, for example with `[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]` (or `All`). Smoke check 96 shows a change of such a field passing under Native AOT; check 97 shows the way out. The objects that those fields hold are compared by their members, so their types must be preserved too; otherwise two unequal instances of such a type end in "cannot compare" (read from the code, not measured). In a trimmed application without Native AOT a base class whose fields were removed cannot be told from one that declares none, so the gap is not detected (read from the code, not measured).
 - **A type whose only state is base-class private fields** still meets the "no members visible" rule under Native AOT, also when the base class is preserved, because the rule is decided before those fields are added.
 - **One member of a colliding pair cannot be excused alone.** Patterns are matched against the raw name, so a pattern that matches one member of the pair matches the other.
-- **The framework stop is a list of six tokens** read from the .NET 8.0.16 shared frameworks. A Microsoft-signed package outside the shared frameworks was not measured (EF Core, for example).
+- **The framework stop is a list of six tokens** read from the .NET 8.0.16 shared frameworks. The stop reads the token, not where the assembly comes from, so a package outside the shared frameworks whose assembly is signed with one of the six tokens is treated as a framework class too: the walk stops at its classes, and their private fields are not compared. Microsoft packages such as EF Core can fall under this (`adb9793829ddae60` is the token of ASP.NET Core and `Microsoft.Extensions.*`). Which packages it covers was not measured.
 
 ---
 
@@ -139,7 +139,7 @@ The `[Unreleased]` section of `CHANGELOG.md` holds three **BREAKING** bullets th
 
 **Description**: Treat two listed declarations of one name as one virtual property when one of them is, or overrides, an accessor of the other.
 
-**Why rejected**: In a three-level chain `A { virtual P get; set; }` ← `B { override P get; }` ← `C { override P set; }`, `C.P` and `B.P` declare no accessor in common. Under Native AOT, `GetProperties` on `C` returned both declarations (measured with a throwaway program before the implementation), so a risk review of the first merge found that `P` would be listed twice. The merge now compares the types that declare the first declarations (`GetBaseDefinition`) of the accessors, whichever accessors each declaration has. Smoke check 95 shows `P` listed once under Native AOT.
+**Why rejected**: In a three-level chain `A { virtual P get; set; }` ← `B { override P get; }` ← `C { override P set; }`, `C.P` and `B.P` declare no accessor in common. Under Native AOT, `GetProperties` on `C` returned both declarations (measured with a throwaway program before the implementation), so a risk review of the first merge found that `P` would be listed twice. The unit test `Members_WhenTheListingHoldsASetterOnlyOverrideAndTheGetterOnlyOverrideBelowIt_ListTheTitleOnce` reproduced it under the JIT: it hands that listing to `CreateMetadata`, and before the fix (`394c6f3`) the list held two members. The merge now compares the types that declare the first declarations (`GetBaseDefinition`) of the accessors, whichever accessors each declaration has. Smoke check 95 shows `P` listed once under Native AOT.
 
 ---
 
