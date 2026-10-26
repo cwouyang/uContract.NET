@@ -106,6 +106,45 @@ public class EnsureAssignablePrimitiveArrayTests
         Assert.InRange(allocated, 0, AllocationBound);
     }
 
+    // The element types that the three tests above leave out, one row each, so that each of them is shown
+    // to be compared in place.
+    [Theory]
+    [InlineData(typeof(bool))]
+    [InlineData(typeof(char))]
+    [InlineData(typeof(sbyte))]
+    [InlineData(typeof(short))]
+    [InlineData(typeof(ushort))]
+    [InlineData(typeof(int))]
+    [InlineData(typeof(uint))]
+    [InlineData(typeof(long))]
+    [InlineData(typeof(ulong))]
+    [InlineData(typeof(nint))]
+    [InlineData(typeof(nuint))]
+    [InlineData(typeof(float))]
+    [InlineData(typeof(ByteColor))]
+    public void EnsureAssignable_WhenTIsArrayAndTwoArraysOfAMillionEqualElements_AllocatesFarLessThanOneBytePerElement(
+        Type elementType
+    )
+    {
+        Array actual = LargeArray(elementType);
+        Array expected = LargeArray(elementType);
+
+        long allocated = AllocatedBy(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.InRange(allocated, 0, AllocationBound);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenMemberHoldsTwoArraysOfAMillionEqualIntegers_AllocatesFarLessThanOneBytePerElement()
+    {
+        Holder<int[]> actual = new() { Items = new int[LargeLength] };
+        Holder<int[]> expected = new() { Items = new int[LargeLength] };
+
+        long allocated = AllocatedBy(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.InRange(allocated, 0, AllocationBound);
+    }
+
     [Theory]
     [MemberData(nameof(ArraysOfEqualContent))]
     public void EnsureAssignable_WhenMemberHoldsTwoArraysOfAPrimitiveOrEnumOfEqualContent_DoesNotThrow(ArrayPair pair)
@@ -287,6 +326,13 @@ public class EnsureAssignablePrimitiveArrayTests
             { 1, 2 },
             { 3, last },
         };
+
+    private static Array LargeArray(Type elementType)
+    {
+#pragma warning disable IL3050 // Test fixture only: the library itself never creates arrays this way.
+        return Array.CreateInstance(elementType, LargeLength);
+#pragma warning restore IL3050
+    }
 
     private static Array OneBased(params int[] values)
     {
