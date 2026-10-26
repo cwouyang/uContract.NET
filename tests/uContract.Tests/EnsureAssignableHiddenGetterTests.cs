@@ -108,6 +108,53 @@ public class EnsureAssignableHiddenGetterTests
         Assert.Equal(GetterOverride.Prefix + "x", title.GetValue(instance));
     }
 
+    // A property hidden with "new" is a different property, not another declaration of the base one: both are
+    // listed, and, since their raw names collide, each is named with its declaring type.
+    [Fact]
+    public void Members_WhenTheListingHoldsAHidingPropertyAndTheBasePropertyItHides_ListBothQualified()
+    {
+        PropertyInfo[] listing =
+        [
+            typeof(HidingDerived).GetProperties().Single(),
+            typeof(HiddenBase).GetProperties().Single(),
+        ];
+
+        TypeMetadata metadata = MemberComparison.CreateMetadata(typeof(HidingDerived), listing);
+
+        Assert.Equal("Value (declared on HidingDerived), Value (declared on HiddenBase)", ValueNames(metadata));
+    }
+
+    [Fact]
+    public void Members_WhenTheListingHoldsANewVirtualPropertyAndTheVirtualPropertyItHides_ListBothQualified()
+    {
+        PropertyInfo[] listing =
+        [
+            typeof(NewVirtualDerived).GetProperties().Single(),
+            typeof(VirtualHiddenBase).GetProperties().Single(),
+        ];
+
+        TypeMetadata metadata = MemberComparison.CreateMetadata(typeof(NewVirtualDerived), listing);
+
+        Assert.Equal(
+            "Value (declared on NewVirtualDerived), Value (declared on VirtualHiddenBase)",
+            ValueNames(metadata)
+        );
+    }
+
+    // The properties named Value, in listing order; the backing fields are left out.
+    private static string ValueNames(TypeMetadata metadata)
+    {
+        return string.Join(
+            ", ",
+            metadata
+                .Members.Where(member =>
+                    member.RawName.Equals("Value", StringComparison.Ordinal)
+                    && member.Name.Contains("declared on", StringComparison.Ordinal)
+                )
+                .Select(member => member.Name)
+        );
+    }
+
     private static bool IsTitle(MemberAccessor member)
     {
         return string.Equals(member.Name, nameof(TitleBase.Title), StringComparison.Ordinal);
@@ -201,6 +248,28 @@ public class EnsureAssignableHiddenGetterTests
             set => base.Title = value;
         }
     }
+
+    private class HiddenBase
+    {
+        public string Value { get; set; } = "";
+    }
+
+    private sealed class HidingDerived : HiddenBase
+    {
+        public new string Value { get; set; } = "";
+    }
+
+    private class VirtualHiddenBase
+    {
+        public virtual string Value { get; set; } = "";
+    }
+
+    private class NewVirtualDerived : VirtualHiddenBase
+    {
+        public new virtual string Value { get; set; } = "";
+    }
+
+    private sealed class NewVirtualLeaf : NewVirtualDerived;
 
     private class ThrowingLabelBase
     {
