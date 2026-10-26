@@ -474,6 +474,88 @@ internal sealed class CountingTokenSource : CancellationTokenSource
     }
 }
 
+// ---- Base-class members (issue #40). No DynamicDependency roots a fixture unless its comment says so. ----
+
+// A public base property with a private getter: the derived type shows the setter only.
+internal class PrivateGetterBase
+{
+    public string Secret { private get; set; } = "";
+}
+
+internal sealed class PrivateGetterDerived : PrivateGetterBase;
+
+// A virtual property whose derived class overrides only the setter.
+internal class SetterOnlyBase
+{
+    public virtual string S { get; set; } = "";
+}
+
+internal sealed class SetterOnlyOverride : SetterOnlyBase
+{
+    public override string S
+    {
+        set => base.S = value;
+    }
+}
+
+// A three-level chain: the getter-only and the setter-only overrides declare no accessor in common.
+internal class ChainBase
+{
+    public virtual string P { get; set; } = "";
+}
+
+internal class ChainGetterOverride : ChainBase
+{
+    public override string P => base.P;
+}
+
+internal sealed class ChainSetterOverride : ChainGetterOverride
+{
+    public override string P
+    {
+        set => base.P = value;
+    }
+}
+
+// The base's private field is not preserved: nothing roots this hierarchy.
+internal class HiddenCounterBase(int count)
+{
+    private readonly int _count = count;
+
+    public bool Matches(int value) => _count == value;
+}
+
+internal sealed class HiddenCounterDerived(int count) : HiddenCounterBase(count)
+{
+    public int Level { get; set; }
+}
+
+// Preserved with DynamicDependency(NonPublicFields, typeof(KeptCounterBase)) by its checks: the base's private
+// fields, _count and the backing field of P, are visible. The derived type overrides P with a getter and a
+// setter, so it has an own member and a backing field of its own.
+internal class KeptCounterBase(int count)
+{
+    private readonly int _count = count;
+
+    public virtual int P { get; set; }
+
+    public bool Matches(int value) => _count == value;
+}
+
+internal sealed class KeptCounterDerived(int count) : KeptCounterBase(count)
+{
+    public override int P { get; set; }
+}
+
+// Derives from a framework class (Collection<int>, System.Private.CoreLib), whose only instance field is
+// private (Exception would not do: its _message is internal, so GetFields on a derived type lists it anyway).
+// Preserved with DynamicDependency(NonPublicFields) on it and on Collection<int> by its check, so the private
+// field of Collection<int> is visible; the walk up the base classes stops at Collection<int> all the same.
+internal sealed class CodedCollection : Collection<int>
+{
+    public int Code;
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -1695,6 +1777,109 @@ public static class Program
             post,
             Expect.Ok
         );
+
+        // ---- Base-class members and inherited getters (issue #40). Each check returns "none" or the violation
+        // entries, separated by '|', because Expect.Throws matches substrings only. ----
+        Expect offNone = Expect.Value("none");
+
+        // Mutation: the property setter. Visibility: T; the base's private getter is not visible through T and
+        // is found on the base class, so the property is compared through it.
+        yield return new Check(
+            93,
+            "Inherited property with a private getter changed",
+            static () =>
+                ViolationEntriesOf(static () =>
+                    Contract.EnsureAssignable(
+                        new PrivateGetterDerived { Secret = "b" },
+                        new PrivateGetterDerived { Secret = "a" }
+                    )
+                ),
+            Expect.Value("Secret"),
+            offNone
+        );
+
+        // Mutation: the setter-only override. Visibility: T; Native AOT lists the override and its base
+        // declaration, which are merged: the property is listed once and read through the base getter.
+        yield return new Check(
+            94,
+            "Setter-only override changed",
+            static () =>
+                ViolationEntriesOf(static () =>
+                    Contract.EnsureAssignable(new SetterOnlyOverride { S = "b" }, new SetterOnlyOverride { S = "a" })
+                ),
+            Expect.Value("S"),
+            offNone
+        );
+
+        // Mutation: the setter-only override of a three-level chain. Visibility: T; the declarations of P are
+        // merged, and P is read through the getter-only override.
+        yield return new Check(
+            95,
+            "Setter-only override over a getter-only override changed",
+            static () =>
+                ViolationEntriesOf(static () =>
+                    Contract.EnsureAssignable(new ChainSetterOverride { P = "b" }, new ChainSetterOverride { P = "a" })
+                ),
+            Expect.Value("P"),
+            offNone
+        );
+
+        // Mutation: a private field of the base class (constructor argument). Visibility: T's own property only;
+        // the base's private field is not preserved, so it is not compared and the change passes: the
+        // documented limit.
+        yield return new Check(
+            96,
+            "Hidden base private field changed",
+            static () =>
+                NoResult(static () =>
+                    Contract.EnsureAssignable(new HiddenCounterDerived(2), new HiddenCounterDerived(1))
+                ),
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // The way out: DynamicDependency(NonPublicFields, typeof(KeptCounterBase)) preserves the base's private
+        // fields, so the change is reported.
+        yield return new Check(
+            97,
+            "Preserved base private field changed",
+            PreservedBasePrivateFieldChanged,
+            Expect.Value("_count"),
+            offNone
+        );
+
+        // Mutation: the override of P (its own backing field). The base's backing field of P is visible but left
+        // out, because the compared P overrides the property it backs. The pattern names P and its backing field.
+        yield return new Check(
+            98,
+            "Preserved base, overridden auto-property changed, assignable",
+            PreservedBaseOverriddenPropertyAssignable,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // The same without a pattern: P and the derived type's own backing field, which no other member's name
+        // collides with, so it is not qualified.
+        yield return new Check(
+            99,
+            "Preserved base, overridden auto-property changed",
+            PreservedBaseOverriddenPropertyChanged,
+            Expect.Value("P|<P>k__BackingField"),
+            offNone
+        );
+
+        // Mutation: the element (held by the private field of Collection<int>; the count stays the same) and the
+        // derived type's own field. Visibility: DynamicDependency(NonPublicFields) on CodedCollection and on
+        // Collection<int>, so the private field of Collection<int> is visible to reflection (the second part of
+        // the result names it); the walk stops at Collection<int>, a framework class by its public key token,
+        // so that field is not an entry.
+        yield return new Check(
+            100,
+            "Base-class walk stops at a framework class",
+            FrameworkBaseClassWalkStops,
+            Expect.Value("Code|frameworkPrivateFields=items"),
+            Expect.Value("none|frameworkPrivateFields=items")
+        );
     }
 
     private static unsafe object? FunctionPointerArrayEnsured() =>
@@ -1960,6 +2145,79 @@ public static class Program
         {
             return ex.ParamName ?? "unnamed";
         }
+    }
+
+    // "none", or the entries of the violation without their "  - " prefix, separated by '|'. Any other exception
+    // fails the check.
+    private static string ViolationEntriesOf(Action call)
+    {
+        const string Header = "Fields were modified that are not marked as assignable:\n";
+        const string EntryPrefix = "  - ";
+        try
+        {
+            call();
+            return "none";
+        }
+        catch (PostconditionViolationException ex)
+        {
+            if (!ex.Description.StartsWith(Header, StringComparison.Ordinal))
+            {
+                return ex.Description;
+            }
+
+            return string.Join(
+                '|',
+                ex.Description[Header.Length..]
+                    .Split('\n')
+                    .Select(static entry =>
+                        entry.StartsWith(EntryPrefix, StringComparison.Ordinal) ? entry[EntryPrefix.Length..] : entry
+                    )
+            );
+        }
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(KeptCounterBase))]
+    private static string PreservedBasePrivateFieldChanged() =>
+        ViolationEntriesOf(static () =>
+            Contract.EnsureAssignable(new KeptCounterDerived(2), new KeptCounterDerived(1))
+        );
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(KeptCounterBase))]
+    private static object? PreservedBaseOverriddenPropertyAssignable() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                new KeptCounterDerived(1) { P = 2 },
+                new KeptCounterDerived(1) { P = 1 },
+                "^(P|<P>k__BackingField)$"
+            )
+        );
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(KeptCounterBase))]
+    private static string PreservedBaseOverriddenPropertyChanged() =>
+        ViolationEntriesOf(static () =>
+            Contract.EnsureAssignable(new KeptCounterDerived(1) { P = 2 }, new KeptCounterDerived(1) { P = 1 })
+        );
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(CodedCollection))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Collection<int>))]
+    private static string FrameworkBaseClassWalkStops()
+    {
+        string frameworkPrivateFields = string.Join(
+            ',',
+            typeof(Collection<int>)
+                .GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(static field => field.IsPrivate)
+                .Select(static field => field.Name)
+        );
+        static CodedCollection Coded(int code)
+        {
+            CodedCollection collection = new() { Code = code };
+            collection.Add(code);
+            return collection;
+        }
+
+        string entries = ViolationEntriesOf(static () => Contract.EnsureAssignable(Coded(2), Coded(1)));
+        return $"{entries}|frameworkPrivateFields={frameworkPrivateFields}";
     }
 
     private static string SameMethodDelegates()
