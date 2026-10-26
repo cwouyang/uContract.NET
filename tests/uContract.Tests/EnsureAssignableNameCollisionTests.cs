@@ -23,7 +23,7 @@ public class EnsureAssignableNameCollisionTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal(Violation + "  - Ancestor._shadowed", exception.Description);
+        Assert.Equal(Violation + "  - _shadowed (declared on Ancestor)", exception.Description);
     }
 
     [Fact]
@@ -64,7 +64,24 @@ public class EnsureAssignableNameCollisionTests
             Contract.EnsureAssignable(actual, expected, "Base")
         );
 
-        Assert.Equal(Violation + "  - StateBase._state", exception.Description);
+        Assert.Equal(Violation + "  - _state (declared on StateBase)", exception.Description);
+    }
+
+    // A caller copies the text of a qualified entry up to its first space and lists it as assignable.
+    [Fact]
+    public void EnsureAssignable_WhenTheNameCopiedFromAQualifiedEntryIsAssignable_DoesNotThrow()
+    {
+        StateDerived actual = new();
+        StateDerived expected = new();
+        actual.SetBaseState(Changed);
+        PostconditionViolationException violation = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+        string copiedName = violation.Description[(Violation + "  - ").Length..].Split(' ')[0];
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, copiedName));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -78,7 +95,7 @@ public class EnsureAssignableNameCollisionTests
             Contract.EnsureAssignable(actual, expected, "Base.*Id")
         );
 
-        Assert.Equal(Violation + "  - BaseEntity.Id", exception.Description);
+        Assert.Equal(Violation + "  - Id (declared on BaseEntity)", exception.Description);
     }
 
     // ---- A public field hidden with "new" ----
@@ -94,7 +111,10 @@ public class EnsureAssignableNameCollisionTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal(Violation + "  - CodeDerived.Code\n  - CodeBase.Code", exception.Description);
+        Assert.Equal(
+            Violation + "  - Code (declared on CodeDerived)\n  - Code (declared on CodeBase)",
+            exception.Description
+        );
     }
 
     [Fact]
@@ -116,7 +136,10 @@ public class EnsureAssignableNameCollisionTests
     {
         string[] names = MemberNames<HidesId>();
 
-        Assert.Equal(["Id", "HidesId.<Id>k__BackingField", "ProtectedId.<Id>k__BackingField"], names);
+        Assert.Equal(
+            ["Id", "<Id>k__BackingField (declared on HidesId)", "<Id>k__BackingField (declared on ProtectedId)"],
+            names
+        );
     }
 
     // ---- Names that do not collide ----
@@ -319,7 +342,7 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
             Contract.EnsureAssignable(actual, expected, @"ShelfBase\.<X>k__BackingField")
         );
 
-        Assert.Equal(Violation + "  - ShelfBase.<X>k__BackingField", exception.Description);
+        Assert.Equal(Violation + "  - <X>k__BackingField (declared on ShelfBase)", exception.Description);
     }
 
     [Fact]
@@ -333,7 +356,7 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal(Violation + "  - ShelfBase.<X>k__BackingField", exception.Description);
+        Assert.Equal(Violation + "  - <X>k__BackingField (declared on ShelfBase)", exception.Description);
     }
 
     // ---- Declaring types of one name ----

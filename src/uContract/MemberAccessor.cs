@@ -51,14 +51,15 @@ internal sealed class MemberAccessor
     }
 
     /// <summary>
-    ///     Gets the name of the member in violation entries: its raw name, with its declaring type in front when
-    ///     it is qualified. Assignable patterns are matched against <see cref="RawName" /> instead.
+    ///     Gets the name of the member in violation entries: its raw name, followed by "(declared on T)" when it
+    ///     is qualified, so the text before the first space is always a pattern that excuses it (assignable
+    ///     patterns are matched against <see cref="RawName" />).
     /// </summary>
     public string Name { get; private set; }
 
     /// <summary>
-    ///     Gets the name of the member in the path of a "cannot compare" message: as <see cref="Name" />, but a
-    ///     backing field is shown as the property it backs.
+    ///     Gets the name of the member in the path of a "cannot compare" message: the raw name, a backing field
+    ///     shown as the property it backs, with "T." in front when it is qualified.
     /// </summary>
     public string PathName { get; private set; }
 
@@ -79,13 +80,13 @@ internal sealed class MemberAccessor
     public Type DeclaringType { get; }
 
     /// <summary>
-    ///     Names the member with the given declaring type name in front of <see cref="Name" /> and
+    ///     Names the member with the given declaring type name in <see cref="Name" /> and
     ///     <see cref="PathName" />.
     /// </summary>
-    /// <param name="declaringTypeName">The name of the declaring type to put in front</param>
+    /// <param name="declaringTypeName">The name of the declaring type</param>
     public void Qualify(string declaringTypeName)
     {
-        Name = declaringTypeName + "." + RawName;
+        Name = $"{RawName} (declared on {declaringTypeName})";
         PathName = declaringTypeName + "." + MemberComparison.SourceName(RawName);
         IsQualified = true;
     }

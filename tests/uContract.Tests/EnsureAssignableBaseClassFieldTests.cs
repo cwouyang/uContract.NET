@@ -264,7 +264,7 @@ public class EnsureAssignableBaseClassFieldTests
     {
         string[] names = MemberNames<HidesId>();
 
-        Assert.Contains("ProtectedId.<Id>k__BackingField", names, StringComparer.Ordinal);
+        Assert.Contains("<Id>k__BackingField (declared on ProtectedId)", names, StringComparer.Ordinal);
     }
 
     // ---- Compared types below the top level ----
