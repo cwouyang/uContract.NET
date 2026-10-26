@@ -1880,6 +1880,86 @@ public static class Program
             Expect.Value("Code|frameworkPrivateFields=items"),
             Expect.Value("none|frameworkPrivateFields=items")
         );
+
+        // ---- Two arrays of one primitive or enum element type are compared in place, without boxing (issue #64). ----
+
+        // Mutation: none (two byte[] of equal elements). Visibility: T (byte[]).
+        yield return new Check(
+            101,
+            "EnsureAssignable<byte[]> arrays of equal elements",
+            ByteArraysEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: the last element. The violation says that the arrays are compared as a whole.
+        yield return new Check(
+            102,
+            "EnsureAssignable<byte[]> arrays with one element differing",
+            ByteArraysDiffer,
+            Expect.Throws<PostconditionViolationException>("is compared as a whole"),
+            Expect.Ok
+        );
+
+        // Mutation: none by float.Equals: NaN against NaN, and 0.0 against -0.0, whose bits differ.
+        yield return new Check(
+            103,
+            "EnsureAssignable<float[]> arrays of NaN and of 0.0 against -0.0",
+            FloatArraysEqualByEquals,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none (two DayOfWeek[] of equal elements), then the last element.
+        yield return new Check(
+            104,
+            "EnsureAssignable<DayOfWeek[]> arrays of equal elements",
+            EnumArraysEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+        yield return new Check(
+            105,
+            "EnsureAssignable<DayOfWeek[]> arrays with one element differing",
+            EnumArraysDiffer,
+            Expect.Throws<PostconditionViolationException>("is compared as a whole"),
+            Expect.Ok
+        );
+    }
+
+    private static object? ByteArraysEqual()
+    {
+        byte[] actual = [1, 2];
+        byte[] expected = [1, 2];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? ByteArraysDiffer()
+    {
+        byte[] actual = [1, 2];
+        byte[] expected = [1, 3];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? FloatArraysEqualByEquals()
+    {
+        float[] actual = [float.NaN, 0f];
+        float[] expected = [float.NaN, -0f];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? EnumArraysEqual()
+    {
+        DayOfWeek[] actual = [DayOfWeek.Monday, DayOfWeek.Friday];
+        DayOfWeek[] expected = [DayOfWeek.Monday, DayOfWeek.Friday];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? EnumArraysDiffer()
+    {
+        DayOfWeek[] actual = [DayOfWeek.Monday, DayOfWeek.Friday];
+        DayOfWeek[] expected = [DayOfWeek.Monday, DayOfWeek.Sunday];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
     }
 
     private static unsafe object? FunctionPointerArrayEnsured() =>

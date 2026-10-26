@@ -5,6 +5,11 @@ namespace uContract.Tests;
 
 public class EnsureAssignablePrimitiveArrayTests
 {
+    private const int LargeLength = 1_000_000;
+
+    // Far below one byte per element: boxing the elements of the two arrays allocates tens of bytes per element.
+    private const long AllocationBound = LargeLength / 10;
+
     private const string ItemsChanged =
         "Fields were modified that are not marked as assignable:\n  - Items\n  - <Items>k__BackingField";
 
@@ -62,6 +67,39 @@ public class EnsureAssignablePrimitiveArrayTests
             { Of(float.NaN), Of(BitConverter.Int32BitsToSingle(0x7FC0_0001)) },
             { Of(double.NaN), Of(BitConverter.Int64BitsToDouble(0x7FF8_0000_0000_0001)) },
         };
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnArrayOfAMillionEqualBytes_AllocatesFarLessThanOneBytePerElement()
+    {
+        byte[] actual = new byte[LargeLength];
+        byte[] expected = new byte[LargeLength];
+
+        long allocated = AllocatedBy(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.InRange(allocated, 0, AllocationBound);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnArrayOfAMillionEqualDoubles_AllocatesFarLessThanOneBytePerElement()
+    {
+        double[] actual = new double[LargeLength];
+        double[] expected = new double[LargeLength];
+
+        long allocated = AllocatedBy(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.InRange(allocated, 0, AllocationBound);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnArrayOfAMillionEqualEnumValues_AllocatesFarLessThanOneBytePerElement()
+    {
+        LongSize[] actual = new LongSize[LargeLength];
+        LongSize[] expected = new LongSize[LargeLength];
+
+        long allocated = AllocatedBy(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.InRange(allocated, 0, AllocationBound);
+    }
 
     [Theory]
     [MemberData(nameof(ArraysOfEqualContent))]
@@ -224,6 +262,15 @@ public class EnsureAssignablePrimitiveArrayTests
         );
 
         Assert.Equal(ItemsChanged, exception.Description);
+    }
+
+    // The call runs once before it is measured, so caches filled on the first call are not counted.
+    private static long AllocatedBy(Action act)
+    {
+        act();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        act();
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     private static T[] Of<T>(params T[] items) => items;
