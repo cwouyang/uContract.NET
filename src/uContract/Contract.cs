@@ -416,7 +416,8 @@ public static class Contract
     ///     <c>Old(() =&gt; this)</c>.
     ///     Native AOT and trimming: a field that the trimmer removed from reflection keeps its bitwise value, so
     ///     the object it refers to is shared with the original. The fields declared on <typeparamref name="T" />
-    ///     are preserved. To preserve other types, put
+    ///     are preserved; the private fields declared on its base classes may not be, and under Native AOT
+    ///     <see cref="EnsureAssignable{T}" /> does not compare such a field either. To preserve other types, put
     ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on <c>Main</c> or on any method
     ///     that runs, where <c>X</c> is the type. Neither <c>JsonSerializerIsReflectionEnabledByDefault</c> nor
     ///     dynamic code is needed. A caller that forwards its own generic parameter to this method gets warning
@@ -1070,7 +1071,8 @@ public static class Contract
     ///     Ensures that only specified fields have changed between two object states.
     ///     Compares the public instance properties and the instance fields of the compared type, non-public fields
     ///     included, throwing an exception if any non-assignable field has been modified.
-    ///     Private fields declared on a base class are not compared.
+    ///     Private fields declared on a base class are compared too, up to the first class of the .NET runtime and
+    ///     libraries: see the remarks.
     ///     A null on one side only is reported too, as are two unequal values of a type that is compared as a
     ///     whole: see the remarks.
     /// </summary>
@@ -1078,7 +1080,8 @@ public static class Contract
     ///     The type of objects to compare (supports both reference and value types).
     ///     Its public properties and its public and non-public fields are preserved for reflection in trimmed and
     ///     Native AOT applications. Members inherited from base classes are compared and preserved too, except
-    ///     private fields declared on a base class.
+    ///     private fields declared on a base class: they are compared but not preserved, so under Native AOT they
+    ///     are not compared unless the base class is preserved (see the remarks).
     ///     When it is a <see cref="string" />, a delegate type, a nullable value type, a
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or
     ///     <see cref="Array" />, the two values are
@@ -1102,8 +1105,18 @@ public static class Contract
     ///     A pattern matches anywhere in the member name (it is not anchored), so "Email" also matches
     ///     "EmailVerified". An auto-property declared on the compared type is compared twice, as the property
     ///     and as its backing field <c>&lt;Email&gt;k__BackingField</c>, so a pattern anchored with <c>^</c> and
-    ///     <c>$</c> must cover both, for example <c>^(Email|&lt;Email&gt;k__BackingField)$</c>.
+    ///     <c>$</c> must cover both, for example <c>^(Email|&lt;Email&gt;k__BackingField)$</c>. A public
+    ///     auto-property inherited from a base class is compared once, as the property, so <c>^Email$</c> is
+    ///     enough for it; an auto-property inherited from a base class that is not public is compared as its
+    ///     backing field only, so the anchored pattern is <c>^&lt;Email&gt;k__BackingField$</c>.
     ///     Examples: "Email", ".*Timestamp", "^_.*"
+    ///     A pattern is matched against the plain name that reflection gives the member. When two members of one
+    ///     compared type have the same name (a private field declared on two levels, a field hidden with
+    ///     <c>new</c>), each is shown with its declaring type (its full name when two of those types have the same
+    ///     name): in a violation entry as <c>_state (declared on StateBase)</c>, where the text before the first
+    ///     space is the plain name, and in the path of a "cannot compare" message as <c>StateBase._state</c>. It
+    ///     is still matched by its plain name only: a pattern excuses every member of that name, the declaring
+    ///     type takes no part in matching, and one of them cannot be excused alone.
     ///     The patterns do not apply, and are not examined, when one of the two values is null, when the two
     ///     values are compared as a whole, or when one instance passed as <paramref name="actual" /> and as
     ///     <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can change.
@@ -1136,25 +1149,46 @@ public static class Contract
     ///     element.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
     ///     from this rule (no members visible) only, not from the rule for one shared instance above.
-    ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method
-    ///     visible through the compared type: a write-only property, or one whose getter was removed by trimming.
+    ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method:
+    ///     a write-only property, or one whose getter was removed by trimming.
     ///     This applies to properties of <typeparamref name="T" />, of nested members, of collection elements and
     ///     of base classes. A property whose getter is non-public is compared as usual when the getter is declared
-    ///     on the compared type; a getter that is not visible through the compared type — a private getter
-    ///     declared on a base class, or a virtual property whose derived class overrides only the setter — is
-    ///     reported by this rule.
+    ///     on the compared type. A property whose getter is not visible through the compared type — a private
+    ///     getter declared on a base class, or a virtual property whose derived class overrides only the setter —
+    ///     is not reported by this rule: it is read with the getter that exists, that of its declaring type or of
+    ///     the nearest declaration of the same virtual property that has one, and is compared once, in every
+    ///     build. That getter runs, and a getter that throws ends the call in
+    ///     <see cref="System.Reflection.TargetInvocationException" />, as for any getter.
     /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare the public instance properties (indexers excluded)
-    ///     and the instance fields of each compared type, non-public fields included. Private fields declared on a
-    ///     base class are not compared, so neither is an auto-property declared there that is not public: its
-    ///     backing field is such a field. This holds for <typeparamref name="T" /> and for each nested object
-    ///     that is compared by its members, whose members are listed from its runtime type. For
-    ///     <typeparamref name="T" />, compare a second time with the base class as <typeparamref name="T" />,
-    ///     which compares the fields it declares. A second pair on the owning object does not reach those of a
-    ///     nested object: check them with <see cref="Ensure(string, Func{bool})" />. The walk goes
-    ///     deeper into nested objects and collection elements without recursion, so cycles and deep graphs are
-    ///     safe.
+    ///     and the instance fields of each compared type, non-public fields included, and the private instance
+    ///     fields declared on its base classes. This holds for <typeparamref name="T" />, for each nested object
+    ///     that is compared by its members, whose members are listed from its runtime type, and for each element
+    ///     below a <typeparamref name="T" /> that is compared as a whole. The walk up the base classes stops at
+    ///     the first class of the .NET runtime and libraries, a class whose assembly is signed with one of the
+    ///     public key tokens of the .NET 8 shared frameworks (the runtime libraries, ASP.NET Core,
+    ///     <c>Microsoft.Extensions</c>, WPF and Windows Forms); a library that is signed otherwise or not signed
+    ///     is walked. The fields of a framework class that are not private (<c>List&lt;T&gt;._size</c>) are
+    ///     compared, as every inherited field that is not private is; its private fields are not. Static fields are not
+    ///     compared. An auto-property declared on a base class that is not public is compared as its backing
+    ///     field (<c>&lt;Note&gt;k__BackingField</c>); the backing field of an auto-property that is compared as
+    ///     a property (a public one, also with a protected setter, and one read with the getter that exists, see
+    ///     the exceptions) is left out, so that property is compared once. A nested collection class of yours is
+    ///     still compared by its elements. A change of such a field, for example raising a domain event that a
+    ///     base aggregate class keeps in a private list, is a violation unless the member is listed as
+    ///     assignable.
+    ///     Native AOT: the private fields declared on a base class are not preserved, so they are not compared,
+    ///     and <see cref="Old{T}" /> shares the objects they refer to. To compare them, preserve the base class,
+    ///     for example with <c>[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]</c>
+    ///     (or <c>All</c>); the objects those fields hold are compared by their members, so preserve their types
+    ///     too, or two unequal instances of such a type end in "cannot compare". The rule "no members visible"
+    ///     is decided on the members before the private fields of base classes are added, so a type whose only
+    ///     state is such fields still counts as having no members visible (see the exceptions). In a trimmed
+    ///     application without Native AOT these fields may not be preserved either; they are then not compared,
+    ///     and that is not detected.
+    ///     The walk goes deeper into nested objects and collection elements without recursion, so cycles and
+    ///     deep graphs are safe.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences, which are compared element by element. Two arrays, of
     ///     one runtime type or of two, are equal only when they also have the same rank, and the same length and
