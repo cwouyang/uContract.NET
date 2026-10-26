@@ -16,6 +16,7 @@
 - **Amended**: 2026-10-24 — R7 compares the counts of two dictionaries first: two of different counts are unequal and no entry of either is read (#50); `Old<T>()`, B1 to B8, R0 to R6 and R8 are unchanged; the smoke program has 92 checks; see the seventh Amendment under Implementation Notes
 - **Amended**: 2026-10-24 — records the measurements behind #69: private fields and auto-properties that are not public, declared on a base class of `T`, are not compared; two different `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes the pair on `this` in silence unless a public getter of `T` throws, which corrects one item of the Limits of the #54 amendment; the library is unchanged; see the eighth Amendment under Implementation Notes
 - **Amended**: 2026-10-26 — the private fields declared on base classes that are not part of .NET are compared, a property whose getter is not visible through the compared type is read through the getter that exists, and colliding member names are shown with their declaring type (#40 items 1 and 4, [ADR-0023](0023-comparison-of-base-class-members.md)); the scope statements on items 1 and 4 and the base-class limit of the #69 amendment no longer hold; R8 is decided before the added fields; the smoke program has 100 checks; see the ninth Amendment under Implementation Notes
+- **Amended**: 2026-10-26 — two arrays of one runtime type whose element type is `bool`, `char`, an integer type, `float`, `double` or an enum are compared without boxing an element, so the cost figure of limit 15 of the #57 amendment no longer holds for them; every result is unchanged, and `Old<T>()`, B1 to B8, R0 to R8 and rule S are unchanged (#64); the smoke program has 107 checks; see the tenth Amendment under Implementation Notes
 
 ---
 
@@ -2755,10 +2756,8 @@ named. "Read from the code" marks a limit that no test or measurement shows.
 15. **Cost.** An array as `T` is now compared element by element, which `82c6255` skipped. One call
     was measured: `EnsureAssignable(new byte[1_000_000], new byte[1_000_000])` with equal content
     allocated 80,781,544 bytes and took about 220 ms, in a Debug build. This is one measurement, not
-    a rate. Since #64, two arrays of one primitive or enum element type are compared without boxing an
-    element: the same call allocated 1,152 bytes and took about 0.13 ms (Release, .NET 8.0.16, JIT).
-    `Old<T>()` now copies an array of the namespace that it shared before, and the storage of a list
-    of such elements (read from the code; not measured as a cost).
+    a rate. `Old<T>()` now copies an array of the namespace that it shared before, and the storage
+    of a list of such elements (read from the code; not measured as a cost).
 16. **Getters below an array as `T`.** The getters of the public properties run for two different
     instances of one class that is neither a shared type nor a sequence, wherever the comparison
     reaches such a pair: as two elements of the arrays, as two elements of a `FrozenSet<T>` that the
@@ -3816,6 +3815,55 @@ hidden dictionary entry was not published for this change.
 **Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R7 and rule S, and R8 apart
 from what is said above.
 
+### Amendment (2026-10-26): Two arrays of one primitive or enum element type are compared without boxing (#64)
+
+This amendment follows the #40 amendment above.
+[Issue #64](https://github.com/cwouyang/uContract.NET/issues/64) changes how `EnsureAssignable<T>()`
+compares two arrays of some element types, not what it decides.
+[ADR-0021](0021-postconditions-under-trimming-and-aot.md) carries the amendment for the smoke checks.
+
+**The change, in short.** Two arrays of one runtime type whose element type is `bool`, `char`,
+`sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `nint`, `nuint`, `float`,
+`double` or an enum, and that have the same rank, and the same length and lower bound in every
+dimension, are decided without boxing an element and without walking a pair of elements, as two
+arrays of pointers or of function pointers already were (`MemberComparison.TryCompareInPlace`,
+called from `StartSequences`). A `float` or a `double` is compared with its own `Equals`, so `NaN`
+equals `NaN` and `0.0` equals `-0.0`. Each of the other types is compared by its bits, and an enum
+by those of its underlying type, which is what their `Equals` compares. This holds wherever the
+comparison reaches the two arrays: as `T`, as `System.Array`, or held by a member. Two arrays of
+different runtime types (an `int[]` and a `uint[]`, an enum array and an array of its underlying
+type), arrays of any other element type, and sequences that are not arrays are compared as before.
+
+**Qualified in the #57 amendment.** Limit 15, "**Cost.** An array as `T` is now compared element
+by element": its figure, 80,781,544 bytes and about 220 ms in a Debug build, no longer holds for
+two arrays of the element types above. Measured once on `win-x64`, in a Release build, for two
+different arrays of 1,000,000 equal elements as `T`, with one warm-up call before the measured
+one; each figure is one call of one size, not a rate:
+
+| Arrays | Runtime | Before (`5936c64`) | After |
+|---|---|---|---|
+| `byte[]` | JIT, .NET 8.0.16 | 80,780,176 bytes, 186.6 ms | 1,152 bytes, 0.130 ms |
+| `double[]` | JIT, .NET 8.0.16 | 80,780,160 bytes, 134.8 ms | 1,152 bytes, 0.865 ms |
+| `byte[]` | Native AOT, .NET 8.0.4 | 80,780,192 bytes, 162.7 ms | 1,152 bytes, 0.055 ms |
+| `double[]` | Native AOT, .NET 8.0.4 | 80,780,176 bytes, 171.3 ms | 1,152 bytes, 0.816 ms |
+
+Two arrays of 10 elements allocated the same 1,152 bytes (JIT, measured after the change). For two
+arrays of any other element type, the cost still grows with the number of elements (read from the
+code; not measured again).
+
+**Results.** Unchanged. The unit tests in `EnsureAssignablePrimitiveArrayTests.cs` that pin the
+results, for each element type above and for multi-dimensional arrays, arrays with a lower bound of
+one, arrays without elements and two arrays of different runtime types, passed on the code before
+the change and pass after it. Allocation tests in the same file pin the cost for each element type
+and for two arrays held by a member. 1,231 unit tests passed on the branch of this work.
+
+**Checks.** Smoke checks 101 to 107, which the #64 amendment of ADR-0021 lists: the smoke program
+has 107 checks in the default build, all of which passed in the Native AOT publish for `win-x64`,
+with postconditions on and with `DBC_POST=off`. The variant with the hidden dictionary entry was not
+published for this change.
+
+**Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R8, rule S, and the messages.
+
 ---
 
 ## References
@@ -3867,3 +3915,4 @@ from what is said above.
 | 2026-10-24 | Amended     | R7 compares the counts of two dictionaries before their entries; two of different counts are unequal without reading an entry (#50); 92 smoke checks. Decision unchanged. See Implementation Notes > seventh Amendment. |
 | 2026-10-24 | Amended     | The measurements behind #69: base-class private members are not compared; two `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes in silence unless a public getter of `T` throws (corrects one item of the Limits of the #54 amendment). Library unchanged. Decision unchanged. See Implementation Notes > eighth Amendment. |
 | 2026-10-26 | Amended     | Base-class private fields up to the first framework class are compared, the two property shapes with a hidden getter are read through the getter that exists, and colliding names are shown with their declaring type (#40 items 1 and 4; decision in ADR-0023); the scope statements on items 1 and 4 and the base-class limit of the #69 amendment no longer hold; 100 smoke checks. Decision unchanged. See Implementation Notes > ninth Amendment. |
+| 2026-10-26 | Amended     | Two arrays of one runtime type whose element type is `bool`, `char`, an integer type, `float`, `double` or an enum are compared without boxing an element; the cost figure of limit 15 of the #57 amendment no longer holds for them; results unchanged (#64); 107 smoke checks. Decision unchanged. See Implementation Notes > tenth Amendment. |
