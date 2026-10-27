@@ -15,6 +15,7 @@
 - **Amended**: 2026-10-11 — the "no members visible" check for `T` also does not run when `T` is an array type or `System.Array`; below such a `T` the path in the "cannot compare" message starts with the parameter name `actual`; and the rule can fire below an array whose element type is declared in `System.Collections.Frozen` (#57, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the sixth Amendment under Implementation Notes
 - **Amended**: 2026-10-12 — the library has one more `IL2070` suppression, on the private method that reads the interfaces of the runtime type for `EnsureImmutableCollection<T>()`; the smoke program gains checks 85 to 91 for that method, measured under Native AOT and in a trimmed publish without Native AOT; CI repeats the Native AOT publish only (#61, [ADR-0012](0012-dotnet-improvements-over-java.md)); see the seventh Amendment under Implementation Notes
 - **Amended**: 2026-10-26 — `EnsureAssignable<T>()` reads the two property shapes with a getter that is not visible through the compared type through the getter that exists, and compares the private fields declared on base classes that are not part of .NET, so the Known Limitation on the two property shapes no longer holds, and the one on base-class private fields no longer holds under the JIT (under Native AOT and trimming it still holds unless the base class is preserved, and for framework base classes it still holds); the "no members visible" rule is decided before those fields are added; four more trimming suppressions; smoke checks 93 to 100 (#40, [ADR-0023](0023-comparison-of-base-class-members.md)); see the eighth Amendment under Implementation Notes
+- **Amended**: 2026-10-26 — smoke checks 101 to 107 for two arrays of one primitive or enum element type, which `EnsureAssignable<T>()` now compares without boxing an element; the annotations and suppressions are unchanged (#64, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the ninth Amendment under Implementation Notes
 
 ---
 
@@ -621,6 +622,26 @@ With `DBC_POST=off`, checks 96 and 98 expect no exception, check 100 expects `no
 
 Unchanged: the "no members visible" rule and its messages apart from the path segment above, the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`, and the other decisions of this ADR.
 
+### Amendment (2026-10-26): Smoke checks for two arrays of a primitive or enum element type (#64)
+
+The decision is unchanged. [Issue #64](https://github.com/cwouyang/uContract.NET/issues/64) makes `EnsureAssignable<T>()` compare two arrays of one runtime type whose element type is a primitive type that [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) lists in its #64 amendment, or an enum, without boxing an element. It reads the memory of the two arrays with `MemoryMarshal.GetArrayDataReference`, as the comparison of two arrays of pointers already did. No annotation and no trimming suppression is added or changed.
+
+**The checks.** Smoke checks 101 to 107 are added. Each passes the two arrays as `T`:
+
+| # | Check | Expected under Native AOT, postconditions enabled |
+|---|---|---|
+| 101 | Two `byte[]` of equal elements | no exception |
+| 102 | Two `byte[]` with one element differing | `PostconditionViolationException` ("is compared as a whole") |
+| 103 | Two `float[]`: `NaN` against `NaN`, and `0.0` against `-0.0` | no exception |
+| 104 | Two `DayOfWeek[]` of equal elements | no exception |
+| 105 | Two `DayOfWeek[]` with one element differing | `PostconditionViolationException` ("is compared as a whole") |
+| 106 | Two `int[,]` of equal elements | no exception |
+| 107 | Two `int[,]` with one element differing | `PostconditionViolationException` ("is compared as a whole") |
+
+With `DBC_POST=off`, every one of them expects no exception. Measured on `win-x64` with the Native AOT publish of the default build: 107 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`. The variant with the hidden dictionary entry was not published, no trimmed publish was made, and the CI workflow had not run for this change when this amendment was written.
+
+Unchanged: the "no members visible" rule, the unreadable-property rule, the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`, and the other decisions of this ADR.
+
 ---
 
 ## References
@@ -655,3 +676,4 @@ Unchanged: the "no members visible" rule and its messages apart from the path se
 | 2026-10-11 | Amended     | The check for `T` also does not run for an array type or `System.Array` as `T`; below such a `T` the path in the message starts with `actual`; an array whose element type is declared in `System.Collections.Frozen` is no longer decided by reference (#57); decision in ADR-0022. Decision unchanged. See Implementation Notes > sixth Amendment. |
 | 2026-10-12 | Amended     | One more `IL2070` suppression, for the interface read of `EnsureImmutableCollection<T>()`; smoke checks 85 to 91, measured under Native AOT and in a trimmed publish without Native AOT; CI repeats the Native AOT publish only (#61); decision in ADR-0012. Decision unchanged. See Implementation Notes > seventh Amendment. |
 | 2026-10-26 | Amended     | The two property shapes with a hidden getter are compared through the getter that exists, and the private fields of base classes that are not part of .NET are compared, so the Known Limitation on the two shapes no longer holds and the one on base-class private fields no longer holds under the JIT; the "no members visible" rule is decided before those fields are added; four more trimming suppressions; smoke checks 93 to 100 (#40); decision in ADR-0023. Decision unchanged. See Implementation Notes > eighth Amendment. |
+| 2026-10-26 | Amended     | Smoke checks 101 to 107 for two arrays of one primitive or enum element type, compared without boxing an element (#64); no annotation or suppression changed; decision in ADR-0022. Decision unchanged. See Implementation Notes > ninth Amendment. |
