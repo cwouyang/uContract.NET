@@ -1214,7 +1214,11 @@ public static class Contract
     ///     <typeparamref name="T" /> is compared as a whole. When one instance passed as <paramref name="actual" />
     ///     and as <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can
     ///     change, the method throws the message of that case instead, in every build.
-    ///     Reflection metadata is cached for performance (using <see cref="ConcurrentDictionary{TKey,TValue}" />).
+    ///     Reflection metadata is cached per type for performance: in a
+    ///     <see cref="ConcurrentDictionary{TKey,TValue}" /> for a type that is not collectible, and in a
+    ///     <see cref="ConditionalWeakTable{TKey,TValue}" /> for a collectible type (see
+    ///     <see cref="System.Reflection.MemberInfo.IsCollectible" />), so the cache does not keep a collectible type
+    ///     alive.
     ///     This method is disabled when DBC_POST is set to "false", "off", "0" or "no" (case-insensitive).
     ///     When DBC_POST is unset, empty or not recognised, DBC decides in the same way;
     ///     if neither decides, the method is enabled.
