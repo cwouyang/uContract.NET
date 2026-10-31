@@ -25,6 +25,12 @@ internal sealed class TypeCache<TValue>
     /// </summary>
     internal TValue GetOrAdd(Type type, Func<Type, TValue> create)
     {
+        // A hit proves the type is not collectible, so IsCollectible, a native call, is read only on a miss.
+        if (_nonCollectibleTypes.TryGetValue(type, out TValue? value))
+        {
+            return value;
+        }
+
         return type.IsCollectible ? GetOrAddCollectible(type, create) : _nonCollectibleTypes.GetOrAdd(type, create);
     }
 
