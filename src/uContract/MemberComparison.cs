@@ -19,6 +19,7 @@ namespace uContract;
 internal static class MemberComparison
 {
     private static readonly ConcurrentDictionary<Type, TypeMetadata> MetadataCache = new();
+    private static readonly ConditionalWeakTable<Type, TypeMetadata> CollectibleMetadataCache = [];
 
     // The public key tokens the assemblies of the .NET runtime and libraries are signed with: every token that
     // occurs in the .NET 8 shared frameworks (Microsoft.NETCore.App, Microsoft.AspNetCore.App and
@@ -49,6 +50,14 @@ internal static class MemberComparison
         // These binding flags must stay within what ComparedMembers preserves. Members are lost silently under
         // Native AOT if the flags are widened beyond ComparedMembers, or if the constant is narrowed; widening
         // the constant alone loses nothing.
+        if (type.IsCollectible)
+        {
+            return CollectibleMetadataCache.GetValue(
+                type,
+                t => CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            );
+        }
+
         return MetadataCache.GetOrAdd(
             type,
             t => CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance))

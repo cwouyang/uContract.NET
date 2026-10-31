@@ -35,6 +35,7 @@ namespace uContract;
 internal static class SharedTypes
 {
     private static readonly ConcurrentDictionary<Type, bool> Cache = new();
+    private static readonly ConditionalWeakTable<Type, StrongBox<bool>> CollectibleCache = [];
 
     // A listed type matches itself and every type derived from it.
     internal static readonly Type[] Listed =
@@ -104,6 +105,11 @@ internal static class SharedTypes
 
     internal static bool IsShared(Type type)
     {
+        if (type.IsCollectible)
+        {
+            return CollectibleCache.GetValue(type, t => new StrongBox<bool>(Classify(t))).Value;
+        }
+
         return Cache.GetOrAdd(type, Classify);
     }
 
