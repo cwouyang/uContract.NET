@@ -110,6 +110,7 @@ main decision, write a new ADR that supersedes the old one instead.
 - [ADR-0021: Postcondition Helpers under Trimming and Native AOT](0021-postconditions-under-trimming-and-aot.md) — 2026-10-04
 - [ADR-0022: Faithful Old<T>() Copies and Robust EnsureAssignable<T>() Comparison](0022-faithful-old-copies-and-robust-comparison.md) — 2026-10-07
 - [ADR-0023: Comparison of Members Declared on Base Classes in EnsureAssignable<T>()](0023-comparison-of-base-class-members.md) — 2026-10-26
+- [ADR-0024: Per-Type Caches That Do Not Keep Collectible Types Alive](0024-per-type-caches-and-collectible-types.md) — 2026-10-31
 
 **Third Priority (Publishing and Maintenance)**:
 - [ADR-0010: Testing Framework - xUnit](0010-testing-framework-xunit.md) — 2025-10-18

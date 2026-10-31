@@ -376,6 +376,10 @@ AOT](README.md#trimming-and-native-aot) in the README.
 - `EnsureAssignable<T>()` no longer reports false violations for unchanged dictionaries, structs
   that hold a reference, interface-typed members, and objects that hold a `Regex` (also after it is
   used), an `AsyncLocal<T>` or a `System.Threading.Lock` (ADR-0022).
+- `Old<T>()` and `EnsureAssignable<T>()` no longer keep a collectible type alive. Their per-type
+  caches held each type they looked up, so a type from a collectible assembly, and the assembly, could
+  not be collected; a constructed generic type over such a type, such as a `List<T>` of it, is
+  covered too. Results do not change (#48; ADR-0024).
 
 ### Removed
 

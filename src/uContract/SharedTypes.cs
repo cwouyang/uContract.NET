@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -34,7 +33,7 @@ namespace uContract;
 /// </summary>
 internal static class SharedTypes
 {
-    private static readonly ConcurrentDictionary<Type, bool> Cache = new();
+    private static readonly TypeCache<bool> Cache = new();
 
     // A listed type matches itself and every type derived from it.
     internal static readonly Type[] Listed =

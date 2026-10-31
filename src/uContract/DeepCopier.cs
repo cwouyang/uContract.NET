@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -24,7 +23,7 @@ internal static class DeepCopier
     private const BindingFlags DeclaredInstanceFields =
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
 
-    private static readonly ConcurrentDictionary<Type, bool> HoldsReferencesCache = new();
+    private static readonly TypeCache<bool> HoldsReferencesCache = new();
 
     internal static T Copy<T>(T value)
     {
