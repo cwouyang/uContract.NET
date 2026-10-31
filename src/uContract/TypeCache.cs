@@ -25,11 +25,12 @@ internal sealed class TypeCache<TValue>
     /// </summary>
     internal TValue GetOrAdd(Type type, Func<Type, TValue> create)
     {
-        if (type.IsCollectible)
-        {
-            return _collectibleTypes.GetValue(type, t => new StrongBox<TValue>(create(t))).Value!;
-        }
+        return type.IsCollectible ? GetOrAddCollectible(type, create) : _types.GetOrAdd(type, create);
+    }
 
-        return _types.GetOrAdd(type, create);
+    // Kept apart from GetOrAdd: the closure over create is then allocated only for a collectible type.
+    private TValue GetOrAddCollectible(Type type, Func<Type, TValue> create)
+    {
+        return _collectibleTypes.GetValue(type, t => new StrongBox<TValue>(create(t))).Value!;
     }
 }
