@@ -15,7 +15,7 @@ namespace uContract;
 /// <typeparam name="TValue">The type of the cached values.</typeparam>
 internal sealed class TypeCache<TValue>
 {
-    private readonly ConcurrentDictionary<Type, TValue> _types = new();
+    private readonly ConcurrentDictionary<Type, TValue> _nonCollectibleTypes = new();
     private readonly ConditionalWeakTable<Type, StrongBox<TValue>> _collectibleTypes = [];
 
     /// <summary>
@@ -25,7 +25,7 @@ internal sealed class TypeCache<TValue>
     /// </summary>
     internal TValue GetOrAdd(Type type, Func<Type, TValue> create)
     {
-        return type.IsCollectible ? GetOrAddCollectible(type, create) : _types.GetOrAdd(type, create);
+        return type.IsCollectible ? GetOrAddCollectible(type, create) : _nonCollectibleTypes.GetOrAdd(type, create);
     }
 
     // Kept apart from GetOrAdd: the closure over create is then allocated only for a collectible type.
