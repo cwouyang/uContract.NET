@@ -116,7 +116,7 @@ This ADR was written after the implementation so that it could record what the w
 
 - **Order of the work.** Each cache got its collectible tier in its own step, driven by a test that failed because the type stayed alive. The two tiers were then extracted into `TypeCache<TValue>` as a structural change.
 - **The closure finding.** The first `TypeCache.GetOrAdd` allocated a closure on every call, found after the extraction. `TypeCacheTests` reproduced it (24 bytes); moving the lambda into `GetOrAddCollectible` brought it to 0.
-- **Non-vacuous result tests.** The three tests that compare collectible and non-collectible results passed on their first run, before any change for them, and would also pass without the change (read from the code). They were checked against temporary mutants of the collectible tiers, which made them fail; the mutants were not kept.
+- **Non-vacuous result tests.** The three tests that compare collectible and non-collectible results were written after the collectible tiers were in place and passed on their first run; they would also pass without the tiers (read from the code, not run). They were checked against temporary mutants of the collectible tiers, which made them fail; the mutants were not kept.
 - **Unit tests.** 1,239 unit tests passed at the end of the implementation. That figure is a snapshot.
 
 ---
