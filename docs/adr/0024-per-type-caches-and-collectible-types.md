@@ -32,7 +32,7 @@ A static field is a root, so each key `Type` stayed reachable, and with it its a
 - No public API change; the `PublicAPI.*` baseline files are unchanged.
 - No new dependency ([ADR-0011](0011-zero-dependency-principle.md)).
 - Results do not change: a collectible type is copied and compared as a type that is not collectible is.
-- The path for a type that is not collectible, which is nearly every call, must not allocate.
+- The path for a type that is not collectible must not allocate.
 
 ---
 
@@ -92,13 +92,13 @@ A static field is a root, so each key `Type` stayed reachable, and with it its a
 
 **Description**: Skip the cache when the assembly is collectible (the second option of the issue, `type.Assembly.IsCollectible`).
 
-**Why rejected**: This was the option the agent recommended to the maintainer: the path for a type that is not collectible stays unchanged, and it is the simplest. The maintainer did not choose it, and chose the two tiers so that collectible types are still cached (see "Choice of the two tiers" below). Found later, during the work: the check that the issue named, `type.Assembly.IsCollectible`, misses `List<Account>` (Decision, item 2).
+**Why rejected**: This was the option the agent recommended to the maintainer: the path for a type that is not collectible stays unchanged. The maintainer did not choose it, and chose the two tiers so that collectible types are still cached (see "Choice of the two tiers" below). Found later, during the work: the check that the issue named, `type.Assembly.IsCollectible`, misses `List<Account>` (Decision, item 2).
 
 ---
 
 ### Choice of the two tiers
 
-On 2026-10-31 the maintainer was offered three options: skip caching a collectible type (the agent's recommendation), a `ConditionalWeakTable` for every cache, or two tiers. The two-tier option was presented as "both at once: ordinary types keep the `ConcurrentDictionary`, collectible types still get a cache, at the cost of more code", and the maintainer chose it. The recorded reason: keep the existing cost of the path for types that are not collectible, and still cache collectible types, accepting a second code path.
+On 2026-10-31 the maintainer was offered three options: skip caching a collectible type (the agent's recommendation), a `ConditionalWeakTable` for every cache, or two tiers. The two-tier option was presented as "both at once: ordinary types keep the `ConcurrentDictionary`, collectible types still get a cache, at the cost of more code", and the maintainer chose it. The recorded reason: keep the `ConcurrentDictionary` for types that are not collectible, and still cache collectible types, at the cost of more code.
 
 ---
 
@@ -116,7 +116,7 @@ This ADR was written after the implementation so that it could record what the w
 
 - **Order of the work.** Each cache got its collectible tier in its own step, driven by a test that failed because the type stayed alive. The two tiers were then extracted into `TypeCache<TValue>` as a structural change.
 - **The closure finding.** The first `TypeCache.GetOrAdd` allocated a closure on every call, found after the extraction. `TypeCacheTests` reproduced it (24 bytes); moving the lambda into `GetOrAddCollectible` brought it to 0.
-- **Non-vacuous result tests.** The three tests that compare collectible and non-collectible results would also pass without the change. They were checked against temporary mutants of the collectible tiers, which made them fail; the mutants were not kept.
+- **Non-vacuous result tests.** The three tests that compare collectible and non-collectible results passed on their first run, before any change for them, and would also pass without the change (read from the code). They were checked against temporary mutants of the collectible tiers, which made them fail; the mutants were not kept.
 - **Unit tests.** 1,239 unit tests passed at the end of the implementation. That figure is a snapshot.
 
 ---
