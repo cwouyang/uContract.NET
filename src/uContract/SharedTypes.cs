@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -34,8 +33,7 @@ namespace uContract;
 /// </summary>
 internal static class SharedTypes
 {
-    private static readonly ConcurrentDictionary<Type, bool> Cache = new();
-    private static readonly ConditionalWeakTable<Type, StrongBox<bool>> CollectibleCache = [];
+    private static readonly TypeCache<bool> Cache = new();
 
     // A listed type matches itself and every type derived from it.
     internal static readonly Type[] Listed =
@@ -105,11 +103,6 @@ internal static class SharedTypes
 
     internal static bool IsShared(Type type)
     {
-        if (type.IsCollectible)
-        {
-            return CollectibleCache.GetValue(type, t => new StrongBox<bool>(Classify(t))).Value;
-        }
-
         return Cache.GetOrAdd(type, Classify);
     }
 

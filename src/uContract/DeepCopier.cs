@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -24,8 +23,7 @@ internal static class DeepCopier
     private const BindingFlags DeclaredInstanceFields =
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
 
-    private static readonly ConcurrentDictionary<Type, bool> HoldsReferencesCache = new();
-    private static readonly ConditionalWeakTable<Type, StrongBox<bool>> CollectibleHoldsReferencesCache = [];
+    private static readonly TypeCache<bool> HoldsReferencesCache = new();
 
     internal static T Copy<T>(T value)
     {
@@ -179,21 +177,6 @@ internal static class DeepCopier
         if (type.IsPrimitive || type.IsEnum)
         {
             return false;
-        }
-
-        if (type.IsCollectible)
-        {
-            return CollectibleHoldsReferencesCache
-                .GetValue(
-                    type,
-                    static valueType => new StrongBox<bool>(
-                        Array.Exists(
-                            valueType.GetFields(DeclaredInstanceFields),
-                            field => field.FieldType != valueType && HoldsReferences(field.FieldType)
-                        )
-                    )
-                )
-                .Value;
         }
 
         return HoldsReferencesCache.GetOrAdd(
