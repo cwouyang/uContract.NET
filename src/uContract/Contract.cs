@@ -1161,15 +1161,17 @@ public static class Contract
     ///     element.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
     ///     from this rule (no members visible) only, not from the rule for one shared instance above.
-    ///     Also thrown under Native AOT, also when the two values are equal, when at the top level the runtime type
-    ///     of the values is not <typeparamref name="T" />, they are not compared as a whole and are not a
-    ///     primitive, an enum or an inline array, and that runtime type shows no declared member to reflection: no
-    ///     field, property, method or constructor it declares is visible, which is how Native AOT shows a type that
-    ///     nothing preserves (a framework collection included, such as a <c>List&lt;int&gt;</c> held by
-    ///     <see cref="object" />). Comparing it by the members of <typeparamref name="T" />, or by those it
-    ///     inherits, would miss what it adds. The message names the runtime type and <typeparamref name="T" />;
-    ///     preserve the type with <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a
-    ///     method that runs, where X is that type, or pass the values as that type. A type that adds no state and
+    ///     Also thrown under Native AOT when at the top level the runtime type of the values is not
+    ///     <typeparamref name="T" />, they are not compared as a whole, and that runtime type shows no declared
+    ///     member to reflection: for a class also when the two values are equal; for a value type only when its
+    ///     <c>Equals</c> reports them unequal (a primitive, an enum and an inline array are then a violation, as
+    ///     before). No field, property, method or constructor it declares is visible, which is how Native AOT shows
+    ///     a type that nothing preserves (a framework collection included, such as a <c>Queue&lt;int&gt;</c> held
+    ///     by <see cref="object" />). Comparing it by the members of <typeparamref name="T" />, or by those it
+    ///     inherits, would miss what it adds. The message names the runtime type and <typeparamref name="T" />, and
+    ///     gives the fix with the runtime type in C# syntax:
+    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a method that runs, or
+    ///     pass the values as that type. A type that adds no state and
     ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
     ///     top level the rule for a class with no visible members above applies instead (see the remarks).
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method:
@@ -1862,21 +1864,57 @@ public static class Contract
         return new InvalidOperationException(
             $"EnsureAssignable cannot compare {comparedType}, the runtime type of the values (T is {declaredType}): "
                 + "no properties or fields are visible to reflection under Native AOT. If the type has members, "
-                + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] "
-                + "on a method that runs, where X is that type, or pass the values as that type; otherwise set "
-                + "DBC_POST=off (disables all postcondition checks)."
+                + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + $"typeof({_CSharpName(comparedType)}))] on a method that runs, or pass the values as that type; "
+                + "otherwise set DBC_POST=off (disables all postcondition checks)."
         );
+    }
+
+    // The name of type as C# writes it inside typeof: namespace-qualified, with generic arguments in angle
+    // brackets, a nested type after its declaring type and a dot, and an array with its rank in brackets.
+    private static string _CSharpName(Type type)
+    {
+        if (type.IsArray)
+        {
+            return $"{_CSharpName(type.GetElementType()!)}[{new string(',', type.GetArrayRank() - 1)}]";
+        }
+
+        return type.IsGenericParameter ? type.Name : _CSharpName(type, type.GetGenericArguments());
+    }
+
+    // The generic arguments of a nested type include those of its declaring types, first; each type in the chain
+    // takes the arguments its own definition adds.
+    private static string _CSharpName(Type type, Type[] arguments)
+    {
+        Type? declaringType = type.IsNested ? type.DeclaringType : null;
+        string prefix =
+            declaringType is not null ? _CSharpName(declaringType, arguments) + "."
+            : type.Namespace is { } ns ? ns + "."
+            : "";
+
+        string name = type.Name;
+        int tick = name.IndexOf('`', StringComparison.Ordinal);
+        if (tick < 0)
+        {
+            return prefix + name;
+        }
+
+        int outerCount = declaringType?.GetGenericArguments().Length ?? 0;
+        int ownCount = int.Parse(name[(tick + 1)..], System.Globalization.CultureInfo.InvariantCulture);
+        IEnumerable<string> own = arguments.Skip(outerCount).Take(ownCount).Select(a => _CSharpName(a));
+        return $"{prefix}{name[..tick]}<{string.Join(", ", own)}>";
     }
 
     // Under Native AOT a runtime type other than T that nothing preserves shows no declared member, and comparing
     // it by what does show (the members of T, those it inherits, its elements) would miss what it adds. A value
-    // compared as a whole, or decided by its Equals alone, lists no member of it.
+    // compared as a whole lists no member of it, and a value of a value type is compared as a member is: its
+    // Equals decides first (see _TopLevelMembers).
     private static void _ThrowIfShowsNoDeclaredMember(Type runtimeType, Type declaredType)
     {
         if (
             runtimeType != declaredType
             && !_IsComparedAsWhole(runtimeType)
-            && !_IsDecidedByEqualsAlone(runtimeType)
+            && !runtimeType.IsValueType
             && MemberComparison.ShowsNoDeclaredMember(runtimeType)
         )
         {
@@ -1896,9 +1934,9 @@ public static class Contract
             $"EnsureAssignable cannot compare {runtimeType}, the runtime type of the values (T is {declaredType}): "
                 + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
                 + "its members cannot be listed. Preserve it with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] on a method that runs, where X is "
-                + $"{runtimeType}, or pass the values as that type; otherwise set DBC_POST=off (disables all "
-                + "postcondition checks)."
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({_CSharpName(runtimeType)}))] on a method "
+                + "that runs, or pass the values as that type; otherwise set DBC_POST=off (disables all postcondition "
+                + "checks)."
         );
     }
 
@@ -1925,6 +1963,12 @@ public static class Contract
                     $"actual and expected are not equal. They are compared as {comparedType} by its Equals alone, "
                         + $"which reports them unequal; T is {declaredType}."
                 );
+            }
+
+            // Its Equals said "unequal", and its fields cannot be listed when it shows no declared member.
+            if (asAMember && MemberComparison.ShowsNoDeclaredMember(comparedType))
+            {
+                throw _ShowsNoDeclaredMember(comparedType, declaredType);
             }
 
             TypeMetadata metadata = MemberComparison.GetTopLevelMetadata(comparedType, declaredType);

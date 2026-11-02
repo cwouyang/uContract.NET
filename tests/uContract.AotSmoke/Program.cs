@@ -2034,8 +2034,7 @@ public static class Program
             Expect.Throws<InvalidOperationException>(
                 "cannot compare uContract.AotSmoke.UnseenTicket",
                 "(T is System.Object)",
-                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]",
-                "where X is uContract.AotSmoke.UnseenTicket"
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.UnseenTicket))]"
             ),
             Expect.Ok
         );
@@ -2142,7 +2141,10 @@ public static class Program
             120,
             "EnsureAssignable<TicketBase> unpreserved generic subclass",
             GenericTicketUnchanged,
-            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.GenericTicket`1[System.Int32]"),
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.GenericTicket`1[System.Int32]",
+                "typeof(uContract.AotSmoke.GenericTicket<System.Int32>))]"
+            ),
             Expect.Ok
         );
 
@@ -2155,7 +2157,7 @@ public static class Program
             IntQueueAsObject,
             Expect.Throws<InvalidOperationException>(
                 "cannot compare System.Collections.Generic.Queue`1[System.Int32]",
-                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]"
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(System.Collections.Generic.Queue<System.Int32>))]"
             ),
             Expect.Ok
         );
@@ -2199,6 +2201,80 @@ public static class Program
             ),
             Expect.Ok
         );
+
+        // ---- A value of a framework value type other than T: its Equals decides first (issue #40). ----
+
+        // Mutation: none. Visibility: nothing preserves DateTime for reflection here; Equals says equal.
+        yield return new Check(
+            126,
+            "EnsureAssignable<object> equal boxed DateTime",
+            EqualDateTimesAsObject,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none (a snapshot taken with Old). Visibility: as check 126, for decimal.
+        yield return new Check(
+            127,
+            "EnsureAssignable<IComparable> unchanged decimal",
+            UnchangedDecimalAsComparable,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another tick. Visibility: as check 126; Equals says unequal, so the fields decide.
+        yield return new Check(
+            128,
+            "EnsureAssignable<object> unequal boxed DateTime",
+            UnequalDateTimesAsObject,
+            Expect.Throws<PostconditionViolationException>(),
+            Expect.Ok
+        );
+
+        // Mutation: another price. Visibility: as check 127; measured: decimal shows no declared member here, so
+        // once its Equals says unequal its fields cannot be listed.
+        yield return new Check(
+            129,
+            "EnsureAssignable<IComparable> changed decimal",
+            ChangedDecimalAsComparable,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare System.Decimal",
+                "(T is System.IComparable)",
+                "typeof(System.Decimal))]"
+            ),
+            Expect.Ok
+        );
+    }
+
+    private static DateTime Noon(int ticks) => new DateTime(2026, 11, 2, 12, 0, 0, DateTimeKind.Utc).AddTicks(ticks);
+
+    private static object? EqualDateTimesAsObject()
+    {
+        object actual = Noon(0);
+        object expected = Noon(0);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnequalDateTimesAsObject()
+    {
+        object actual = Noon(1);
+        object expected = Noon(0);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnchangedDecimalAsComparable()
+    {
+        IComparable price = 12.50m;
+        IComparable? old = Contract.Old(() => price);
+        return NoResult(() => Contract.EnsureAssignable(price, old));
+    }
+
+    private static object? ChangedDecimalAsComparable()
+    {
+        IComparable price = 12.50m;
+        IComparable? old = Contract.Old(() => price);
+        price = 13.75m;
+        return NoResult(() => Contract.EnsureAssignable(price, old));
     }
 
     private static object? UnseenTicketAsObject()

@@ -8,14 +8,54 @@ namespace uContract.Tests;
 [Collection("EnvironmentVariables")]
 public class EnsureAssignableUnseenRuntimeTypeTests
 {
-    private static string CannotCompare(Type runtimeType, Type declaredType)
+    // The C# name of this class, which the nested fixtures below are named through.
+    private const string ThisClass = "uContract.Tests.EnsureAssignableUnseenRuntimeTypeTests";
+
+    // The fix names the runtime type in C# syntax, so the attribute can be copied as it is.
+    private static string CannotCompare(Type runtimeType, Type declaredType, string runtimeTypeInCSharp)
     {
         return $"EnsureAssignable cannot compare {runtimeType}, the runtime type of the values (T is {declaredType}): "
             + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
             + "its members cannot be listed. Preserve it with "
-            + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] on a method that runs, where X is "
-            + $"{runtimeType}, or pass the values as that type; otherwise set DBC_POST=off (disables all "
-            + "postcondition checks).";
+            + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({runtimeTypeInCSharp}))] on a method "
+            + "that runs, or pass the values as that type; otherwise set DBC_POST=off (disables all postcondition "
+            + "checks).";
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeThatShowsNoDeclaredMemberIsGeneric_NamesItInCSharpSyntaxInTheFix()
+    {
+        TicketBase actual = new GenericTicket<int> { Value = 1 };
+        TicketBase expected = new GenericTicket<int> { Value = 1 };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(GenericTicket<int>)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompare(typeof(GenericTicket<int>), typeof(TicketBase), $"{ThisClass}.GenericTicket<System.Int32>"),
+            cannotCompare.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeThatShowsNoDeclaredMemberIsNestedInAGenericClass_NamesItInCSharpSyntaxInTheFix()
+    {
+        object actual = new Box<string>.Lid { Color = "red" };
+        object expected = new Box<string>.Lid { Color = "red" };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(Box<string>.Lid)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompare(typeof(Box<string>.Lid), typeof(object), $"{ThisClass}.Box<System.String>.Lid"),
+            cannotCompare.Message
+        );
     }
 
     // ---- Top level, runtime type other than T ----
@@ -32,7 +72,7 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(CannotCompare(typeof(Ticket), typeof(object)), cannotCompare.Message);
+        Assert.Equal(CannotCompare(typeof(Ticket), typeof(object), $"{ThisClass}.Ticket"), cannotCompare.Message);
     }
 
     // Today the members of T alone would be compared, and the change to Holder would pass silently.
@@ -48,7 +88,10 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(CannotCompare(typeof(DerivedTicket), typeof(TicketBase)), cannotCompare.Message);
+        Assert.Equal(
+            CannotCompare(typeof(DerivedTicket), typeof(TicketBase), $"{ThisClass}.DerivedTicket"),
+            cannotCompare.Message
+        );
     }
 
     [Fact]
@@ -63,7 +106,10 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(CannotCompare(typeof(SeededRandom), typeof(Random)), cannotCompare.Message);
+        Assert.Equal(
+            CannotCompare(typeof(SeededRandom), typeof(Random), $"{ThisClass}.SeededRandom"),
+            cannotCompare.Message
+        );
     }
 
     [Fact]
@@ -78,7 +124,14 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(CannotCompare(typeof(List<int>), typeof(IReadOnlyList<int>)), cannotCompare.Message);
+        Assert.Equal(
+            CannotCompare(
+                typeof(List<int>),
+                typeof(IReadOnlyList<int>),
+                "System.Collections.Generic.List<System.Int32>"
+            ),
+            cannotCompare.Message
+        );
     }
 
     [Fact]
@@ -93,6 +146,42 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
 
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeIsTAndShowsNoDeclaredMemberAndAMemberOfTChanged_ReportsThatMember()
+    {
+        Ticket actual = new() { Seat = 2 };
+        Ticket expected = new() { Seat = 1 };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(Ticket)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Seat\n  - <Seat>k__BackingField",
+            violation.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTwoSequencesOfDifferentRuntimeTypesAndExpectedShowsNoDeclaredMember_ThrowsCannotCompare()
+    {
+        List<int> actual = [1];
+        TaggedList expected = [1];
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(TaggedList)],
+            () => Contract.EnsureAssignable<IEnumerable<int>>(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompare(typeof(TaggedList), typeof(IEnumerable<int>), $"{ThisClass}.TaggedList"),
+            cannotCompare.Message
+        );
     }
 
     [Fact]
@@ -113,6 +202,65 @@ public class EnsureAssignableUnseenRuntimeTypeTests
             violation.Description,
             StringComparison.Ordinal
         );
+    }
+
+    // A value of a value type other than T is compared as a member is: its Equals decides first.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreEqualBoxedDateTimesThatShowNoDeclaredMember_DoesNotThrow()
+    {
+        object actual = new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc);
+        object expected = new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc);
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(DateTime)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndTheValuesAreEqualBoxedDecimalsThatShowNoDeclaredMember_DoesNotThrow()
+    {
+        IComparable actual = 12.50m;
+        IComparable expected = 12.50m;
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(decimal)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
+    // A struct without a field is always equal to another of its type.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreOfAnEmptyStructThatShowsNoDeclaredMember_DoesNotThrow()
+    {
+        object actual = new EmptyStamp();
+        object expected = new EmptyStamp();
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(EmptyStamp)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesOfAStructThatShowsNoDeclaredMemberAreUnequal_ThrowsCannotCompare()
+    {
+        object actual = new Stamp { Code = 2 };
+        object expected = new Stamp { Code = 1 };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(Stamp)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(CannotCompare(typeof(Stamp), typeof(object), $"{ThisClass}.Stamp"), cannotCompare.Message);
     }
 
     // A primitive is decided by its Equals alone, as a whole: no member of it is listed.
@@ -142,7 +290,10 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(CannotCompare(typeof(TaggedList), typeof(IEnumerable<int>)), cannotCompare.Message);
+        Assert.Equal(
+            CannotCompare(typeof(TaggedList), typeof(IEnumerable<int>), $"{ThisClass}.TaggedList"),
+            cannotCompare.Message
+        );
     }
 
     // ---- Nested values ----
@@ -250,6 +401,28 @@ public class EnsureAssignableUnseenRuntimeTypeTests
     }
 
     private sealed class SeededRandom(int seed) : Random(seed);
+
+    private struct EmptyStamp;
+
+    private struct Stamp
+    {
+        public int Code { get; set; }
+    }
+
+    private sealed class GenericTicket<TValue> : TicketBase
+    {
+        public TValue? Value { get; set; }
+    }
+
+    private sealed class Box<TItem>
+    {
+        public TItem? Item { get; set; }
+
+        public sealed class Lid
+        {
+            public string Color { get; set; } = "";
+        }
+    }
 
     private sealed class CodedCollection : Collection<int>
     {

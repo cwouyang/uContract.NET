@@ -905,9 +905,10 @@ public class EnsureAssignableRuntimeTypeWithoutDynamicCodeTests
         Assert.Equal(
             $"EnsureAssignable cannot compare {typeof(Marker)}, the runtime type of the values (T is {typeof(IMarker)}): "
                 + "no properties or fields are visible to reflection under Native AOT. If the type has members, "
-                + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] "
-                + "on a method that runs, where X is that type, or pass the values as that type; otherwise set "
-                + "DBC_POST=off (disables all postcondition checks).",
+                + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + "typeof(uContract.Tests.EnsureAssignableRuntimeTypeWithoutDynamicCodeTests.Marker))] on a method "
+                + "that runs, or pass the values as that type; otherwise set DBC_POST=off (disables all "
+                + "postcondition checks).",
             cannotCompare.Message
         );
     }
