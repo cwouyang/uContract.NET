@@ -1352,7 +1352,7 @@ public static class Contract
                 return;
             }
 
-            List<string> differences = _FindDifferences(actual, expected, assignableFieldPatterns);
+            List<string> differences = _FindDifferences(typeof(T), actual!, expected!, assignableFieldPatterns);
 
             if (differences.Count > 0)
             {
@@ -1436,13 +1436,13 @@ public static class Contract
         );
     }
 
-    private static List<string> _FindDifferences<[DynamicallyAccessedMembers(MemberComparison.ComparedMembers)] T>(
-        T actual,
-        T expected,
+    private static List<string> _FindDifferences(
+        Type type,
+        object actual,
+        object expected,
         string[] assignableFieldPatterns
     )
     {
-        Type type = typeof(T);
         TypeMetadata metadata = MemberComparison.GetOrCacheMetadata(type);
 
         if (MemberComparison.MembersAreHidden(type, metadata))
@@ -1459,10 +1459,11 @@ public static class Contract
         ComparisonContext context = new();
 
         // The top-level pair is in progress for the whole call, so a member leading back to it is not a
-        // difference. (A value-type T is boxed here afresh, so that pair is never reached again.) Two arrays
-        // are the top-level pair here only when T is neither an array type nor System.Array (object, an
-        // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
-        context.EnterTopLevel(new ReferencePair(actual!, expected!));
+        // difference. (A value of a value type is a box made for this call, so that pair is never reached
+        // again.) Two arrays are the top-level pair here only when T is neither an array type nor System.Array
+        // (object, an interface): a T that is an array type or System.Array is compared as a whole and never
+        // comes here.
+        context.EnterTopLevel(new ReferencePair(actual, expected));
 
         foreach (MemberAccessor member in metadata.Members)
         {
@@ -1471,8 +1472,8 @@ public static class Contract
                 continue;
             }
 
-            object? actualValue = member.GetValue(actual!);
-            object? expectedValue = member.GetValue(expected!);
+            object? actualValue = member.GetValue(actual);
+            object? expectedValue = member.GetValue(expected);
 
             if (!MemberComparison.AreEqual(actualValue, expectedValue, context))
             {
