@@ -681,7 +681,7 @@ public unsafe class EnsureAssignableArrayAsTTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsAListAndOneElementDiffers_ReportsThePrivateField()
+    public void EnsureAssignable_WhenTIsAListAndOneElementDiffers_ReportsTheElements()
     {
         List<int> actual = [1, 2];
         List<int> expected = [1, 3];
@@ -691,7 +691,11 @@ public unsafe class EnsureAssignableArrayAsTTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal("Fields were modified that are not marked as assignable:\n  - _items", exception.Description);
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n"
+                + "  - (the elements; assignable patterns do not apply to them)",
+            exception.Description
+        );
     }
 
     [Fact]
@@ -707,15 +711,21 @@ public unsafe class EnsureAssignableArrayAsTTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsAListAndAPatternNamesThePrivateFieldThatDiffers_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsAListAndAPatternNamesItsPrivateItemsField_StillReportsTheElements()
     {
         List<int> actual = [1, 2];
         List<int> expected = [1, 3];
         Assert.NotSame(actual, expected);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "_items"));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "_items")
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n"
+                + "  - (the elements; assignable patterns do not apply to them)",
+            exception.Description
+        );
     }
 
     [Fact]

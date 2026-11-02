@@ -36,6 +36,9 @@ public static class Contract
     // (see ImmutableCollectionFullNames).
     private const string ReadOnlySetFullName = "System.Collections.ObjectModel.ReadOnlySet`1";
 
+    // The violation entry for the elements of a top-level sequence, which no pattern excuses.
+    private const string ElementsEntry = "(the elements; assignable patterns do not apply to them)";
+
     private static readonly ContractConfiguration Config = new();
     private static readonly AsyncLocal<bool> Entered = new();
 
@@ -1532,12 +1535,39 @@ public static class Contract
     {
         Type comparedType = _TopLevelType(declaredType, actual, expected);
         List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected);
-        List<string> differences = _FindDifferences(comparedType, members, actual, expected, assignableFieldPatterns);
+
+        // A sequence built on a framework class is compared by its elements and by the members declared on
+        // its own classes, not by the framework's private state.
+        bool byElements = _IsComparedByElementsAndOwnMembers(comparedType, actual);
+        if (byElements)
+        {
+            members.RemoveAll(m => MemberComparison.IsFrameworkClass(m.DeclaringType));
+        }
+
+        List<string> differences = _FindDifferences(
+            comparedType,
+            members,
+            actual,
+            expected,
+            assignableFieldPatterns,
+            byElements
+        );
 
         if (differences.Count > 0)
         {
             throw _FieldsWereModified(differences, comparedType, declaredType);
         }
+    }
+
+    // A sequence of comparedType, the runtime type of the two values, whose class chain holds a framework class
+    // below System.Object. A shared type keeps its own rules.
+    private static bool _IsComparedByElementsAndOwnMembers(Type comparedType, object actual)
+    {
+        return comparedType == actual.GetType()
+            && !comparedType.IsValueType
+            && actual is IEnumerable and not string
+            && !SharedTypes.IsShared(comparedType)
+            && MemberComparison.GetSequenceRule(comparedType).HasFrameworkClass;
     }
 
     // A violation entry is named as today; when the members were listed from a runtime type other than T,
@@ -1595,7 +1625,7 @@ public static class Contract
     private static bool _KeepsTheDeclaredType(Type runtimeType)
     {
         return _IsComparedAsWhole(runtimeType)
-            || typeof(IEnumerable).IsAssignableFrom(runtimeType)
+            || (runtimeType.IsValueType && typeof(IEnumerable).IsAssignableFrom(runtimeType))
             || SharedTypes.IsShared(runtimeType);
     }
 
@@ -1705,7 +1735,8 @@ public static class Contract
         List<MemberAccessor> members,
         object actual,
         object expected,
-        string[] assignableFieldPatterns
+        string[] assignableFieldPatterns,
+        bool byElements
     )
     {
         List<string> differences = [];
@@ -1744,6 +1775,18 @@ public static class Contract
                 differences.Add(member.Name);
                 reportedNames.Add(member.RawName);
             }
+        }
+
+        // The elements are compared after the members, in the same context, and no pattern excuses them; their
+        // entry cannot be read as a member name.
+        if (byElements && !MemberComparison.ElementsAreEqual((IEnumerable)actual, (IEnumerable)expected, context))
+        {
+            if (context.Hidden is not null)
+            {
+                throw MemberComparison.CannotCompareBelowWhole(type, context.Hidden);
+            }
+
+            differences.Add(ElementsEntry);
         }
 
         return differences;

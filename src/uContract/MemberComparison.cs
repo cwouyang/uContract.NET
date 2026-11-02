@@ -18,6 +18,7 @@ namespace uContract;
 internal static class MemberComparison
 {
     private static readonly TypeCache<TypeMetadata> MetadataCache = new();
+    private static readonly TypeCache<SequenceRule> SequenceRuleCache = new();
 
     // The public key tokens the assemblies of the .NET runtime and libraries are signed with: every token that
     // occurs in the .NET 8 shared frameworks (Microsoft.NETCore.App, Microsoft.AspNetCore.App and
@@ -254,6 +255,46 @@ internal static class MemberComparison
     internal static bool IsFrameworkClass(Type type)
     {
         return IsFrameworkPublicKeyToken(type.Assembly.GetName().GetPublicKeyToken());
+    }
+
+    // How a sequence of the runtime type is compared: when its class chain holds a framework class below
+    // System.Object, by its elements and by OwnMembers, the members of its member list declared on a type that
+    // is not a framework class; otherwise, as a class of yours that implements IEnumerable itself, by its
+    // members alone.
+    internal static SequenceRule GetSequenceRule(Type runtimeType)
+    {
+        return SequenceRuleCache.GetOrAdd(
+            runtimeType,
+            t => new SequenceRule(
+                HasFrameworkClassBelowObject(t),
+                GetOrCacheMetadata(t).Members.Where(m => !IsFrameworkClass(m.DeclaringType)).ToList()
+            )
+        );
+    }
+
+    private static bool HasFrameworkClassBelowObject(Type type)
+    {
+        for (
+            Type? classType = type;
+            classType is not null && classType != typeof(object);
+            classType = classType.BaseType
+        )
+        {
+            if (IsFrameworkClass(classType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Compares the elements of two sequences, as a nested sequence is compared, in the given context. A false
+    // return with context.Hidden set means "could not compare", as for AreEqual.
+    internal static bool ElementsAreEqual(IEnumerable actual, IEnumerable expected, ComparisonContext context)
+    {
+        Walk? walk = StartSequences(actual, expected);
+        return walk is not null && Run(walk, context);
     }
 
     // True for a public key token that the assemblies of the .NET runtime and libraries are signed with.
@@ -1016,6 +1057,8 @@ internal static class MemberComparison
             return Child(_actualEntries.Key, _expectedEntries.Key);
         }
     }
+
+    internal sealed record SequenceRule(bool HasFrameworkClass, List<MemberAccessor> OwnMembers);
 
     // Created only when a comparison is blocked. The path is prepended one segment per level on
     // the way back up, so a comparison that is not blocked allocates nothing for it.

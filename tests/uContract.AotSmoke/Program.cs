@@ -1872,12 +1872,13 @@ public static class Program
         // derived type's own field. Visibility: DynamicDependency(NonPublicFields) on CodedCollection and on
         // Collection<int>, so the private field of Collection<int> is visible to reflection (the second part of
         // the result names it); the walk stops at Collection<int>, a framework class by its public key token,
-        // so that field is not an entry.
+        // so that field is not an entry. A sequence built on a framework class is compared by its elements too,
+        // which are reported in an entry of their own.
         yield return new Check(
             100,
             "Base-class walk stops at a framework class",
             FrameworkBaseClassWalkStops,
-            Expect.Value("Code|frameworkPrivateFields=items"),
+            Expect.Value("Code|(the elements; assignable patterns do not apply to them)|frameworkPrivateFields=items"),
             Expect.Value("none|frameworkPrivateFields=items")
         );
 
