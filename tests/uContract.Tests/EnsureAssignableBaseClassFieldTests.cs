@@ -244,6 +244,58 @@ public class EnsureAssignableBaseClassFieldTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenAnAutoPropertyIsAssignableByItsPropertyName_ExcusesItsBackingFieldToo()
+    {
+        D10 actual = new();
+        D10 expected = new();
+        actual.P = "changed";
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "^P$"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAPrivateAutoPropertyOfTheBaseClassIsAssignableByItsPropertyName_DoesNotThrow()
+    {
+        DerivedFromNonPublicProperties actual = new();
+        DerivedFromNonPublicProperties expected = new();
+        actual.SetPrivateNote("changed");
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "^PrivateNote$"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenABackingFieldIsAssignableByItsRawName_DoesNotThrow()
+    {
+        DerivedFromNonPublicProperties actual = new();
+        DerivedFromNonPublicProperties expected = new();
+        actual.SetPrivateNote("changed");
+
+        Exception? exception = Record.Exception(() =>
+            Contract.EnsureAssignable(actual, expected, "^<PrivateNote>k__BackingField$")
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenFieldBehindAPropertyChangesAndThePropertyNameIsAssignable_ReportsTheField()
+    {
+        HandWrittenEmail actual = new();
+        HandWrittenEmail expected = new();
+        actual.Email = "changed@example.com";
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "^Email$")
+        );
+
+        Assert.Equal(Violation + "  - _email", exception.Description);
+    }
+
+    [Fact]
     public void Members_WhenASetterOnlyOverrideOverridesABaseAutoProperty_HoldNoBackingFieldOfTheBase()
     {
         string[] names = MemberNames<SetterOnlyOverride>();
@@ -476,6 +528,17 @@ public class EnsureAssignableBaseClassFieldTests
     }
 
     private sealed class NamedDerived : NamedBase;
+
+    private sealed class HandWrittenEmail
+    {
+        private string _email = "original@example.com";
+
+        public string Email
+        {
+            get => _email;
+            set => _email = value;
+        }
+    }
 
     private class NonPublicProperties
     {

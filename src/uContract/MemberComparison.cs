@@ -268,8 +268,8 @@ internal static class MemberComparison
     {
         string path = $"{comparedType.Name}.{topLevelMember.PathName}{hidden.PathBelowTopLevelMember}";
 
-        // Patterns are matched against raw names only (see IsAssignable), so the advice names the member without
-        // its qualifier, and a qualified member shares that name with another member, which it excuses too.
+        // Patterns are matched against raw names and source names (see IsAssignable), so the advice names the
+        // member without its qualifier, and a qualified member shares that name with another member, which it excuses too.
         string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
 
         return new InvalidOperationException(
@@ -330,8 +330,9 @@ internal static class MemberComparison
             : memberName;
     }
 
-    // A pattern excuses a member when it matches its raw name. The declaring type of a qualified name takes no
-    // part, so a pattern excuses every member of the names it matches.
+    // A pattern excuses a member when it matches its raw name or the name SourceName gives it (the property name
+    // of a compiler-generated backing field). The declaring type of a qualified name takes no part, so a pattern
+    // excuses every member of the names it matches.
     internal static bool IsAssignable(MemberAccessor member, string[] patterns)
     {
         if (patterns == null || patterns.Length == 0)
@@ -339,8 +340,12 @@ internal static class MemberComparison
             return false;
         }
 
+        string sourceName = SourceName(member.RawName);
+        bool isBackingField = !string.Equals(sourceName, member.RawName, StringComparison.Ordinal);
+
         return patterns.Any(pattern =>
             Regex.IsMatch(member.RawName, pattern, RegexOptions.None, TimeSpan.FromSeconds(1))
+            || (isBackingField && Regex.IsMatch(sourceName, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)))
         );
     }
 
