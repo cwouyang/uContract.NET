@@ -2416,7 +2416,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
                 + "Ways out: list 'Lines' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableWithoutDynamicCodeTests.NoVisibleMembers))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );
@@ -2613,7 +2613,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
                 + "Ways out: if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableWithoutDynamicCodeTests.NoVisibleMembers))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );
@@ -2637,7 +2637,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
                 + "Ways out: list 'Lines' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableWithoutDynamicCodeTests.NoVisibleMembers))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );
@@ -2657,7 +2657,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
                 + "Ways out: if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableWithoutDynamicCodeTests.NoVisibleMembers))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );

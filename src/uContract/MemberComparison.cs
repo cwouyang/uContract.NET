@@ -426,7 +426,7 @@ internal static class MemberComparison
                 + $"Ways out: list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
                 + $"matched against top-level member names, so use the plain member name{sharedName}); "
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }
@@ -447,7 +447,7 @@ internal static class MemberComparison
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
                 + "Ways out: if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }

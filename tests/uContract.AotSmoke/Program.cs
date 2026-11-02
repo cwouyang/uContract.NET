@@ -2197,7 +2197,8 @@ public static class Program
             NestedInheritingChild,
             Expect.Throws<InvalidOperationException>(
                 "cannot compare uContract.AotSmoke.InheritingChild",
-                "reached through 'ParentHolder.Part'"
+                "reached through 'ParentHolder.Part'",
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.InheritingChild))] on a method that runs"
             ),
             Expect.Ok
         );

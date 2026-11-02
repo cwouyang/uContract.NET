@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.ObjectModel;
 using uContract.Exceptions;
 
@@ -54,6 +55,29 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Equal(
             CannotCompare(typeof(Box<string>.Lid), typeof(object), $"{ThisClass}.Box<System.String>.Lid"),
+            cannotCompare.Message
+        );
+    }
+
+    // C# writes the ranks of an array of arrays outermost first: int[][,] is an array of int[,].
+    [Fact]
+    public void EnsureAssignable_WhenAGenericArgumentOfTheRuntimeTypeIsAnArrayOfArrays_WritesItsRanksOutermostFirst()
+    {
+        TicketBase actual = new GenericTicket<int[][,]>();
+        TicketBase expected = new GenericTicket<int[][,]>();
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(GenericTicket<int[][,]>)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompare(
+                typeof(GenericTicket<int[][,]>),
+                typeof(TicketBase),
+                $"{ThisClass}.GenericTicket<System.Int32[][,]>"
+            ),
             cannotCompare.Message
         );
     }
@@ -180,6 +204,26 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Equal(
             CannotCompare(typeof(TaggedList), typeof(IEnumerable<int>), $"{ThisClass}.TaggedList"),
+            cannotCompare.Message
+        );
+    }
+
+    // Two sequences of different runtime types are compared by their elements; no Equals is asked, so a value
+    // type is no exception here.
+    [Fact]
+    public void EnsureAssignable_WhenTwoSequencesOfDifferentRuntimeTypesAndOneIsAStructThatShowsNoDeclaredMember_ThrowsCannotCompare()
+    {
+        TaggedNumbers actual = new([1], "renamed");
+        List<int> expected = [1];
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(TaggedNumbers)],
+            () => Contract.EnsureAssignable<IEnumerable<int>>(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompare(typeof(TaggedNumbers), typeof(IEnumerable<int>), $"{ThisClass}.TaggedNumbers"),
             cannotCompare.Message
         );
     }
@@ -403,6 +447,17 @@ public class EnsureAssignableUnseenRuntimeTypeTests
     private sealed class SeededRandom(int seed) : Random(seed);
 
     private struct EmptyStamp;
+
+    private readonly struct TaggedNumbers(int[] items, string tag) : IReadOnlyCollection<int>
+    {
+        public string Tag { get; } = tag;
+
+        public int Count => items.Length;
+
+        public IEnumerator<int> GetEnumerator() => ((IEnumerable<int>)items).GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 
     private struct Stamp
     {

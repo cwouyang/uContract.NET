@@ -1171,7 +1171,10 @@ public static class Contract
     ///     inherits, would miss what it adds. The message names the runtime type and <typeparamref name="T" />, and
     ///     gives the fix with the runtime type in C# syntax:
     ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a method that runs, or
-    ///     pass the values as that type. A type that adds no state and
+    ///     pass the values as that type. The messages for a nested value give the same fix for the type they
+    ///     name. The named type must be accessible where the attribute is written: a compiler-generated type (an
+    ///     anonymous type, a closure) cannot be written in <c>typeof</c> at all, and a private nested type only
+    ///     inside its declaring type. A type that adds no state and
     ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
     ///     top level the rule for a class with no visible members above applies instead (see the remarks).
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method:
@@ -1698,7 +1701,14 @@ public static class Contract
     )
     {
         Type comparedType = _TopLevelType(declaredType, actual, expected);
-        _ThrowIfShowsNoDeclaredMember(comparedType, declaredType);
+
+        // A value of a value type other than T is compared as a member is: its Equals decides first, and only then
+        // is the rule asked (see _TopLevelMembers). Two sequences of different runtime types ask no Equals, so
+        // they keep the rule for a value type too (see _CompareSequencesOfDifferentRuntimeTypes).
+        if (!comparedType.IsValueType)
+        {
+            _ThrowIfShowsNoDeclaredMember(comparedType, declaredType);
+        }
 
         // A sequence that is not a collection, passed as its own type, is compared by all its members, as any
         // other class, and is not enumerated.
@@ -1872,14 +1882,12 @@ public static class Contract
 
     // Under Native AOT a runtime type other than T that nothing preserves shows no declared member, and comparing
     // it by what does show (the members of T, those it inherits, its elements) would miss what it adds. A value
-    // compared as a whole lists no member of it, and a value of a value type is compared as a member is: its
-    // Equals decides first (see _TopLevelMembers).
+    // compared as a whole lists no member of it.
     private static void _ThrowIfShowsNoDeclaredMember(Type runtimeType, Type declaredType)
     {
         if (
             runtimeType != declaredType
             && !_IsComparedAsWhole(runtimeType)
-            && !runtimeType.IsValueType
             && MemberComparison.ShowsNoDeclaredMember(runtimeType)
         )
         {

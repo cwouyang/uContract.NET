@@ -11,15 +11,18 @@ namespace uContract;
 internal static class CSharpTypeName
 {
     // Namespace-qualified, with generic arguments in angle brackets, a nested type after its declaring type and a
-    // dot, and an array with its rank in brackets.
+    // dot, and an array with its rank in brackets. C# writes the ranks of an array of arrays outermost first
+    // (int[][,] is an array of int[,]), the reverse of how the runtime nests them.
     internal static string Of(Type type)
     {
-        if (type.IsArray)
+        string ranks = "";
+        while (type.IsArray)
         {
-            return $"{Of(type.GetElementType()!)}[{new string(',', type.GetArrayRank() - 1)}]";
+            ranks += $"[{new string(',', type.GetArrayRank() - 1)}]";
+            type = type.GetElementType()!;
         }
 
-        return type.IsGenericParameter ? type.Name : Of(type, type.GetGenericArguments());
+        return (type.IsGenericParameter ? type.Name : Of(type, type.GetGenericArguments())) + ranks;
     }
 
     // The generic arguments of a nested type include those of its declaring types, first; each type in the chain
