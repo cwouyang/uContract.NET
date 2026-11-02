@@ -1165,13 +1165,14 @@ public static class Contract
     ///     <typeparamref name="T" />, they are not compared as a whole, and that runtime type shows no declared
     ///     member to reflection: for a class also when the two values are equal; for a value type only when its
     ///     <c>Equals</c> reports them unequal (a primitive, an enum and an inline array are then a violation, as
-    ///     before). No field, property, method or constructor it declares is visible, which is how Native AOT shows
-    ///     a type that nothing preserves (a framework collection included, such as a <c>Queue&lt;int&gt;</c> held
-    ///     by <see cref="object" />). Comparing it by the members of <typeparamref name="T" />, or by those it
-    ///     inherits, would miss what it adds. The message names the runtime type and <typeparamref name="T" />, and
-    ///     gives the fix with the runtime type in C# syntax:
-    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a method that runs, or
-    ///     pass the values as that type. The messages for a nested value give the same fix for the type they
+    ///     before), except two sequences of different runtime types, which ask no <c>Equals</c>: there a value
+    ///     type throws as a class does, also when the two values are equal. No field, property, method or
+    ///     constructor it declares is visible, which is how Native AOT shows a type that nothing preserves (a
+    ///     framework collection included, when nothing in the application preserves it). Comparing it by the
+    ///     members of <typeparamref name="T" />, by those it inherits or by its elements would miss what it adds.
+    ///     The message names the runtime type and <typeparamref name="T" />, and gives the fix with the runtime type
+    ///     in C# syntax: <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a method that
+    ///     runs, or, when both values are of that type, pass them as that type. The messages for a nested value give the same fix for the type they
     ///     name. The named type must be accessible where the attribute is written: a compiler-generated type (an
     ///     anonymous type, a closure) cannot be written in <c>typeof</c> at all, and a private nested type only
     ///     inside its declaring type. A type that adds no state and
@@ -1278,8 +1279,9 @@ public static class Contract
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. Such a class is one
     ///     with no visible members, or one that is not a framework class and shows no declared member (no field,
     ///     property, method or constructor it declares is visible: Native AOT keeps none of a type that nothing
-    ///     preserves), also when the members it inherits are visible; a sequence whose class chain holds a class
-    ///     that is not a framework class and shows no declared member is compared so too, not by its elements. A
+    ///     preserves), also when the members it inherits are visible; two sequences that would be compared by their
+    ///     elements are compared so too, not by their elements, when the runtime type of either, or one of its base
+    ///     classes, is not a framework class and shows no declared member. A
     ///     framework class reached as a nested value is compared as before. A type whose
     ///     <c>Equals</c> ignores state (for example entity equality by ID) therefore hides a change in such a
     ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
@@ -1288,7 +1290,8 @@ public static class Contract
     ///     other than <typeparamref name="T" />, which the annotation on <typeparamref name="T" /> does not
     ///     preserve, the message names both types, and the method also throws when that runtime type shows no
     ///     declared member (see the exceptions). It throws without asking <c>Equals</c> (except for a value of a
-    ///     value type other than <typeparamref name="T" />, whose <c>Equals</c> decides first), unless <paramref name="actual" /> or <paramref name="expected" /> is null or
+    ///     value type other than <typeparamref name="T" />, whose <c>Equals</c> decides first, unless the two values
+    ///     are sequences of different runtime types), unless <paramref name="actual" /> or <paramref name="expected" /> is null or
     ///     <typeparamref name="T" /> is compared as a whole. When one instance passed as <paramref name="actual" />
     ///     and as <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can
     ///     change, the method throws the message of that case instead, in every build.
