@@ -926,9 +926,73 @@ public class EnsureAssignableRuntimeTypeWithoutDynamicCodeTests
         Assert.Null(exception);
     }
 
+    // NamedCounter declares no member of its own; under Native AOT the private fields declared on Counter (T)
+    // stay visible, because [DynamicallyAccessedMembers] on T preserves them, so they are compared.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAUserClassAndTheSubclassHasNoOwnMembersButAPrivateFieldOfTChanged_ReportsThatField()
+    {
+        Counter actual = new NamedCounter();
+        Counter expected = new NamedCounter();
+        actual.Increment();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - _count"
+                + $"\nMembers were listed from the runtime type {typeof(NamedCounter)}, not from T ({typeof(Counter)}).",
+            violation.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAUserClassAndTheSubclassHasNoOwnMembersAndNothingChanged_DoesNotThrow()
+    {
+        Counter actual = new NamedCounter();
+        Counter expected = new NamedCounter();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // [DynamicallyAccessedMembers] on T preserves the fields T declares, not those of its base classes.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAUserClassThatDeclaresNoFieldAndOnlyItsBaseClassHasOne_ThrowsNoMembersVisible()
+    {
+        LabeledCounter actual = new NamedLabeledCounter();
+        LabeledCounter expected = new NamedLabeledCounter();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.StartsWith(
+            $"EnsureAssignable cannot compare {typeof(NamedLabeledCounter)}, the runtime type of the values "
+                + $"(T is {typeof(LabeledCounter)}): no properties or fields are visible",
+            cannotCompare.Message,
+            StringComparison.Ordinal
+        );
+    }
+
     private interface IMarker;
 
     private sealed class Marker : IMarker;
 
     private sealed class SeededRandom(int seed) : Random(seed);
+
+    private class Counter
+    {
+        private int _count;
+
+        public void Increment()
+        {
+            _count++;
+        }
+    }
+
+    private sealed class NamedCounter : Counter;
+
+    private class LabeledCounter : Counter;
+
+    private sealed class NamedLabeledCounter : LabeledCounter;
 }

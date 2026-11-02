@@ -14,9 +14,9 @@ internal sealed class TypeMetadata
 
     /// <summary>
     ///     The number of members in <see cref="Members" /> that decide the "no members visible" rule: those
-    ///     reflection lists for the type (its public properties and the fields GetFields returns), plus, when the
-    ///     private fields of base classes are walked up to a framework T, the private fields declared on T.
-    ///     Other private fields of base classes are not counted.
+    ///     reflection lists for the type (its public properties and the fields GetFields returns), plus, in the
+    ///     metadata the top level builds for a class T other than the runtime type, the private fields declared
+    ///     on T. Other private fields of base classes are not counted, and the cached metadata never counts them.
     /// </summary>
     public int OwnMemberCount { get; set; }
 }

@@ -57,7 +57,9 @@ internal static class MemberComparison
     // The members the top level compares for a runtime type other than T. When T is a framework class (other
     // than System.Object) that the runtime type derives from, the private fields of the base classes are
     // listed up to and including T, which the cached members stop short of; they are listed afresh on each
-    // call. Otherwise these are the cached members of the runtime type.
+    // call. Otherwise these are the cached members of the runtime type; when T is another class that the
+    // runtime type derives from, the private fields declared on T also count as visible, in a copy of the
+    // cached metadata. In both cases [DynamicallyAccessedMembers] on T preserves those fields under Native AOT.
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
@@ -65,14 +67,23 @@ internal static class MemberComparison
     )]
     internal static TypeMetadata GetTopLevelMetadata(Type runtimeType, Type declaredType)
     {
-        if (
-            declaredType == runtimeType
-            || declaredType == typeof(object)
-            || !declaredType.IsClass
-            || !IsFrameworkClass(declaredType)
-        )
+        if (declaredType == runtimeType || declaredType == typeof(object) || !declaredType.IsClass)
         {
             return GetOrCacheMetadata(runtimeType);
+        }
+
+        if (!IsFrameworkClass(declaredType))
+        {
+            // The cached members already hold the private fields declared on T, but leave them out of
+            // OwnMemberCount; they are counted here, in a copy, so that the cache stays independent of T.
+            TypeMetadata cached = GetOrCacheMetadata(runtimeType);
+            return new TypeMetadata
+            {
+                Members = cached.Members,
+                OwnMemberCount =
+                    cached.OwnMemberCount
+                    + cached.Members.Skip(cached.OwnMemberCount).Count(m => m.DeclaringType == declaredType),
+            };
         }
 
         return CreateMetadata(
@@ -355,7 +366,7 @@ internal static class MemberComparison
     // Under Native AOT a type whose members were not preserved reflects as having none, which
     // would make every comparison of it pass. System.Object genuinely has none (lock objects). The rule is
     // decided on OwnMemberCount, which leaves out the private fields of base classes, also when those fields
-    // are visible, except the private fields declared on a framework T at the top level.
+    // are visible, except the private fields declared on a class T at the top level (see GetTopLevelMetadata).
     internal static bool MembersAreHidden(Type type, TypeMetadata metadata)
     {
         return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;

@@ -1142,7 +1142,10 @@ public static class Contract
     ///     ...). <see cref="Old{T}" /> returns such an instance itself, not a copy, so there is no earlier state to
     ///     compare with; the message names the shared base type, or says that the instance is a COM object. This
     ///     holds for every <typeparamref name="T" />, <see cref="object" /> included, and no member is compared.
-    ///     Also thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to reflection and
+    ///     Also thrown under Native AOT when the type compared at the top level (<typeparamref name="T" />, or the
+    ///     runtime type of the values when that is compared: see the remarks) has no properties or fields visible
+    ///     to reflection, where the private fields declared on a class <typeparamref name="T" /> that the runtime
+    ///     type derives from count as visible, and
     ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
     ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to
     ///     be compared has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c>
@@ -1191,8 +1194,12 @@ public static class Contract
     ///     too, or two unequal instances of such a type end in "cannot compare". The rule "no members visible"
     ///     is decided on the members before the private fields of base classes are added, so a type whose only
     ///     state is such fields still counts as having no members visible (see the exceptions); at the top level,
-    ///     the private fields declared on a framework class <typeparamref name="T" /> that the runtime type derives
-    ///     from count as visible, because the annotation on <typeparamref name="T" /> preserves them. In a trimmed
+    ///     the private fields declared on a class <typeparamref name="T" /> (a framework class or not) that the
+    ///     runtime type derives from count as visible, because the annotation on <typeparamref name="T" />
+    ///     preserves them; the private fields of the base classes of <typeparamref name="T" /> and of the classes
+    ///     between the runtime type and <typeparamref name="T" /> do not. So a runtime type whose own members were
+    ///     not preserved is then compared by those fields of <typeparamref name="T" /> only, and that is not
+    ///     detected. In a trimmed
     ///     application without Native AOT these fields may not be preserved either; they are then not compared,
     ///     and that is not detected.
     ///     The walk goes deeper into nested objects and collection elements without recursion, so cycles and
