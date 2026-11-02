@@ -1212,9 +1212,11 @@ public static class Contract
     ///     of its runtime type, at the top level and wherever a member, element, key or value holds it. When the
     ///     chain holds a framework class below <see cref="object" /> (<c>List&lt;T&gt;</c>,
     ///     <c>Collection&lt;T&gt;</c>, <c>Dictionary&lt;TKey, TValue&gt;</c>), it is compared by its elements and
-    ///     by the members of its runtime type that are declared on a class that is not a framework class; the
-    ///     private state of the framework (<c>_items</c>, <c>_version</c>, <c>Capacity</c>) is not compared, so two
-    ///     lists of equal content and different capacity or add and remove history are equal. Otherwise (a class of
+    ///     by the members of its runtime type that are declared on a class that is not a framework class; at the
+    ///     top level also by the public properties declared on its framework classes (a <c>Comparer</c>, the
+    ///     <c>Key</c> of a grouping), except one named <c>Capacity</c>. The non-public fields of the framework
+    ///     (<c>_items</c>, <c>_version</c>) are not compared, so two lists of equal content and different capacity
+    ///     or add and remove history are equal. Otherwise (a class of
     ///     yours that implements <see cref="System.Collections.IEnumerable" /> itself) it is compared by its
     ///     members alone, as any other class, and it is not enumerated.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
@@ -1314,8 +1316,9 @@ public static class Contract
     ///     included, also beside a public property of the same name), after the members of the runtime type; one
     ///     of them is not reported when a member of its name was reported already. The patterns apply to them by
     ///     their names. A sequence whose class chain holds a framework class is compared, as above, by the members
-    ///     declared on a class that is not a framework class (the patterns apply to them, also to the properties of
-    ///     an interface <typeparamref name="T" /> that is not a framework interface) and by its elements, which no
+    ///     declared on a class that is not a framework class and the public properties declared on its framework
+    ///     classes other than <c>Capacity</c> (the patterns apply to them, and to the properties of an interface
+    ///     <typeparamref name="T" />) and by its elements, which no
     ///     pattern excuses: a difference in them is reported as the entry
     ///     <c>(the elements; assignable patterns do not apply to them)</c>. Two values of different runtime types
     ///     are a violation, except two sequences that are compared by their elements alone (see above): their
@@ -1600,12 +1603,16 @@ public static class Contract
         Type comparedType = _TopLevelType(declaredType, actual, expected);
         List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected);
 
-        // A sequence built on a framework class is compared by its elements and by the members declared on
-        // its own classes, not by the framework's private state.
+        // A sequence built on a framework class is compared by its elements and by its members, without the
+        // framework's non-public fields and its Capacity, which the elements stand in for: its public properties
+        // (a comparer, the key of a grouping) stay.
         bool byElements = _IsComparedByElementsAndOwnMembers(comparedType, actual);
         if (byElements)
         {
-            members.RemoveAll(m => MemberComparison.IsFrameworkClass(m.DeclaringType));
+            members.RemoveAll(m =>
+                MemberComparison.IsFrameworkClass(m.DeclaringType)
+                && (m.IsNonPublicField || string.Equals(m.RawName, "Capacity", StringComparison.Ordinal))
+            );
         }
 
         List<string> differences = _FindDifferences(

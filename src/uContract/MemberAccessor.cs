@@ -98,6 +98,11 @@ internal sealed class MemberAccessor
     public bool IsField => _field is not null;
 
     /// <summary>
+    ///     True when the member is a field that is not public.
+    /// </summary>
+    public bool IsNonPublicField => _field is { IsPublic: false };
+
+    /// <summary>
     ///     Gets the value of the member from the specified object.
     /// </summary>
     /// <param name="obj">The object to get the value from</param>

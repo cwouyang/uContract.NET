@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
+using System.Xml;
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -101,7 +102,7 @@ public class EnsureAssignableSequenceTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndTwoDictionariesDifferInOneValue_ReportsTheElements()
+    public void EnsureAssignable_WhenTIsObjectAndTwoDictionariesDifferInOneValue_ReportsTheValuesAndTheElements()
     {
         object actual = new Dictionary<string, int>(StringComparer.Ordinal) { ["apples"] = 1 };
         object expected = new Dictionary<string, int>(StringComparer.Ordinal) { ["apples"] = 2 };
@@ -111,13 +112,13 @@ public class EnsureAssignableSequenceTests
         );
 
         Assert.Equal(
-            Violation + ElementsEntry + ListedFrom(typeof(Dictionary<string, int>), typeof(object)),
+            Violation + "  - Values\n" + ElementsEntry + ListedFrom(typeof(Dictionary<string, int>), typeof(object)),
             exception.Description
         );
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndTwoDictionariesDifferInCount_ReportsTheElements()
+    public void EnsureAssignable_WhenTIsObjectAndTwoDictionariesDifferInCount_ReportsTheCountTheKeysTheValuesAndTheElements()
     {
         object actual = new Dictionary<string, int>(StringComparer.Ordinal) { ["apples"] = 1 };
         object expected = new Dictionary<string, int>(StringComparer.Ordinal) { ["apples"] = 1, ["pears"] = 2 };
@@ -127,9 +128,98 @@ public class EnsureAssignableSequenceTests
         );
 
         Assert.Equal(
-            Violation + ElementsEntry + ListedFrom(typeof(Dictionary<string, int>), typeof(object)),
+            Violation
+                + "  - Count\n  - Keys\n  - Values\n"
+                + ElementsEntry
+                + ListedFrom(typeof(Dictionary<string, int>), typeof(object)),
             exception.Description
         );
+    }
+
+    // ---- The public properties of the framework classes, at the top level ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsADictionaryAndOnlyItsComparerDiffers_ReportsTheComparer()
+    {
+        Dictionary<string, int> actual = new(StringComparer.Ordinal) { ["apples"] = 1 };
+        Dictionary<string, int> expected = new(StringComparer.OrdinalIgnoreCase) { ["apples"] = 1 };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Comparer", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAPatternNamesTheComparerAndOnlyTheComparerOfTwoDictionariesDiffers_DoesNotThrow()
+    {
+        Dictionary<string, int> actual = new(StringComparer.Ordinal) { ["apples"] = 1 };
+        Dictionary<string, int> expected = new(StringComparer.OrdinalIgnoreCase) { ["apples"] = 1 };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "Comparer"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAHashSetAndOnlyItsComparerDiffers_ReportsTheComparer()
+    {
+        HashSet<string> actual = new(StringComparer.Ordinal) { "red" };
+        HashSet<string> expected = new(StringComparer.OrdinalIgnoreCase) { "red" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Comparer", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAGroupingAndOnlyTheKeyDiffers_ReportsTheKey()
+    {
+        int[] numbers = [1, 2];
+        IGrouping<string, int> actual = numbers.GroupBy(_ => "odd", StringComparer.Ordinal).Single();
+        IGrouping<string, int> expected = numbers.GroupBy(_ => "even", StringComparer.Ordinal).Single();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + "  - Key" + ListedFrom(actual.GetType(), typeof(IGrouping<string, int>)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnXmlDocumentAndAnAttributeChanges_ReportsItsOuterXml()
+    {
+        XmlDocument actual = new();
+        actual.LoadXml("<order status=\"open\" />");
+        XmlDocument expected = new();
+        expected.LoadXml("<order status=\"closed\" />");
+
+        // XmlResolver has no getter, nor has the XmlResolver of the XmlSchemaSet that Schemas holds: comparing
+        // either ends the call, so both are listed as assignable.
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "^(Schemas|XmlResolver)$")
+        );
+
+        Assert.Equal(Violation + "  - InnerXml\n  - OuterXml", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAReadOnlyListInterfaceAndTwoListsOfEqualContentDifferInCapacity_DoesNotThrow()
+    {
+        List<int> actualList = new(SpareCapacity);
+        actualList.AddRange([1, 2]);
+        IReadOnlyList<int> actual = actualList;
+        IReadOnlyList<int> expected = ListOf(1, 2);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
     }
 
     // ---- A collection of yours built on a framework class, with a member of its own ----
