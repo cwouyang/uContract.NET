@@ -1649,9 +1649,14 @@ public static class Contract
         }
         else if (byElements)
         {
+            // A framework property without a getter is not read, unless it is a property of T itself.
             members.RemoveAll(m =>
                 MemberComparison.IsFrameworkClass(m.DeclaringType)
-                && (m.IsNonPublicField || string.Equals(m.RawName, "Capacity", StringComparison.Ordinal))
+                && (
+                    m.IsNonPublicField
+                    || string.Equals(m.RawName, "Capacity", StringComparison.Ordinal)
+                    || (m.IsWriteOnlyProperty && !m.DeclaringType.IsAssignableFrom(declaredType))
+                )
             );
         }
 

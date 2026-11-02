@@ -210,6 +210,43 @@ public class EnsureAssignableSequenceTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAnAttributeOfAnXmlDocumentChanges_ReportsItsOuterXmlWithoutReadingItsXmlResolver()
+    {
+        XmlDocument actualDocument = new();
+        actualDocument.LoadXml("<order status=\"open\" />");
+        XmlDocument expectedDocument = new();
+        expectedDocument.LoadXml("<order status=\"closed\" />");
+        object actual = actualDocument;
+        object expected = expectedDocument;
+
+        // XmlDocument.XmlResolver, a framework property without a getter, is not read under T = object. Schemas
+        // is excused: the XmlSchemaSet it holds is a nested value, whose XmlResolver has no getter either.
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "^Schemas$")
+        );
+
+        Assert.Equal(
+            Violation + "  - InnerXml\n  - OuterXml" + ListedFrom(typeof(XmlDocument), typeof(object)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnXmlDocument_StillReadsItsXmlResolverAsAPropertyOfT()
+    {
+        XmlDocument actual = new();
+        actual.LoadXml("<order status=\"open\" />");
+        XmlDocument expected = new();
+        expected.LoadXml("<order status=\"closed\" />");
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "^Schemas$")
+        );
+
+        Assert.Contains($"{typeof(XmlDocument)}.XmlResolver", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenTIsAReadOnlyListInterfaceAndTwoListsOfEqualContentDifferInCapacity_DoesNotThrow()
     {
         List<int> actualList = new(SpareCapacity);
