@@ -601,7 +601,8 @@ other value is compared by the members of its runtime type, the properties of an
 included. One exception keeps the shape of the third Amendment: when the runtime type of either value
 is a value type that implements `IEnumerable` (`ImmutableArray<T>`, `ArraySegment<T>`) and the two
 values are not two sequences of different runtime types, the members of `T` are compared one by one,
-as before. A sequence is compared by the class chain of its runtime type, at the top level and below
+as before, unless the other value is a `string`, a delegate or a shared type that is not a sequence
+(a different-runtime-types violation). A sequence is compared by the class chain of its runtime type, at the top level and below
 it. These statements, each quoted by its opening words, no longer hold as written:
 
 - The listing under Details: "`var type = typeof(T);`". The top level lists the members of the

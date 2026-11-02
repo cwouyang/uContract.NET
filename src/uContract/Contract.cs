@@ -1275,9 +1275,12 @@ public static class Contract
     ///     The non-public fields of the framework classes of a sequence that is compared by its elements are not
     ///     compared, at any level (a sequence that is not a collection, passed as its own type, is compared by
     ///     all its members: see below), so a
-    ///     comparer kept only in such a field (<c>Hashtable</c>, <c>Lookup&lt;TKey, TElement&gt;</c>) and the
-    ///     event handlers that a framework class keeps (the subscribers of an
-    ///     <c>ObservableCollection&lt;T&gt;</c>) are not compared either.
+    ///     comparer kept only in such a field (that of a <c>Hashtable</c>) and the event handlers that a framework
+    ///     class keeps (the subscribers of an <c>ObservableCollection&lt;T&gt;</c>) are not compared either.
+    ///     (<c>Lookup&lt;TKey, TElement&gt;</c> is not a collection: at the top level it is compared by all its
+    ///     members as its own type, its comparer included, and throws under another type; nested, it is compared
+    ///     by its elements.) Below the top level the public properties of a framework sequence are not read
+    ///     either, so the <c>Key</c> of a nested grouping is not compared.
     ///     At the top level, a sequence built on a framework class that is not a collection (it implements none of
     ///     <see cref="System.Collections.ICollection" />, <see cref="ICollection{T}" /> and
     ///     <see cref="IReadOnlyCollection{T}" />: a LINQ query such as <c>source.Select(...)</c>,

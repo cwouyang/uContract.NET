@@ -3913,7 +3913,8 @@ its opening words:
   types are a violation (R6 at the top level). Exception: when the runtime type of either value is a
   value type that implements `IEnumerable` (`ImmutableArray<T>`, `ArraySegment<T>`) and the two values
   are not two sequences of different runtime types, the top level still compares the members of
-  `typeof(T)` (see ADR-0026, Known Limitations).
+  `typeof(T)`, unless the other value is a `string`, a delegate or a shared type that is not a
+  sequence, which is an R6 violation (see ADR-0026, Details 1 and Known Limitations).
 - R6: "Exception: when both are `IEnumerable` and neither is a `string`, they are compared by R7."
   The exception now holds only when neither runtime type declares members on a class that is not a
   framework class (`MemberComparison.IsComparedByElementsOnly`). Two sequences of different runtime

@@ -328,7 +328,8 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `IEnumerable` (`ImmutableArray<T>`, `ArraySegment<T>`, a struct of yours) and the two values are not
   two sequences of different runtime types, the members visible through `T` are compared, so
   `EnsureAssignable<object>` of two `ImmutableArray<int>` values still compares nothing beyond `null`;
-  pass such a value as its own type. The patterns
+  pass such a value as its own type. (Against a `string`, a delegate or a shared type that is not a
+  sequence, such a value is a different-runtime-types violation.) The patterns
   apply to those members: a pattern written against `T` still excuses its member, and a member that
   only the runtime type has needs a pattern that names it. When `T` is a framework class that the
   runtime type derives from, the private fields of the base classes are compared up to and including
@@ -344,8 +345,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   element difference is the entry `(the elements; assignable patterns do not apply to them)`. Its
   framework's non-public fields are not compared: for `T` = `List<int>` a pattern that excused
   `_items` no longer applies, a change of capacity alone is no longer a violation, and a comparer
-  kept only in a non-public field (`Hashtable`, `Lookup<TKey, TElement>`) and the subscribers of an
-  `ObservableCollection<T>` are no longer compared. At the top level a framework property without a
+  kept only in a non-public field (`Hashtable`) and the subscribers of an `ObservableCollection<T>` are
+  no longer compared. A `Lookup<TKey, TElement>` is not a collection: passed as its own type it is
+  compared by all its members, its comparer included. At the top level a framework property without a
   getter is not read unless `T` declares or inherits it: `T` = `XmlDocument` still ends in
   `InvalidOperationException` at `XmlResolver` unless a pattern excuses it. A class of yours that
   implements `IEnumerable` itself is compared by its members only and is not enumerated, also as a
