@@ -1214,11 +1214,14 @@ public static class Contract
     ///     <c>Collection&lt;T&gt;</c>, <c>Dictionary&lt;TKey, TValue&gt;</c>), it is compared by its elements and
     ///     by the members of its runtime type that are declared on a class that is not a framework class; at the
     ///     top level also by the public properties declared on its framework classes (a <c>Comparer</c>, the
-    ///     <c>Key</c> of a grouping), except one named <c>Capacity</c>. The non-public fields of the framework
+    ///     <c>Key</c> of a grouping), except one named <c>Capacity</c> and one without a getter that
+    ///     <typeparamref name="T" /> does not declare or inherit. The non-public fields of the framework
     ///     (<c>_items</c>, <c>_version</c>) are not compared, so two lists of equal content and different capacity
     ///     or add and remove history are equal. Otherwise (a class of
     ///     yours that implements <see cref="System.Collections.IEnumerable" /> itself) it is compared by its
-    ///     members alone, as any other class, and it is not enumerated.
+    ///     members alone, as any other class, and it is not enumerated. A <c>yield</c> iterator of yours (a class
+    ///     marked <see cref="CompilerGeneratedAttribute" /> that implements <see cref="System.Collections.IEnumerator" />)
+    ///     is compared by its elements alone, at every level: its fields are the state of the iteration.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
     ///     chains hold a framework class, and neither declares a member on a class that is not a framework class;
@@ -1323,7 +1326,8 @@ public static class Contract
     ///     <c>(the elements; assignable patterns do not apply to them)</c>. Two values of different runtime types
     ///     are a violation, except two sequences that are compared by their elements alone (see above): their
     ///     elements are compared, and a difference is a violation that names both runtime types and
-    ///     <typeparamref name="T" />. When the runtime type is not
+    ///     <typeparamref name="T" />; with equal elements, the properties an interface <typeparamref name="T" />
+    ///     declares are then compared, read through it, and the patterns apply to them. When the runtime type is not
     ///     <typeparamref name="T" />, a violation message names the runtime type the members were listed from.
     ///     The getters of the public properties of a reference type's runtime type, and of the properties of an
     ///     interface <typeparamref name="T" />, then run (a property of an interface <typeparamref name="T" />
