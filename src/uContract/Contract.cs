@@ -1265,8 +1265,10 @@ public static class Contract
     ///     compared by address). The patterns do not apply and are not examined. A message names a frozen
     ///     collection by its public type, <c>FrozenSet&lt;T&gt;</c> or <c>FrozenDictionary&lt;TKey, TValue&gt;</c>,
     ///     not by its internal runtime type.
-    ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a
-    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> (two <c>Stream</c>s, two
+    ///     Two frozen collections of one public type are compared so also when the framework built them as
+    ///     different internal classes.
+    ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
+    ///     delegate, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> (two <c>Stream</c>s, two
     ///     <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever
     ///     <typeparamref name="T" /> is and whatever their state: no member is read and the patterns do not apply.
     ///     Check such a state with <see cref="Ensure(string, Func{bool})" />.
@@ -1460,6 +1462,15 @@ public static class Contract
         if (!_IsDecidedByRuntimeType(actualType) && !_IsDecidedByRuntimeType(expectedType))
         {
             return false;
+        }
+
+        // Two frozen collections of one public type are compared as a whole, also when the framework built them
+        // as different internal classes.
+        Type publicActualType = SharedTypes.PublicFrozenType(actualType);
+        if (publicActualType != actualType && publicActualType == SharedTypes.PublicFrozenType(expectedType))
+        {
+            _CompareAsWhole(publicActualType, actual, expected);
+            return true;
         }
 
         if (actualType != expectedType)

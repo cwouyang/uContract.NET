@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.ComponentModel;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using uContract.Exceptions;
 
@@ -165,13 +166,71 @@ public class EnsureAssignableTopLevelWholeValueTests
         Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
     }
 
+    // Two frozen sets of one public type are compared as a whole also when the framework built them as
+    // different internal classes.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAReadOnlySetAndTwoFrozenSetsOfDifferentInternalTypesDiffer_ReportsThePublicFrozenType()
+    {
+        IReadOnlySet<string> actual = ManyKeys(last: 30).ToFrozenSet(StringComparer.Ordinal);
+        IReadOnlySet<string> expected = ManyKeys(last: 31).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        Assert.NotEqual(expected.GetType(), actual.GetType());
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoFrozenSetsOfDifferentInternalTypesDifferInCount_ReportsThePublicFrozenType()
+    {
+        object actual = Letters.ToFrozenSet(StringComparer.Ordinal);
+        object expected = ManyKeys(last: 30).ToFrozenSet(StringComparer.Ordinal);
+        Assert.NotEqual(expected.GetType(), actual.GetType());
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAReadOnlySetAndTwoFrozenSetsOfDifferentInternalTypesHoldEqualElements_DoesNotThrow()
+    {
+        IReadOnlySet<string> actual = ManyKeys(last: 30).ToFrozenSet(StringComparer.Ordinal);
+        IReadOnlySet<string> expected = ManyKeys(last: 30).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        Assert.NotEqual(expected.GetType(), actual.GetType());
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAReadOnlyDictionaryAndTwoFrozenDictionariesOfDifferentInternalTypesDiffer_ReportsThePublicFrozenType()
+    {
+        IReadOnlyDictionary<string, int> actual = ManyKeys(last: 30)
+            .ToFrozenDictionary(key => key, key => key.Length, StringComparer.Ordinal);
+        IReadOnlyDictionary<string, int> expected = ManyKeys(last: 30)
+            .ToFrozenDictionary(key => key, key => key.Length + 1, StringComparer.OrdinalIgnoreCase);
+        Assert.NotEqual(expected.GetType(), actual.GetType());
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(FrozenDictionary<string, int>)), exception.Description);
+    }
+
     // ---- A shared type ----
 
     [Fact]
     public void EnsureAssignable_WhenTIsAMemoryStreamAndTwoInstancesHoldEqualContent_ReportsComparedByReference()
     {
-        MemoryStream actual = new(Content);
-        MemoryStream expected = new(Content);
+        using MemoryStream actual = new(Content);
+        using MemoryStream expected = new(Content);
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
@@ -261,6 +320,10 @@ public class EnsureAssignableTopLevelWholeValueTests
     }
 
     private static Regex NewRegex() => new("a", RegexOptions.None, TimeSpan.FromSeconds(1));
+
+    // "key1" to "key{last}": enough keys for the framework to choose another internal class than for three.
+    private static string[] ManyKeys(int last) =>
+        [.. Enumerable.Range(1, last).Select(number => "key" + number.ToString(CultureInfo.InvariantCulture))];
 
     private static int One() => 1;
 

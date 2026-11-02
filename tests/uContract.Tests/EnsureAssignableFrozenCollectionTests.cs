@@ -747,7 +747,6 @@ public class EnsureAssignableFrozenCollectionTests
         FrozenSet<string> expected = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actual, expected);
         Assert.Equal(expected.Count, actual.Count);
-        Assert.Equal(expected.GetType(), actual.GetType());
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable<IReadOnlySet<string>>(actual, expected)
@@ -763,7 +762,6 @@ public class EnsureAssignableFrozenCollectionTests
         FrozenSet<string> expected = Letters.Take(2).ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actual, expected);
         Assert.NotEqual(expected.Count, actual.Count);
-        Assert.Equal(expected.GetType(), actual.GetType());
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable<IReadOnlySet<string>>(actual, expected)
@@ -778,7 +776,6 @@ public class EnsureAssignableFrozenCollectionTests
         FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
         FrozenSet<string> expected = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actual, expected);
-        Assert.Equal(expected.GetType(), actual.GetType());
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable<object>(actual, expected)
