@@ -19,7 +19,7 @@
 ### Relevant Context
 
 - Members compared before this ADR ([ADR-0007](0007-reflection-field-comparison.md), [ADR-0023](0023-comparison-of-base-class-members.md)): the public instance properties and the instance fields of each type that is compared by its members, and the private fields declared on its base classes up to the first class of .NET. An auto-property declared on `T` is compared twice, as the property and as its backing field.
-- Assignable patterns are regular expressions matched against the names of the top-level members. In 2.0.0 and until this ADR, a pattern was matched against the raw name (`MemberInfo.Name`) only. So an anchored pattern for an auto-property declared on `T` had to cover both names, `^(Email|<Email>k__BackingField)$`, and an auto-property that is not public was excused only by a pattern that matches `<Email>k__BackingField`.
+- Assignable patterns are regular expressions matched against the names of the top-level members. In 2.0.0 and until this ADR, a pattern was matched against the raw name (`MemberInfo.Name`) only. So an anchored pattern for an auto-property declared on `T` had to cover both names, `^(Email|<Email>k__BackingField)$`, and an auto-property that is not public, declared on `T` (and, since #40, on a base class), was excused only by a pattern that matches `<Email>k__BackingField`.
 - [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40) item 7: "an auto-property is compared twice (the property and its backing field), so a hidden type behind both a field `_customer` and a property `Customer` needs two patterns."
 
 ### Constraints
@@ -89,7 +89,7 @@ Keeping raw names in violation entries was part of the plan the maintainer appro
 
 ### Compatibility
 
-The `[Unreleased]` section of `CHANGELOG.md` holds one **BREAKING** bullet that ends `(#46; ADR-0025)`. The rule widens what a pattern excuses: compared with 2.0.0, a pattern that matches the property name but not the raw name of a backing field (`^Email$`, `^E`, `Email$`, `Id$`) now also excuses the backing field of a public auto-property declared on `T` (2.0.0 excused the property and reported the backing field), of an auto-property that is not public, declared on `T` or on a base class, and of an explicit interface auto-property. 2.0.0 compared those backing fields and reported a change. A call that failed in 2.0.0 can now pass. No call that passed in 2.0.0 fails because of this rule.
+The `[Unreleased]` section of `CHANGELOG.md` holds one **BREAKING** bullet that ends `(#46; ADR-0025)`. The rule widens what a pattern excuses: compared with 2.0.0, a pattern that matches the property name but not the raw name of a backing field (`^Email$`, `^E`, `Email$`, `Id$`) now also excuses the backing field of a public auto-property declared on `T` (2.0.0 excused the property and reported the backing field), of an auto-property that is not public, declared on `T`, and of an explicit interface auto-property declared on `T`. 2.0.0 compared those backing fields and reported a change. Of such an auto-property declared on a base class, 2.0.0 compared nothing: the backing field is a private field of the base class, which 2.0.0 did not list (`GetFields` of the compared type only). [ADR-0023](0023-comparison-of-base-class-members.md) (#40, also unreleased) compares it; such a pattern excuses it relative to that behaviour. A call that failed in 2.0.0 can now pass. No call that passed in 2.0.0 fails because of this rule.
 
 ---
 
@@ -97,7 +97,7 @@ The `[Unreleased]` section of `CHANGELOG.md` holds one **BREAKING** bullet that 
 
 ### Positive Consequences
 
-- ✅ Under the JIT and under Native AOT, the same members are compared as before this ADR, and the JIT and Native AOT still agree on inherited auto-properties.
+- ✅ Under the JIT and under Native AOT, the same members are compared as before this ADR, and the JIT and Native AOT still agree on inherited public auto-properties, because the public property is preserved and read. An inherited auto-property that is not public is still compared only under the JIT, unless the base class is preserved (smoke check 96; see [ADR-0023](0023-comparison-of-base-class-members.md), Known Limitations).
 - ✅ One anchored pattern on the property name (`^Email$`) excuses an auto-property, declared on `T` or on a base class, public or not. An explicit interface auto-property is the exception: its source name includes the interface (`Ns.IFoo.Id`). This settles the auto-property half of #40 item 7.
 - ✅ No pattern that worked in 2.0.0 stops working.
 - ✅ Violation entries are unchanged.
