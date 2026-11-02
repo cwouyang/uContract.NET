@@ -1235,7 +1235,7 @@ public static class Contract
     ///     throws <see cref="InvalidOperationException" /> and asks for a materialised collection (for example
     ///     <c>ToList()</c>) or for the value's own type as <typeparamref name="T" />; passed as its own type, it is
     ///     compared by all its members, the private fields of the framework included, as any other class
-    ///     (<c>ImmutableQueue&lt;T&gt;</c> by <c>_forwards</c> and <c>_backwards</c>). A nested one is enumerated as
+    ///     (an <c>ImmutableQueue&lt;T&gt;</c> by its private fields). A nested one is enumerated as
     ///     any other sequence.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
