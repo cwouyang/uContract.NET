@@ -251,7 +251,7 @@ internal static class MemberComparison
 
     // A class of the .NET runtime or libraries, told by the public key token its assembly is signed with, not
     // by its namespace: the walk up the base classes stops at it, and it and the classes above it add nothing.
-    private static bool IsFrameworkClass(Type type)
+    internal static bool IsFrameworkClass(Type type)
     {
         return IsFrameworkPublicKeyToken(type.Assembly.GetName().GetPublicKeyToken());
     }
