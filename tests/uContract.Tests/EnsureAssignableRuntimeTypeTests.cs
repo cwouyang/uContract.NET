@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -277,13 +278,48 @@ public class EnsureAssignableRuntimeTypeTests
         Assert.Equal(Violation + "  - Radius\n  - <Radius>k__BackingField", exception.Description);
     }
 
-    // ---- A sequence keeps the comparison by T ----
+    // ---- A sequence, a string, a shared type or a delegate keeps the comparison by T ----
 
     [Fact]
     public void EnsureAssignable_WhenTIsObjectAndTheValuesAreSequencesOfDifferentRuntimeTypes_ComparesByTAsBefore()
     {
         object actual = new List<int> { 1 };
         object expected = new[] { 2 };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOneValueIsAString_ComparesByTAsBefore()
+    {
+        object actual = "renamed";
+        object expected = new Vault();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOneValueIsOfASharedType_ComparesByTAsBefore()
+    {
+        using MemoryStream stream = new();
+        object actual = stream;
+        object expected = new Vault();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOneValueIsADelegate_ComparesByTAsBefore()
+    {
+        Func<int> callback = () => 1;
+        object actual = callback;
+        object expected = new Vault();
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
@@ -341,8 +377,150 @@ public class EnsureAssignableRuntimeTypeTests
         Assert.Null(exception);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAPatternNamesAChangedPropertyOfABoxedStruct_ExcusesItsBackingField()
+    {
+        object actual = new TestPoint { X = 1, Y = 2 };
+        object expected = new TestPoint { X = 1, Y = 3 };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "^Y$"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndABoxedStructWithoutFieldsIsUnequalByEquals_ReportsTheTwoAsNotEqual()
+    {
+        object actual = new Token();
+        object expected = new Token();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            $"actual and expected are not equal. They are compared as {typeof(Token)}, which has no fields, "
+                + $"and its Equals reports them unequal; T is {typeof(object)}.",
+            exception.Description
+        );
+    }
+
+    // ---- T is an interface and the values are compared by members: the interface's properties too ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndAStructIgnoresAChangedInterfacePropertyInEquals_ReportsIt()
+    {
+        IReading actual = new Reading(20, "warm");
+        IReading expected = new Reading(20, "mild");
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Label" + ListedFrom<Reading, IReading>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndAFieldOfAStructChanged_ReportsThatField()
+    {
+        IReading actual = new Reading(20, "warm");
+        IReading expected = new Reading(21, "warm");
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - <Value>k__BackingField" + ListedFrom<Reading, IReading>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnExplicitInterfacePropertyReadingStateOutsideTheFieldsChanged_ReportsIt()
+    {
+        IPriced actual = new Quote("12.50");
+        IPriced expected = new Quote("10.00");
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Price" + ListedFrom<Quote, IPriced>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAPatternNamesAChangedExplicitInterfaceProperty_ExcusesIt()
+    {
+        IPriced actual = new Quote("12.50");
+        IPriced expected = new Quote("10.00");
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "^Price$"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnExplicitInterfaceAutoPropertyChanged_ReportsItsBackingFieldAndTheInterfaceProperty()
+    {
+        ICoded actual = new Ticket();
+        ICoded expected = new Ticket();
+        actual.Code = "B";
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation
+                + $"  - <{typeof(ICoded).FullName!.Replace('+', '.')}.Code>k__BackingField\n  - Code"
+                + ListedFrom<Ticket, ICoded>(),
+            exception.Description
+        );
+    }
+
+    private interface IReading
+    {
+        string Label { get; }
+    }
+
+    private interface IPriced
+    {
+        string Price { get; }
+    }
+
+    private interface ICoded
+    {
+        string Code { get; set; }
+    }
+
+    // Its price is kept outside its fields.
+    private sealed class Quote : IPriced
+    {
+        private static readonly ConditionalWeakTable<Quote, string> Prices = [];
+
+        public Quote(string price)
+        {
+            Prices.Add(this, price);
+        }
+
+        string IPriced.Price => Prices.TryGetValue(this, out string? price) ? price : "";
+    }
+
+    private sealed class Ticket : ICoded
+    {
+        string ICoded.Code { get; set; } = "A";
+    }
+
+    // Unequal to everything, and without a field to compare.
+    private readonly struct Token : IEquatable<Token>
+    {
+        public bool Equals(Token other) => false;
+
+        public override bool Equals(object? obj) => false;
+
+        public override int GetHashCode() => 0;
+    }
+
     // Equal by its value alone: the label is not part of its identity.
-    private readonly struct Reading(int value, string label) : IEquatable<Reading>
+    private readonly struct Reading(int value, string label) : IEquatable<Reading>, IReading
     {
         public int Value { get; } = value;
 

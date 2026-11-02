@@ -1256,9 +1256,17 @@ public static class Contract
     ///     before that test: it throws when there is no value.
     ///     For every other <typeparamref name="T" /> the two values are compared by the members of their runtime
     ///     type (as <typeparamref name="T" /> = that type would compare them; a value of a value type other than
-    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields), and the patterns apply to
-    ///     those members. Two values of different runtime types are a violation. When the runtime type is not
+    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; without a field, it is
+    ///     then a violation), and the patterns apply to those members. When <typeparamref name="T" /> is an
+    ///     interface, the properties it declares are compared too, read through it (an explicitly implemented one
+    ///     included), unless a member of the same name is compared already; the patterns apply to them by their
+    ///     names. Two values of different runtime types are a violation. When the runtime type is not
     ///     <typeparamref name="T" />, a violation message names the runtime type the members were listed from.
+    ///     The getters of the public properties of the runtime type (and of an interface <typeparamref name="T" />)
+    ///     then run, and a getter that throws ends the call with
+    ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
+    ///     <see cref="Exception.InnerException" />, also where comparing by the members of
+    ///     <typeparamref name="T" /> alone passed.
     ///     When either runtime type is a string, a delegate type, a <c>FrozenSet&lt;T&gt;</c> or a
     ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, an array, another <see cref="System.Collections.IEnumerable" />
     ///     or a type that <see cref="Old{T}" /> shares, the members visible through <typeparamref name="T" /> are
@@ -1426,8 +1434,8 @@ public static class Contract
     )
     {
         Type comparedType = _TopLevelType(declaredType, actual, expected);
-        bool asAMember = comparedType.IsValueType && comparedType != declaredType;
-        List<string> differences = _FindDifferences(comparedType, actual, expected, assignableFieldPatterns, asAMember);
+        List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected);
+        List<string> differences = _FindDifferences(comparedType, members, actual, expected, assignableFieldPatterns);
 
         if (differences.Count > 0)
         {
@@ -1503,35 +1511,70 @@ public static class Contract
         );
     }
 
+    // The members the top level is compared by: those of comparedType, and, when T is an interface other than
+    // comparedType, the properties the interface declares.
+    private static List<MemberAccessor> _TopLevelMembers(
+        Type comparedType,
+        Type declaredType,
+        object actual,
+        object expected
+    )
+    {
+        List<MemberAccessor> members = [];
+
+        // A boxed value of a value type other than T is compared as a member of that type is: its Equals
+        // decides first, and only when it says "unequal" are its fields compared. Without a field, it is then
+        // unequal.
+        bool asAMember = comparedType.IsValueType && comparedType != declaredType;
+        if (!asAMember || !Equals(actual, expected))
+        {
+            TypeMetadata metadata = MemberComparison.GetOrCacheMetadata(comparedType);
+            if (MemberComparison.MembersAreHidden(comparedType, metadata))
+            {
+                throw new InvalidOperationException(
+                    $"EnsureAssignable cannot compare {comparedType}: no properties or fields are visible to reflection "
+                        + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
+                        + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off "
+                        + "(disables all postcondition checks)."
+                );
+            }
+
+            members.AddRange(asAMember ? metadata.Members.Where(m => m.IsField) : metadata.Members);
+            if (asAMember && members.Count == 0)
+            {
+                throw new PostconditionViolationException(
+                    $"actual and expected are not equal. They are compared as {comparedType}, which has no fields, "
+                        + $"and its Equals reports them unequal; T is {declaredType}."
+                );
+            }
+        }
+
+        // An explicitly implemented property is not a public property of the runtime type, and the Equals of a
+        // value type may ignore a property: the properties an interface T declares are read through it, unless
+        // a member of the same name is compared already.
+        if (declaredType.IsInterface && comparedType != declaredType)
+        {
+            List<MemberAccessor> interfaceProperties = MemberComparison
+                .GetOrCacheMetadata(declaredType)
+                .Members.Where(property =>
+                    !members.Exists(member => string.Equals(member.RawName, property.RawName, StringComparison.Ordinal))
+                )
+                .ToList();
+            members.AddRange(interfaceProperties);
+        }
+
+        return members;
+    }
+
     private static List<string> _FindDifferences(
         Type type,
+        List<MemberAccessor> members,
         object actual,
         object expected,
-        string[] assignableFieldPatterns,
-        bool asAMember
+        string[] assignableFieldPatterns
     )
     {
         List<string> differences = [];
-
-        // A boxed value of a value type other than T is compared as a member of that type is: its Equals
-        // decides first, and only when it says "unequal" are its fields compared.
-        if (asAMember && Equals(actual, expected))
-        {
-            return differences;
-        }
-
-        TypeMetadata metadata = MemberComparison.GetOrCacheMetadata(type);
-
-        if (MemberComparison.MembersAreHidden(type, metadata))
-        {
-            throw new InvalidOperationException(
-                $"EnsureAssignable cannot compare {type}: no properties or fields are visible to reflection "
-                    + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
-                    + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off "
-                    + "(disables all postcondition checks)."
-            );
-        }
-
         ComparisonContext context = new();
 
         // The top-level pair is in progress for the whole call, so a member leading back to it is not a
@@ -1540,9 +1583,9 @@ public static class Contract
         // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
         context.EnterTopLevel(new ReferencePair(actual, expected));
 
-        foreach (MemberAccessor member in metadata.Members)
+        foreach (MemberAccessor member in members)
         {
-            if ((asAMember && !member.IsField) || MemberComparison.IsAssignable(member, assignableFieldPatterns))
+            if (MemberComparison.IsAssignable(member, assignableFieldPatterns))
             {
                 continue;
             }
