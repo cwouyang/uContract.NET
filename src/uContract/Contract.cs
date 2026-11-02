@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -1253,13 +1254,20 @@ public static class Contract
     ///     cannot be listed as assignable. To compare it by its members, test both values for null first and pass the
     ///     unwrapped values, for example with <c>if (a is { } x &amp;&amp; b is { } y)</c>; do not read <c>.Value</c>
     ///     before that test: it throws when there is no value.
-    ///     For every other <typeparamref name="T" /> the members visible through it are compared:
-    ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class that is not
-    ///     compared as a whole (<see cref="Delegate" />, <see cref="MulticastDelegate" />, a
+    ///     For every other <typeparamref name="T" /> the two values are compared by the members of their runtime
+    ///     type (as <typeparamref name="T" /> = that type would compare them; a value of a value type other than
+    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields), and the patterns apply to
+    ///     those members. Two values of different runtime types are a violation. When the runtime type is not
+    ///     <typeparamref name="T" />, a violation message names the runtime type the members were listed from.
+    ///     When either runtime type is a string, a delegate type, a <c>FrozenSet&lt;T&gt;</c> or a
+    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, an array, another <see cref="System.Collections.IEnumerable" />
+    ///     or a type that <see cref="Old{T}" /> shares, the members visible through <typeparamref name="T" /> are
+    ///     compared instead: <see cref="object" /> has none, so nothing is compared beyond null; a base class that
+    ///     is not compared as a whole (<see cref="Delegate" />, <see cref="MulticastDelegate" />, a
     ///     <c>FrozenSet&lt;T&gt;</c>, a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and <see cref="Array" />
     ///     are) compares the
     ///     members it declares or inherits, and an interface only the properties it declares itself; in
-    ///     neither case what the runtime type adds, even if the values are strings. Two different instances
+    ///     neither case what the runtime type adds. Two different instances
     ///     of a type that <see cref="Old{T}" /> shares (two <c>Stream</c>s) are still compared member by member,
     ///     and so is a type that is shared, and fixed (a <c>Regex</c>), also for one instance on both sides; in
     ///     both cases unless <typeparamref name="T" /> is a string, a delegate type, a <c>FrozenSet&lt;T&gt;</c> or a
@@ -1352,15 +1360,7 @@ public static class Contract
                 return;
             }
 
-            List<string> differences = _FindDifferences(typeof(T), actual!, expected!, assignableFieldPatterns);
-
-            if (differences.Count > 0)
-            {
-                string message =
-                    "Fields were modified that are not marked as assignable:\n"
-                    + string.Join("\n", differences.Select(d => $"  - {d}"));
-                throw new PostconditionViolationException(message);
-            }
+            _CompareByMembers(typeof(T), actual!, expected!, assignableFieldPatterns);
         }
         finally
         {
@@ -1417,6 +1417,73 @@ public static class Contract
             || MemberComparison.IsArrayTypeOrSystemArray(type);
     }
 
+    // The top level compared member by member, by the members of the type _TopLevelType picks.
+    private static void _CompareByMembers(
+        Type declaredType,
+        object actual,
+        object expected,
+        string[] assignableFieldPatterns
+    )
+    {
+        Type comparedType = _TopLevelType(declaredType, actual, expected);
+        bool asAMember = comparedType.IsValueType && comparedType != declaredType;
+        List<string> differences = _FindDifferences(comparedType, actual, expected, assignableFieldPatterns, asAMember);
+
+        if (differences.Count > 0)
+        {
+            throw _FieldsWereModified(differences, comparedType, declaredType);
+        }
+    }
+
+    // A violation entry is named as today; when the members were listed from a runtime type other than T,
+    // the message says so.
+    private static PostconditionViolationException _FieldsWereModified(
+        List<string> differences,
+        Type comparedType,
+        Type declaredType
+    )
+    {
+        string message =
+            "Fields were modified that are not marked as assignable:\n"
+            + string.Join("\n", differences.Select(d => $"  - {d}"));
+        if (comparedType != declaredType)
+        {
+            message += $"\nMembers were listed from the runtime type {comparedType}, not from T ({declaredType}).";
+        }
+
+        return new PostconditionViolationException(message);
+    }
+
+    // The type whose members the top level is compared by: the runtime type of the two values. The declared
+    // type stays when a runtime type is one that is compared as a whole or a sequence, or is shared.
+    private static Type _TopLevelType(Type declaredType, object actual, object expected)
+    {
+        Type actualType = actual.GetType();
+        Type expectedType = expected.GetType();
+        if (_KeepsTheDeclaredType(actualType) || _KeepsTheDeclaredType(expectedType))
+        {
+            return declaredType;
+        }
+
+        if (actualType != expectedType)
+        {
+            throw new PostconditionViolationException(
+                $"actual and expected are of different runtime types: actual is {actualType}, "
+                    + $"expected is {expectedType}, and T is {declaredType}. "
+                    + "No member was compared, so assignable patterns do not apply."
+            );
+        }
+
+        return actualType;
+    }
+
+    private static bool _KeepsTheDeclaredType(Type runtimeType)
+    {
+        return _IsComparedAsWhole(runtimeType)
+            || typeof(IEnumerable).IsAssignableFrom(runtimeType)
+            || SharedTypes.IsShared(runtimeType);
+    }
+
     private static void _CompareAsWhole(Type type, object? actual, object? expected)
     {
         ComparisonContext context = new();
@@ -1440,9 +1507,19 @@ public static class Contract
         Type type,
         object actual,
         object expected,
-        string[] assignableFieldPatterns
+        string[] assignableFieldPatterns,
+        bool asAMember
     )
     {
+        List<string> differences = [];
+
+        // A boxed value of a value type other than T is compared as a member of that type is: its Equals
+        // decides first, and only when it says "unequal" are its fields compared.
+        if (asAMember && Equals(actual, expected))
+        {
+            return differences;
+        }
+
         TypeMetadata metadata = MemberComparison.GetOrCacheMetadata(type);
 
         if (MemberComparison.MembersAreHidden(type, metadata))
@@ -1455,19 +1532,17 @@ public static class Contract
             );
         }
 
-        List<string> differences = [];
         ComparisonContext context = new();
 
         // The top-level pair is in progress for the whole call, so a member leading back to it is not a
-        // difference. (A value of a value type is a box made for this call, so that pair is never reached
-        // again.) Two arrays are the top-level pair here only when T is neither an array type nor System.Array
-        // (object, an interface): a T that is an array type or System.Array is compared as a whole and never
-        // comes here.
+        // difference. (A value-type T is boxed for this call, so that pair is never reached again.) Two arrays
+        // are the top-level pair here only when T is neither an array type nor System.Array (object, an
+        // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
         context.EnterTopLevel(new ReferencePair(actual, expected));
 
         foreach (MemberAccessor member in metadata.Members)
         {
-            if (MemberComparison.IsAssignable(member, assignableFieldPatterns))
+            if ((asAMember && !member.IsField) || MemberComparison.IsAssignable(member, assignableFieldPatterns))
             {
                 continue;
             }

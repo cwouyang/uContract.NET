@@ -1,0 +1,533 @@
+using uContract.Exceptions;
+
+namespace uContract.Tests;
+
+// The top level is compared by the runtime type of the two values, not by T.
+public class EnsureAssignableRuntimeTypeTests
+{
+    private const string Violation = "Fields were modified that are not marked as assignable:\n";
+
+    private const int Changed = 7;
+
+    private static string ListedFrom<TRuntime, TDeclared>()
+    {
+        return $"\nMembers were listed from the runtime type {typeof(TRuntime)}, not from T ({typeof(TDeclared)}).";
+    }
+
+    // ---- A base-class method that checks this ----
+
+    [Fact]
+    public void EnsureAssignable_WhenABaseClassMethodChecksThisAndASubclassFieldChanged_ReportsThatField()
+    {
+        Draft draft = new(retitleOnTouch: true);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(draft.Touch);
+
+        Assert.Equal(Violation + "  - _title" + ListedFrom<Draft, Document>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenABaseClassMethodChecksThisAndNothingButAnAssignableFieldChanged_DoesNotThrow()
+    {
+        Draft draft = new(retitleOnTouch: false);
+
+        Exception? exception = Record.Exception(draft.Touch);
+
+        Assert.Null(exception);
+    }
+
+    // ---- T is object ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAPublicAutoPropertyChanged_ReportsThePropertyAndItsBackingField()
+    {
+        object actual = new Profile { Name = "renamed" };
+        object expected = new Profile();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + "  - Name\n  - <Name>k__BackingField" + ListedFrom<Profile, object>(),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAPositionalPropertyOfARecordChanged_ReportsThatProperty()
+    {
+        object actual = new Coordinate(1, 2);
+        object expected = new Coordinate(1, 3);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + "  - Y\n  - <Y>k__BackingField" + ListedFrom<Coordinate, object>(),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoRecordsAreEqual_DoesNotThrow()
+    {
+        object actual = new Coordinate(1, 2);
+        object expected = new Coordinate(1, 2);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAChildPointsBackToTheTopLevelObject_ComparesThatMemberAsEqual()
+    {
+        Parent actual = new();
+        actual.Child.Parent = actual;
+        Parent expected = new();
+        expected.Child.Parent = expected;
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable<object>(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // ---- T is an interface ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndAPropertyTheImplementationAddsChanged_ReportsThatProperty()
+    {
+        ITagged actual = new TaggedNote { Body = "edited" };
+        ITagged expected = new TaggedNote();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + "  - Body\n  - <Body>k__BackingField" + ListedFrom<TaggedNote, ITagged>(),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndItsOwnPropertyChanged_ReportsThatProperty()
+    {
+        ITagged actual = new TaggedNote { Tag = "urgent" };
+        ITagged expected = new TaggedNote();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + "  - Tag\n  - <Tag>k__BackingField" + ListedFrom<TaggedNote, ITagged>(),
+            exception.Description
+        );
+    }
+
+    // ---- T is a base class ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnAbstractBaseAndAnAutoPropertyTheSubclassAddsChanged_ReportsThatProperty()
+    {
+        Animal actual = new Dog { Name = "Rex" };
+        Animal expected = new Dog();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + "  - Name\n  - <Name>k__BackingField" + ListedFrom<Dog, Animal>(),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnAbstractBaseAndAPrivateFieldTheSubclassAddsChanged_ReportsThatField()
+    {
+        Dog dog = new();
+        Animal actual = dog;
+        Animal expected = new Dog();
+        dog.Bark();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - _barks" + ListedFrom<Dog, Animal>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnAbstractBaseAndAPrivateFieldOfTheBaseChanged_ReportsThatField()
+    {
+        Animal actual = new Dog();
+        Animal expected = new Dog();
+        actual.Feed();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - _meals" + ListedFrom<Dog, Animal>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAConcreteBaseAndAnAutoPropertyTheSubclassAddsChanged_ReportsThatProperty()
+    {
+        Shape actual = new Circle { Radius = 2 };
+        Shape expected = new Circle();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + "  - Radius\n  - <Radius>k__BackingField" + ListedFrom<Circle, Shape>(),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenASubclassFieldHasTheNameOfAPrivateFieldOfTheBase_QualifiesTheEntry()
+    {
+        Customer customer = new();
+        Entity actual = customer;
+        Entity expected = new Customer();
+        customer.SetOwnId(Changed);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + "  - _id (declared on Customer)" + ListedFrom<Customer, Entity>(),
+            exception.Description
+        );
+    }
+
+    // ---- Assignable patterns ----
+
+    [Fact]
+    public void EnsureAssignable_WhenAPatternNamesAMemberOfTheBaseClassT_ExcusesIt()
+    {
+        Shape actual = new Circle { Sides = 1 };
+        Shape expected = new Circle();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "^Sides$"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAPatternNamesAMemberOnlyTheSubclassHas_ExcusesIt()
+    {
+        Shape actual = new Circle { Radius = 2 };
+        Shape expected = new Circle();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "^Radius$"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenNoPatternNamesAChangedSubclassMember_ReportsIt()
+    {
+        Shape actual = new Circle { Sides = 1, Radius = 2 };
+        Shape expected = new Circle();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "^Sides$")
+        );
+
+        Assert.Equal(
+            Violation + "  - Radius\n  - <Radius>k__BackingField" + ListedFrom<Circle, Shape>(),
+            exception.Description
+        );
+    }
+
+    // ---- T is the runtime type: unchanged ----
+
+    [Fact]
+    public void EnsureAssignable_WhenAStructIsPassedAsItself_ReportsItsPropertiesAndFieldsWithoutTheRuntimeTypeLine()
+    {
+        TestPoint actual = new() { X = 1, Y = 2 };
+        TestPoint expected = new() { X = 1, Y = 3 };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Y\n  - <Y>k__BackingField", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsTheRuntimeClass_ReportsWithoutTheRuntimeTypeLine()
+    {
+        Circle actual = new() { Radius = 2 };
+        Circle expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Radius\n  - <Radius>k__BackingField", exception.Description);
+    }
+
+    // ---- A sequence keeps the comparison by T ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreSequencesOfDifferentRuntimeTypes_ComparesByTAsBefore()
+    {
+        object actual = new List<int> { 1 };
+        object expected = new[] { 2 };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOnlyAPrivateFieldChanged_ReportsThatField()
+    {
+        Vault actual = new();
+        Vault expected = new();
+        actual.Lock();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable<object>(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - _locks" + ListedFrom<Vault, object>(), exception.Description);
+    }
+
+    // ---- A boxed struct, compared as a member of that struct is: Equals, then its fields ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAFieldOfABoxedStructDiffers_ReportsThatField()
+    {
+        object actual = new TestPoint { X = 1, Y = 2 };
+        object expected = new TestPoint { X = 1, Y = 3 };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - <Y>k__BackingField" + ListedFrom<TestPoint, object>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedStructsAreEqual_DoesNotThrow()
+    {
+        object actual = new TestPoint { X = 1, Y = 2 };
+        object expected = new TestPoint { X = 1, Y = 2 };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheEqualsOfABoxedStructReportsEqual_DoesNotThrow()
+    {
+        object actual = new Reading(20, "warm");
+        object expected = new Reading(20, "mild");
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // Equal by its value alone: the label is not part of its identity.
+    private readonly struct Reading(int value, string label) : IEquatable<Reading>
+    {
+        public int Value { get; } = value;
+
+        public string Label { get; } = label;
+
+        public bool Equals(Reading other) => Value == other.Value;
+
+        public override bool Equals(object? obj) => obj is Reading other && Equals(other);
+
+        public override int GetHashCode() => Value;
+    }
+
+    // ---- Two different runtime types ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsABaseClassAndTheValuesAreTwoDifferentSubclasses_ReportsBothRuntimeTypesAndT()
+    {
+        Shape actual = new Circle();
+        Shape expected = new Square();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DifferentRuntimeTypes<Circle, Square, Shape>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsABaseClassAndExpectedIsABaseInstance_ReportsBothRuntimeTypesAndT()
+    {
+        Shape actual = new Circle();
+        Shape expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DifferentRuntimeTypes<Circle, Shape, Shape>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreOfUnrelatedClasses_ReportsBothRuntimeTypesAndT()
+    {
+        object actual = new Vault();
+        object expected = new Circle();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DifferentRuntimeTypes<Vault, Circle, object>(), exception.Description);
+    }
+
+    private static string DifferentRuntimeTypes<TActual, TExpected, TDeclared>()
+    {
+        return $"actual and expected are of different runtime types: actual is {typeof(TActual)}, "
+            + $"expected is {typeof(TExpected)}, and T is {typeof(TDeclared)}. "
+            + "No member was compared, so assignable patterns do not apply.";
+    }
+
+    private class Shape
+    {
+        public int Sides { get; set; }
+    }
+
+    private sealed class Circle : Shape
+    {
+        public int Radius { get; set; }
+    }
+
+    private sealed class Square : Shape;
+
+    private sealed class Profile
+    {
+        public string Name { get; set; } = "original";
+    }
+
+    private sealed record Coordinate(int X, int Y);
+
+    private sealed class Parent
+    {
+        public Child Child { get; } = new();
+    }
+
+    private sealed class Child
+    {
+        public Parent? Parent { get; set; }
+    }
+
+    private interface ITagged
+    {
+        string Tag { get; }
+    }
+
+    private sealed class TaggedNote : ITagged
+    {
+        public string Tag { get; set; } = "none";
+
+        public string Body { get; set; } = "";
+    }
+
+    private abstract class Animal
+    {
+        private int _meals;
+
+        public void Feed()
+        {
+            _meals++;
+        }
+    }
+
+    private sealed class Dog : Animal
+    {
+        private int _barks;
+
+        public string Name { get; set; } = "";
+
+        public void Bark()
+        {
+            _barks++;
+        }
+    }
+
+    private class Entity
+    {
+        private readonly int _id = 1;
+
+        public int BaseId => _id;
+    }
+
+    private sealed class Customer : Entity
+    {
+#pragma warning disable CS0414 // Assigned but never read: the field exists to be compared.
+        private int _id;
+#pragma warning restore CS0414
+
+        public void SetOwnId(int id)
+        {
+            _id = id;
+        }
+    }
+
+    private sealed class Vault
+    {
+        private int _locks;
+
+        public void Lock()
+        {
+            _locks++;
+        }
+    }
+
+    private class Document
+    {
+        private int _touches;
+
+        public void Touch()
+        {
+            Document old = Contract.Old(() => this);
+            _touches++;
+            OnTouch();
+            Contract.EnsureAssignable(this, old, "^_touches$");
+        }
+
+        protected virtual void OnTouch() { }
+    }
+
+    private sealed class Draft : Document
+    {
+        private readonly bool _retitleOnTouch;
+#pragma warning disable CS0414 // Assigned but never read: the field exists to be compared.
+        private string _title = "draft";
+#pragma warning restore CS0414
+
+        public Draft(bool retitleOnTouch)
+        {
+            _retitleOnTouch = retitleOnTouch;
+        }
+
+        protected override void OnTouch()
+        {
+            if (_retitleOnTouch)
+            {
+                _title = "retitled";
+            }
+        }
+    }
+}
