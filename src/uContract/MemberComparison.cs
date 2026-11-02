@@ -260,16 +260,31 @@ internal static class MemberComparison
     // How a sequence of the runtime type is compared: when its class chain holds a framework class below
     // System.Object, by its elements and by OwnMembers, the members of its member list declared on a type that
     // is not a framework class; otherwise, as a class of yours that implements IEnumerable itself, by its
-    // members alone.
+    // members alone. A yield iterator of yours (a class marked [CompilerGenerated] that implements IEnumerator)
+    // is compared by its elements alone: its fields are the state of the iteration.
     internal static SequenceRule GetSequenceRule(Type runtimeType)
     {
-        return SequenceRuleCache.GetOrAdd(
-            runtimeType,
-            t => new SequenceRule(
-                HasFrameworkClassBelowObject(t),
-                GetOrCacheMetadata(t).Members.Where(m => !IsFrameworkClass(m.DeclaringType)).ToList().AsReadOnly()
-            )
+        return SequenceRuleCache.GetOrAdd(runtimeType, CreateSequenceRule);
+    }
+
+    private static SequenceRule CreateSequenceRule(Type type)
+    {
+        bool hasFrameworkClass = HasFrameworkClassBelowObject(type);
+        if (!hasFrameworkClass && IsCompilerGeneratedIterator(type))
+        {
+            return new SequenceRule(HasFrameworkClass: false, Array.Empty<MemberAccessor>()) { IsIterator = true };
+        }
+
+        return new SequenceRule(
+            hasFrameworkClass,
+            GetOrCacheMetadata(type).Members.Where(m => !IsFrameworkClass(m.DeclaringType)).ToList().AsReadOnly()
         );
+    }
+
+    private static bool IsCompilerGeneratedIterator(Type type)
+    {
+        return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+            && typeof(IEnumerator).IsAssignableFrom(type);
     }
 
     // A sequence that is compared by its elements alone, also against a sequence of another runtime type: its
@@ -1122,8 +1137,11 @@ internal static class MemberComparison
     // OwnMembers is cached for every caller, so it is read-only.
     internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers)
     {
+        // A yield iterator of yours: compared by its elements alone, at every level.
+        public bool IsIterator { get; init; }
+
         // Compared by its elements (and OwnMembers), not by its members alone.
-        public bool IsComparedByElements => HasFrameworkClass;
+        public bool IsComparedByElements => HasFrameworkClass || IsIterator;
     }
 
     // Created only when a comparison is blocked. The path is prepended one segment per level on

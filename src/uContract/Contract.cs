@@ -1641,8 +1641,13 @@ public static class Contract
         // A sequence built on a framework class is compared by its elements and by its members, without the
         // framework's non-public fields and its Capacity, which the elements stand in for: its public properties
         // (a comparer, the key of a grouping) stay.
+        // A yield iterator of yours is compared by its elements alone (the properties of an interface T stay).
         bool byElements = _IsComparedByElementsAndOwnMembers(comparedType, actual);
-        if (byElements)
+        if (byElements && MemberComparison.GetSequenceRule(comparedType).IsIterator)
+        {
+            members.RemoveAll(m => !m.DeclaringType.IsInterface);
+        }
+        else if (byElements)
         {
             members.RemoveAll(m =>
                 MemberComparison.IsFrameworkClass(m.DeclaringType)

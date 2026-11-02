@@ -569,6 +569,63 @@ public class EnsureAssignableSequenceTests
         Assert.Null(exception);
     }
 
+    // ---- A yield iterator of yours ----
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedYieldIteratorWasEnumeratedAndYieldsEqualElements_DoesNotThrow()
+    {
+        Order order = new([1, 2]);
+        Order old = Contract.Old(() => order);
+        _ = order.Total();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(order, old));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheSourceOfANestedYieldIteratorChanges_ReportsTheIterator()
+    {
+        List<int> source = [1, 2];
+        Order order = new(source);
+        Order old = Contract.Old(() => order);
+        source[1] = 3;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(order, old)
+        );
+
+        Assert.Equal(Violation + "  - _ids", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndOneOfTwoEqualYieldIteratorsWasEnumerated_DoesNotThrow()
+    {
+        IEnumerable<int> actual = Order.Generate([1, 2]);
+        IEnumerable<int> expected = Order.Generate([1, 2]);
+        _ = actual.Sum();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndTwoYieldIteratorsYieldDifferentElements_ReportsTheElements()
+    {
+        IEnumerable<int> actual = Order.Generate([1, 2]);
+        IEnumerable<int> expected = Order.Generate([1, 3]);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + ElementsEntry + ListedFrom(actual.GetType(), typeof(IEnumerable<int>)),
+            exception.Description
+        );
+    }
+
     // ---- Cycles ----
 
     [Fact]
@@ -690,6 +747,25 @@ public class EnsureAssignableSequenceTests
     private sealed class TagList : List<string>
     {
         public string Owner = "";
+    }
+
+    // Holds a yield iterator over a list it was given; Total enumerates it.
+    private sealed class Order(List<int> source)
+    {
+        private readonly IEnumerable<int> _ids = Generate(source);
+
+        public int Total()
+        {
+            return _ids.Sum();
+        }
+
+        public static IEnumerable<int> Generate(List<int> numbers)
+        {
+            foreach (int number in numbers)
+            {
+                yield return number;
+            }
+        }
     }
 
     // A tree node of yours built on List<Node>, whose children point back to it.
