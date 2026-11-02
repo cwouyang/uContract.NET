@@ -323,7 +323,12 @@ AOT](README.md#trimming-and-native-aot) in the README.
   of different runtime types are a violation that names both runtime types and `T`, except two
   sequences that are compared by their elements; a boxed value type is compared with `Equals` first,
   then by its fields; any other value is compared by the members of its runtime type, and for an
-  interface `T` also by the properties that the interface declares, read through it. The patterns
+  interface `T` also by the properties that the interface declares, read through it. One exception
+  keeps the 2.0.0 rule: when the runtime type of either value is a value type that implements
+  `IEnumerable` (`ImmutableArray<T>`, `ArraySegment<T>`, a struct of yours) and the two values are not
+  two sequences of different runtime types, the members visible through `T` are compared, so
+  `EnsureAssignable<object>` of two `ImmutableArray<int>` values still compares nothing beyond `null`;
+  pass such a value as its own type. The patterns
   apply to those members: a pattern written against `T` still excuses its member, and a member that
   only the runtime type has needs a pattern that names it. When `T` is a framework class that the
   runtime type derives from, the private fields of the base classes are compared up to and including
@@ -348,7 +353,8 @@ AOT](README.md#trimming-and-native-aot) in the README.
   of a delegate are not compared. A `yield` iterator from a method that returns `IEnumerable` or
   `IEnumerable<T>`, of any assembly that is not part of .NET (a NuGet package included), is compared
   by its elements: an infinite one does not return, and an exception from its body leaves the call
-  unwrapped. One from a method that returns only `IEnumerator` or `IEnumerator<T>` is compared by its
+  unwrapped, except an `InvalidOperationException` while two sequences of different runtime types
+  are enumerated, which makes them unequal. One from a method that returns only `IEnumerator` or `IEnumerator<T>` is compared by its
   fields. At the top level a sequence that is not a collection (a LINQ query,
   `GetConsumingEnumerable()`, an `XmlDocument`) is not enumerated: passed as a `T` other than its own
   type, it throws `InvalidOperationException`; pass `ToList()`, or the value as its own type. Two
@@ -359,12 +365,14 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `EnsureAssignable(this, Contract.Old(() => this))` written in a base class and run on a subclass
   instance, and a framework collection such as a `List<int>` passed as `object` when nothing in the
   application preserves it. A boxed value type throws only when its `Equals` reports the values
-  unequal; a primitive, an enum, an inline array and a `yield` iterator are not affected. A subclass
+  unequal; a primitive, an enum, an inline array, a value-type sequence that keeps the declared `T`
+  and a `yield` iterator are not affected. A subclass
   that adds no state and that nothing preserves throws too. The fix is the one the message names,
   with the type in C# syntax: `[DynamicDependency(DynamicallyAccessedMemberTypes.All,
   typeof(Shop.ExpressOrder))]` on a method that runs, or pass the values as their own type;
   `[DynamicallyAccessedMembers]` on a base class of yours does not help. A `yield` method that
-  returns only an enumerator throws under Native AOT with a `typeof` that cannot be written. Below the
+  returns only an enumerator throws under Native AOT, when nothing preserves it, with a `typeof` that
+  cannot be written. Below the
   top level, a class of yours that nothing preserves and that only inherits visible members is
   compared by its `Equals` and ends in "cannot compare" when `Equals` reports the values unequal,
   where it was compared by its inherited members. The nested "cannot compare" messages now write the

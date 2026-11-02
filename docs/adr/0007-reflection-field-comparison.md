@@ -598,7 +598,10 @@ a whole, the top level now decides on the runtime type of the two values: a runt
 compared as a whole is compared so, two different instances of a shared type are a violation by
 reference, two values of different runtime types are a violation (two sequences excepted), and any
 other value is compared by the members of its runtime type, the properties of an interface `T`
-included. A sequence is compared by the class chain of its runtime type, at the top level and below
+included. One exception keeps the shape of the third Amendment: when the runtime type of either value
+is a value type that implements `IEnumerable` (`ImmutableArray<T>`, `ArraySegment<T>`) and the two
+values are not two sequences of different runtime types, the members of `T` are compared one by one,
+as before. A sequence is compared by the class chain of its runtime type, at the top level and below
 it. These statements, each quoted by its opening words, no longer hold as written:
 
 - The listing under Details: "`var type = typeof(T);`". The top level lists the members of the

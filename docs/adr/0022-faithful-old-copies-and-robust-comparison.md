@@ -3910,7 +3910,10 @@ its opening words:
   properties that the interface declares), so R0 holds at the top level too, after a `null` side and
   rule S. A runtime type that is compared as a whole is compared so, two different instances of a
   shared type are a violation by reference (R5 at the top level), and two values of different runtime
-  types are a violation (R6 at the top level).
+  types are a violation (R6 at the top level). Exception: when the runtime type of either value is a
+  value type that implements `IEnumerable` (`ImmutableArray<T>`, `ArraySegment<T>`) and the two values
+  are not two sequences of different runtime types, the top level still compares the members of
+  `typeof(T)` (see ADR-0026, Known Limitations).
 - R6: "Exception: when both are `IEnumerable` and neither is a `string`, they are compared by R7."
   The exception now holds only when neither runtime type declares members on a class that is not a
   framework class (`MemberComparison.IsComparedByElementsOnly`). Two sequences of different runtime
@@ -3948,8 +3951,9 @@ its opening words:
   shared, fixed type on both sides (a class derived from `Regex`, `Type` or `MemberInfo`) is still
   compared by the members of `T`, and its getters still run.
 
-**Unchanged.** `Old<T>()`, B1 to B8, R1 to R5, rule S, D9, and the messages of R8 apart from the
-type name in `typeof`. The smoke program has 139 checks (check 100 changes and checks 109 to 139 are
+**Unchanged.** `Old<T>()`, B1 to B8, R1 to R5, rule S, D9, and the messages of R8 apart from their
+fix clause: "typeof(X))] where X is that type" became "typeof({C# type name}))] on a method that
+runs". The smoke program has 139 checks (check 100 changes and checks 109 to 139 are
 listed in the #40 amendment of ADR-0021 dated 2026-11-02).
 
 ---

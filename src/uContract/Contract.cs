@@ -1093,7 +1093,10 @@ public static class Contract
     ///     underlying type, and for an array type the members of the element type, may not be preserved.
     ///     For any other type (<see cref="object" />, an interface, a base class, or the type of the values
     ///     itself) the two values are compared by their runtime type, as a member of that type is, and for an
-    ///     interface also by the properties it declares (see the remarks). The members of a runtime type other
+    ///     interface also by the properties it declares (see the remarks; when a value is of a value type that
+    ///     is an <see cref="System.Collections.IEnumerable" />, such as <c>ImmutableArray&lt;T&gt;</c>, the
+    ///     members visible through this type are compared instead, unless the two values are sequences of
+    ///     different runtime types). The members of a runtime type other
     ///     than this type are not preserved: under Native AOT such a runtime type that nothing preserves can make
     ///     the method throw (see the exceptions).
     ///     Whatever it is, <see cref="object" /> included, nothing is compared and the method throws
@@ -1265,9 +1268,13 @@ public static class Contract
     ///     <see cref="IEnumerable{T}" />) is compared by its elements alone, at every level: its fields are the
     ///     state of the iteration. "Yours" means any assembly that is not part of .NET, a NuGet package
     ///     included. Enumerating it runs its body: an infinite iterator does not return, and an exception from
-    ///     its body leaves the method as it is, not wrapped. A <c>yield</c> method that returns only an
+    ///     its body leaves the method as it is, not wrapped, except an <see cref="InvalidOperationException" />
+    ///     while two sequences of different runtime types are enumerated, which makes them unequal. A
+    ///     <c>yield</c> method that returns only an
     ///     enumerator gives a class that is not a sequence, compared by its fields (see the exceptions).
-    ///     The non-public fields of the framework classes of a sequence are not compared, at any level, so a
+    ///     The non-public fields of the framework classes of a sequence that is compared by its elements are not
+    ///     compared, at any level (a sequence that is not a collection, passed as its own type, is compared by
+    ///     all its members: see below), so a
     ///     comparer kept only in such a field (<c>Hashtable</c>, <c>Lookup&lt;TKey, TElement&gt;</c>) and the
     ///     event handlers that a framework class keeps (the subscribers of an
     ///     <c>ObservableCollection&lt;T&gt;</c>) are not compared either.
