@@ -1215,8 +1215,11 @@ public static class Contract
     ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose
     ///     <c>Equals</c> ignores state (for example entity equality by ID) therefore hides a change in such a
     ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
-    ///     When <typeparamref name="T" /> itself has no visible members, the method throws and does not ask
-    ///     <c>Equals</c>, unless <paramref name="actual" /> or <paramref name="expected" /> is null or
+    ///     When the type compared at the top level (<typeparamref name="T" />, or the runtime type of the values
+    ///     when that is compared) has no visible members, the method throws; for a runtime type
+    ///     other than <typeparamref name="T" />, which the annotation on <typeparamref name="T" /> does not
+    ///     preserve, the message names both types. It throws without asking <c>Equals</c> (except for a value of a
+    ///     value type other than <typeparamref name="T" />, whose <c>Equals</c> decides first), unless <paramref name="actual" /> or <paramref name="expected" /> is null or
     ///     <typeparamref name="T" /> is compared as a whole. When one instance passed as <paramref name="actual" />
     ///     and as <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can
     ///     change, the method throws the message of that case instead, in every build.
@@ -1256,8 +1259,12 @@ public static class Contract
     ///     before that test: it throws when there is no value.
     ///     For every other <typeparamref name="T" /> the two values are compared by the members of their runtime
     ///     type (as <typeparamref name="T" /> = that type would compare them; a value of a value type other than
-    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; without a field, it is
-    ///     then a violation), and the patterns apply to those members. When <typeparamref name="T" /> is an
+    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; a primitive, an enum and an
+    ///     inline array by <c>Equals</c> alone, and one without a field is then a violation; its <c>Equals</c>
+    ///     override runs, and an exception it throws ends the call), and the patterns apply to those members.
+    ///     When <typeparamref name="T" /> is a framework class other than <see cref="object" /> that the runtime
+    ///     type derives from, the private fields of the base classes are compared up to and including
+    ///     <typeparamref name="T" />. When <typeparamref name="T" /> is an
     ///     interface, the properties it declares are compared too, read through it (an explicitly implemented one
     ///     included, also beside a public property of the same name), after the members of the runtime type; one
     ///     of them is not reported when a member of its name was reported already. The patterns apply to them by
@@ -1320,7 +1327,7 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of the top-level type are preserved; the types of nested objects and collection elements are not. For a nullable value type, the fields of the underlying type may not be preserved."
+        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of T are preserved; those of a runtime type other than T, which the top level compares, and the types of nested objects and collection elements are not. For a nullable value type, the fields of the underlying type may not be preserved."
     )]
     public static void EnsureAssignable<[DynamicallyAccessedMembers(MemberComparison.ComparedMembers)] T>(
         T actual,
@@ -1513,6 +1520,29 @@ public static class Contract
         );
     }
 
+    // [DynamicallyAccessedMembers] preserves the members of T, not of a runtime type other than T, so the
+    // remedy differs.
+    private static InvalidOperationException _NoMembersVisible(Type comparedType, Type declaredType)
+    {
+        if (comparedType == declaredType)
+        {
+            return new InvalidOperationException(
+                $"EnsureAssignable cannot compare {comparedType}: no properties or fields are visible to reflection "
+                    + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
+                    + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off "
+                    + "(disables all postcondition checks)."
+            );
+        }
+
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {comparedType}, the runtime type of the values (T is {declaredType}): "
+                + "no properties or fields are visible to reflection under Native AOT. If the type has members, "
+                + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] "
+                + "on a method that runs, where X is that type, or pass the values as that type; otherwise set "
+                + "DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
     // The members the top level is compared by: those of comparedType, and, when T is an interface other than
     // comparedType, the properties the interface declares.
     private static List<MemberAccessor> _TopLevelMembers(
@@ -1525,20 +1555,30 @@ public static class Contract
         List<MemberAccessor> members = [];
 
         // A boxed value of a value type other than T is compared as a member of that type is: its Equals
-        // decides first, and only when it says "unequal" are its fields compared. Without a field, it is then
-        // unequal.
+        // decides first, and only when it says "unequal" are its fields compared. A primitive, an enum and an
+        // inline array are decided by Equals alone, and a value without a field is then unequal.
         bool asAMember = comparedType.IsValueType && comparedType != declaredType;
         if (!asAMember || !Equals(actual, expected))
         {
-            TypeMetadata metadata = MemberComparison.GetOrCacheMetadata(comparedType);
+            if (
+                asAMember
+                && (
+                    comparedType.IsPrimitive
+                    || comparedType.IsEnum
+                    || comparedType.IsDefined(typeof(InlineArrayAttribute), inherit: false)
+                )
+            )
+            {
+                throw new PostconditionViolationException(
+                    $"actual and expected are not equal. They are compared as {comparedType} by its Equals alone, "
+                        + $"which reports them unequal; T is {declaredType}."
+                );
+            }
+
+            TypeMetadata metadata = MemberComparison.GetTopLevelMetadata(comparedType, declaredType);
             if (MemberComparison.MembersAreHidden(comparedType, metadata))
             {
-                throw new InvalidOperationException(
-                    $"EnsureAssignable cannot compare {comparedType}: no properties or fields are visible to reflection "
-                        + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
-                        + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off "
-                        + "(disables all postcondition checks)."
-                );
+                throw _NoMembersVisible(comparedType, declaredType);
             }
 
             members.AddRange(asAMember ? metadata.Members.Where(m => m.IsField) : metadata.Members);

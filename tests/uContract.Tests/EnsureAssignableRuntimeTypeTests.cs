@@ -561,6 +561,142 @@ public class EnsureAssignableRuntimeTypeTests
         public override int GetHashCode() => Value;
     }
 
+    // ---- A boxed primitive, enum or inline array is decided by its Equals alone ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedIntegersDiffer_ReportsTheTwoAsNotEqual()
+    {
+        object actual = 1;
+        object expected = 2;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DecidedByEquals<int, object>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedIntegersAreEqual_DoesNotThrow()
+    {
+        object actual = 1;
+        object expected = 1;
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedEnumValuesDiffer_ReportsTheTwoAsNotEqual()
+    {
+        object actual = DayOfWeek.Monday;
+        object expected = DayOfWeek.Tuesday;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DecidedByEquals<DayOfWeek, object>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheFirstElementOfABoxedInlineArrayChanged_ReportsTheTwoAsNotEqual()
+    {
+        Triple actualBuffer = new();
+        actualBuffer[0] = Changed;
+        object actual = actualBuffer;
+        object expected = new Triple();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DecidedByEquals<Triple, object>(), exception.Description);
+    }
+
+    // As for a member (see EnsureAssignable_WhenInlineArrayFirstElementIsEqual_DoesNotSeeLaterElements):
+    // ValueType.Equals sees only element 0 of an inline array, and decides it alone.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOnlyTheSecondElementOfABoxedInlineArrayChanged_DoesNotSeeIt()
+    {
+        Triple actualBuffer = new();
+        actualBuffer[1] = Changed;
+        object actual = actualBuffer;
+        object expected = new Triple();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    private static string DecidedByEquals<TRuntime, TDeclared>()
+    {
+        return $"actual and expected are not equal. They are compared as {typeof(TRuntime)} by its Equals alone, "
+            + $"which reports them unequal; T is {typeof(TDeclared)}.";
+    }
+
+    [InlineArray(3)]
+    private struct Triple
+    {
+        private int _element;
+    }
+
+    // ---- A framework class as T: its private fields are compared as on master ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAFrameworkClassAndASubclassOfItHasAnotherSeed_ReportsThePrivateFieldOfT()
+    {
+        Random actual = new SeededRandom(1);
+        Random expected = new SeededRandom(2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - _impl" + ListedFrom<SeededRandom, Random>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAFrameworkClassAndTwoSubclassInstancesHaveTheSameSeed_DoesNotThrow()
+    {
+        Random actual = new SeededRandom(1);
+        Random expected = new SeededRandom(1);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAFrameworkClassAndAPrivateFieldOfAUserClassBetweenChanged_ReportsThatField()
+    {
+        CountingRandom counting = new(1);
+        Random actual = counting;
+        Random expected = new CountingRandom(1);
+        counting.Tick();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - _ticks" + ListedFrom<CountingRandom, Random>(), exception.Description);
+    }
+
+    private sealed class SeededRandom(int seed) : Random(seed);
+
+    private class TickingRandom(int seed) : Random(seed)
+    {
+        private int _ticks;
+
+        public void Tick()
+        {
+            _ticks++;
+        }
+    }
+
+    private sealed class CountingRandom(int seed) : TickingRandom(seed);
+
     // ---- Two different runtime types ----
 
     [Fact]
@@ -736,4 +872,32 @@ public class EnsureAssignableRuntimeTypeTests
             }
         }
     }
+}
+
+// The runtime is simulated as Native AOT. The "no members visible" rule is decided on the runtime type compared.
+[Collection("EnvironmentVariables")]
+public class EnsureAssignableRuntimeTypeWithoutDynamicCodeTests
+{
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeIsNotTAndHasNoVisibleMembers_NamesTheRuntimeTypeAndT()
+    {
+        IMarker actual = new Marker();
+        IMarker expected = new Marker();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(Marker)}, the runtime type of the values (T is {typeof(IMarker)}): "
+                + "no properties or fields are visible to reflection under Native AOT. If the type has members, "
+                + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] "
+                + "on a method that runs, where X is that type, or pass the values as that type; otherwise set "
+                + "DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    private interface IMarker;
+
+    private sealed class Marker : IMarker;
 }

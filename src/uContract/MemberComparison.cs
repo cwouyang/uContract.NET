@@ -54,14 +54,43 @@ internal static class MemberComparison
         );
     }
 
+    // The members the top level compares for a runtime type other than T. When T is a framework class (other
+    // than System.Object) that the runtime type derives from, the private fields of the base classes are
+    // listed up to and including T, which the cached members stop short of; they are listed afresh on each
+    // call. Otherwise these are the cached members of the runtime type.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The runtime type is known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
+    )]
+    internal static TypeMetadata GetTopLevelMetadata(Type runtimeType, Type declaredType)
+    {
+        if (
+            declaredType == runtimeType
+            || declaredType == typeof(object)
+            || !declaredType.IsClass
+            || !IsFrameworkClass(declaredType)
+        )
+        {
+            return GetOrCacheMetadata(runtimeType);
+        }
+
+        return CreateMetadata(
+            runtimeType,
+            runtimeType.GetProperties(BindingFlags.Public | BindingFlags.Instance),
+            privateFieldsUpTo: declaredType
+        );
+    }
+
     // The members of type, given the public instance properties reflection lists for it. Tests pass a listing
-    // of their own to reproduce what Native AOT returns.
+    // of their own to reproduce what Native AOT returns. The private fields of base classes are listed up to the
+    // first framework class or, when privateFieldsUpTo is given, up to and including that class.
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
         Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
     )]
-    internal static TypeMetadata CreateMetadata(Type type, PropertyInfo[] properties)
+    internal static TypeMetadata CreateMetadata(Type type, PropertyInfo[] properties, Type? privateFieldsUpTo = null)
     {
         FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -74,7 +103,9 @@ internal static class MemberComparison
         // GetFields does not return the private fields declared on a base class; they are added after the
         // members above, which alone decide the "no members visible" rule.
         int ownMemberCount = members.Count;
-        members.AddRange(BaseClassPrivateFields(type, properties).Select(f => new MemberAccessor(f)));
+        members.AddRange(
+            BaseClassPrivateFields(type, properties, privateFieldsUpTo).Select(f => new MemberAccessor(f))
+        );
 
         QualifyCollidingNames(members);
 
@@ -176,11 +207,19 @@ internal static class MemberComparison
         "IL2075",
         Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a private field of a base class that the trimmer hides from reflection is not compared."
     )]
-    private static IEnumerable<FieldInfo> BaseClassPrivateFields(Type type, PropertyInfo[] properties)
+    private static IEnumerable<FieldInfo> BaseClassPrivateFields(
+        Type type,
+        PropertyInfo[] properties,
+        Type? privateFieldsUpTo
+    )
     {
         for (
             Type? baseType = type.BaseType;
-            baseType is not null && !IsFrameworkClass(baseType);
+            baseType is not null
+                && (
+                    !IsFrameworkClass(baseType)
+                    || (privateFieldsUpTo is not null && privateFieldsUpTo.IsAssignableFrom(baseType))
+                );
             baseType = baseType.BaseType
         )
         {
