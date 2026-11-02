@@ -584,8 +584,10 @@ internal static class MemberComparison
         ComparisonContext.Frame frame = context.Enter(pair);
         bool equalWithoutWalk = false;
         Walk? walk =
-            actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum
-                ? StartSequences(actualEnum, expectedEnum)
+            actual is IEnumerable actualEnum
+            && expected is IEnumerable expectedEnum
+            && (actual.GetType() != expected.GetType() || GetSequenceRule(actual.GetType()).HasFrameworkClass)
+                ? StartSequencesAndOwnMembers(actualEnum, expectedEnum)
                 : StartMembers(actual, expected, context, out equalWithoutWalk);
 
         // No walk means the pair was decided (different, equal by Equals, or not comparable) before any of its contents.
@@ -640,6 +642,23 @@ internal static class MemberComparison
         {
             return false;
         }
+    }
+
+    // Two sequences of one runtime type that declares members on a class of yours are compared by their
+    // elements and then by those members; any other two sequences by their elements alone.
+    private static Walk? StartSequencesAndOwnMembers(IEnumerable actual, IEnumerable expected)
+    {
+        Walk? elements = StartSequences(actual, expected);
+        Type type = actual.GetType();
+        if (elements is null || type != expected.GetType())
+        {
+            return elements;
+        }
+
+        List<MemberAccessor> ownMembers = GetSequenceRule(type).OwnMembers;
+        return ownMembers.Count == 0
+            ? elements
+            : new ElementsThenMembersWalk(elements, new MemberWalk(ownMembers, actual, expected, fieldsOnly: false));
     }
 
     // Null means the two sequences are different without walking a pair of elements. A walk that holds no
@@ -1018,6 +1037,28 @@ internal static class MemberComparison
 
             _index++;
             return _index < actual.Length ? Child(actual[_index], expected[_index]) : Step.Equal;
+        }
+    }
+
+    // The elements of a sequence, and then the members declared on its own classes.
+    private sealed class ElementsThenMembersWalk(Walk elements, Walk members) : Walk
+    {
+        private Walk _current = elements;
+        private bool _onMembers;
+
+        public override string ChildSegment => _current.ChildSegment;
+
+        public override Step Next()
+        {
+            Step step = _current.Next();
+            if (step == Step.Equal && !_onMembers)
+            {
+                _onMembers = true;
+                _current = members;
+                step = members.Next();
+            }
+
+            return step == Step.Child ? Child(_current.ChildActual, _current.ChildExpected) : step;
         }
     }
 

@@ -243,6 +243,54 @@ public class EnsureAssignableSequenceTests
         Assert.Null(exception);
     }
 
+    // ---- Nested sequences ----
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedEnumerableOfYoursDiffersInItsPrivateList_ReportsTheTopLevelMember()
+    {
+        Holder<LineBook> actual = new() { Value = new LineBook(1, 2) };
+        Holder<LineBook> expected = new() { Value = new LineBook(1, 3) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyTheOwnFieldOfANestedListOfYoursDiffers_ReportsTheTopLevelMember()
+    {
+        Holder<TagList> actual = new() { Value = TagListOf("ann", "red") };
+        Holder<TagList> expected = new() { Value = TagListOf("bob", "red") };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyOneElementOfANestedListOfYoursDiffers_ReportsTheTopLevelMember()
+    {
+        Holder<TagList> actual = new() { Value = TagListOf("ann", "red") };
+        Holder<TagList> expected = new() { Value = TagListOf("ann", "blue") };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    private static TagList TagListOf(string owner, params string[] tags)
+    {
+        TagList list = new() { Owner = owner };
+        list.AddRange(tags);
+        return list;
+    }
+
     private static CodedCollection CodedCollectionOf(string code, params int[] numbers)
     {
         CodedCollection collection = new() { Code = code };
@@ -263,6 +311,18 @@ public class EnsureAssignableSequenceTests
     {
         return $"\nMembers were listed from the runtime type {runtimeType}, not from T ({declaredType}).";
     }
+}
+
+// Holds a value as a member, so that it is compared as a nested value.
+internal sealed class Holder<TValue>
+{
+    public required TValue Value;
+}
+
+// A list of yours built on List<string>, with a field of its own.
+internal sealed class TagList : List<string>
+{
+    public string Owner = "";
 }
 
 // A collection of yours built on Collection<int>, with a field of its own.

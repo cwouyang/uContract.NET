@@ -371,15 +371,17 @@ public class EnsureAssignableBaseClassFieldTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenOnlyTheBaseStateOfANestedCollectionChanges_ComparesItByElement()
+    public void EnsureAssignable_WhenOnlyTheBaseStateOfANestedCollectionOfYoursChanges_ReportsTheMemberThatHoldsIt()
     {
         CollectionHolder actual = new() { Bag = new Bag([1, 2]) };
         CollectionHolder expected = new() { Bag = new Bag([1, 2]) };
         actual.Bag.SetNote("changed");
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(Violation + "  - Bag\n  - <Bag>k__BackingField", exception.Description);
     }
 
     // ---- Framework base classes ----
