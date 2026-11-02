@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using uContract.Exceptions;
 
@@ -282,6 +283,176 @@ public class EnsureAssignableSequenceTests
         );
 
         Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    // ---- Two sequences of different runtime types ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndAListAndAnArrayDifferInOneElement_ReportsTheElements()
+    {
+        IEnumerable<int> actual = ListOf(1, 2);
+        IEnumerable<int> expected = new[] { 1, 3 };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            DifferentSequences(typeof(List<int>), typeof(int[]), typeof(IEnumerable<int>)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndAListAndAnArrayHoldEqualElements_DoesNotThrow()
+    {
+        IEnumerable<int> actual = ListOf(1, 2);
+        IEnumerable<int> expected = new[] { 1, 2 };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndAListAndAHashSetHoldEqualElements_DoesNotThrow()
+    {
+        IEnumerable<int> actual = ListOf(1);
+        HashSet<int> expected = [1];
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndACodedCollectionAndAListHoldEqualElements_ReportsBothRuntimeTypes()
+    {
+        IEnumerable<int> actual = CodedCollectionOf("A", 1, 2);
+        IEnumerable<int> expected = ListOf(1, 2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            DifferentRuntimeTypes(typeof(CodedCollection), typeof(List<int>), typeof(IEnumerable<int>)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndArraysOfTwoElementTypesDiffer_ReportsTheElements()
+    {
+        object actual = new[] { 1 };
+        object expected = new[] { 2L };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DifferentSequences(typeof(int[]), typeof(long[]), typeof(object)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndArraysOfTwoRanksHoldEqualElements_ReportsTheElements()
+    {
+        object actual = new[] { 1, 2 };
+        object expected = new[,]
+        {
+            { 1, 2 },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DifferentSequences(typeof(int[]), typeof(int[,]), typeof(object)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndFrozenSetsOfTwoElementTypesDiffer_ReportsTheElements()
+    {
+        object actual = FrozenSet.ToFrozenSet([1]);
+        object expected = FrozenSet.ToFrozenSet([2L]);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            DifferentSequences(typeof(FrozenSet<int>), typeof(FrozenSet<long>), typeof(object)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAFrozenSetAndAFrozenDictionaryDiffer_ReportsTheElements()
+    {
+        object actual = FrozenSet.ToFrozenSet([1]);
+        object expected = new Dictionary<int, int> { [1] = 1 }.ToFrozenDictionary();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            DifferentSequences(typeof(FrozenSet<int>), typeof(FrozenDictionary<int, int>), typeof(object)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndAFrozenSetAndAListDiffer_ReportsTheElements()
+    {
+        IEnumerable<int> actual = FrozenSet.ToFrozenSet([1]);
+        IEnumerable<int> expected = ListOf(2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            DifferentSequences(typeof(FrozenSet<int>), typeof(List<int>), typeof(IEnumerable<int>)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndAFrozenSetAndAListHoldEqualElements_DoesNotThrow()
+    {
+        IEnumerable<int> actual = FrozenSet.ToFrozenSet([1]);
+        IEnumerable<int> expected = ListOf(1);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedCodedCollectionBecomesAListOfEqualElements_ReportsTheTopLevelMember()
+    {
+        Holder<IEnumerable<int>> actual = new() { Value = CodedCollectionOf("A", 1, 2) };
+        Holder<IEnumerable<int>> expected = new() { Value = ListOf(1, 2) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    private static string DifferentRuntimeTypes(Type actualType, Type expectedType, Type declaredType)
+    {
+        return $"actual and expected are of different runtime types: actual is {actualType}, expected is "
+            + $"{expectedType}, and T is {declaredType}. No member was compared, so assignable patterns do not apply.";
+    }
+
+    private static string DifferentSequences(Type actualType, Type expectedType, Type declaredType)
+    {
+        return $"actual and expected are not equal. They are sequences of different runtime types (actual is "
+            + $"{actualType}, expected is {expectedType}, and T is {declaredType}), compared by their elements, so "
+            + "assignable patterns do not apply.";
     }
 
     private static TagList TagListOf(string owner, params string[] tags)

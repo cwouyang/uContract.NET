@@ -278,17 +278,24 @@ public class EnsureAssignableRuntimeTypeTests
         Assert.Equal(Violation + "  - Radius\n  - <Radius>k__BackingField", exception.Description);
     }
 
-    // ---- Two sequences of different runtime types keep the comparison by T ----
+    // ---- Two sequences of different runtime types are compared by their elements ----
 
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreSequencesOfDifferentRuntimeTypes_ComparesByTAsBefore()
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreSequencesOfDifferentRuntimeTypes_ComparesTheirElements()
     {
         object actual = new List<int> { 1 };
         object expected = new[] { 2 };
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(
+            "actual and expected are not equal. They are sequences of different runtime types (actual is "
+                + $"{typeof(List<int>)}, expected is {typeof(int[])}, and T is {typeof(object)}), compared by their "
+                + "elements, so assignable patterns do not apply.",
+            exception.Description
+        );
     }
 
     // ---- A string, a shared type or a delegate against a class of another runtime type ----

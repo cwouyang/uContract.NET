@@ -272,6 +272,14 @@ internal static class MemberComparison
         );
     }
 
+    // A sequence that is compared by its elements alone, also against a sequence of another runtime type: its
+    // class chain holds a framework class, and it declares no member on a class of yours.
+    internal static bool IsComparedByElementsOnly(Type runtimeType)
+    {
+        SequenceRule rule = GetSequenceRule(runtimeType);
+        return rule.HasFrameworkClass && rule.OwnMembers.Count == 0;
+    }
+
     private static bool HasFrameworkClassBelowObject(Type type)
     {
         for (
@@ -505,12 +513,12 @@ internal static class MemberComparison
         }
 
         // Values of different runtime types are unequal, and neither is read: the members of one type
-        // cannot be read from the other. Two sequences are still compared element by element; two arrays
-        // only when they have the same rank, and the same length and lower bound in every dimension (see
-        // StartReferences).
+        // cannot be read from the other. Two sequences are still compared element by element when neither
+        // declares members on a class of yours (see IsComparedByElementsOnly); two arrays only when they have
+        // the same rank, and the same length and lower bound in every dimension (see StartReferences).
         Type actualType = actual.GetType();
         Type expectedType = expected.GetType();
-        if (actualType != expectedType && !(IsSequence(actual) && IsSequence(expected)))
+        if (actualType != expectedType && !AreSequencesComparedByElementsOnly(actual, expected))
         {
             return null;
         }
@@ -907,6 +915,14 @@ internal static class MemberComparison
     {
         ref byte first = ref MemoryMarshal.GetArrayDataReference(array);
         return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, T>(ref first), array.Length);
+    }
+
+    private static bool AreSequencesComparedByElementsOnly(object actual, object expected)
+    {
+        return IsSequence(actual)
+            && IsSequence(expected)
+            && IsComparedByElementsOnly(actual.GetType())
+            && IsComparedByElementsOnly(expected.GetType());
     }
 
     private static bool IsSequence(object value)

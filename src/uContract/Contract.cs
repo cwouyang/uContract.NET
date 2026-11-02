@@ -1398,7 +1398,10 @@ public static class Contract
                 return;
             }
 
-            if (_CompareByRuntimeType(typeof(T), actual!, expected!))
+            if (
+                _CompareByRuntimeType(typeof(T), actual!, expected!)
+                || _CompareSequencesOfDifferentRuntimeTypes(typeof(T), actual!, expected!)
+            )
             {
                 return;
             }
@@ -1463,8 +1466,8 @@ public static class Contract
     // Returns true when the runtime type of the two values settled the comparison: a value that is compared as a
     // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array) or by reference
     // (a shared type) is compared so whatever T is, and the patterns are not read. Two values of different
-    // runtime types where either is such a value are a violation, except two sequences, which are left to the
-    // comparison by the members of T. T = Pointer (sealed) keeps the comparison by its members, the address and
+    // runtime types where either is such a value are a violation, except two sequences, which are left to
+    // _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the address and
     // the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
     private static bool _CompareByRuntimeType(Type declaredType, object actual, object expected)
     {
@@ -1517,6 +1520,47 @@ public static class Contract
             $"actual and expected are different instances of {actualType}, which is compared by reference: "
                 + "its state is not compared, and assignable patterns do not apply. To check its state, use "
                 + "Contract.Ensure."
+        );
+    }
+
+    // Returns true when the two values are sequences of different runtime types: they are compared by their
+    // elements when neither runtime type declares members on a class of yours (see
+    // MemberComparison.GetSequenceRule), and are otherwise a violation. The patterns are not read.
+    private static bool _CompareSequencesOfDifferentRuntimeTypes(Type declaredType, object actual, object expected)
+    {
+        Type actualType = actual.GetType();
+        Type expectedType = expected.GetType();
+        if (
+            actualType == expectedType
+            || !(actual is IEnumerable and not string && expected is IEnumerable and not string)
+        )
+        {
+            return false;
+        }
+
+        if (
+            !MemberComparison.IsComparedByElementsOnly(actualType)
+            || !MemberComparison.IsComparedByElementsOnly(expectedType)
+        )
+        {
+            throw _DifferentRuntimeTypes(actualType, expectedType, declaredType);
+        }
+
+        ComparisonContext context = new();
+        if (MemberComparison.AreEqual(actual, expected, context))
+        {
+            return true;
+        }
+
+        if (context.Hidden is not null)
+        {
+            throw MemberComparison.CannotCompareBelowWhole(actualType, context.Hidden);
+        }
+
+        throw new PostconditionViolationException(
+            "actual and expected are not equal. They are sequences of different runtime types (actual is "
+                + $"{SharedTypes.PublicFrozenType(actualType)}, expected is {SharedTypes.PublicFrozenType(expectedType)}, "
+                + $"and T is {declaredType}), compared by their elements, so assignable patterns do not apply."
         );
     }
 
