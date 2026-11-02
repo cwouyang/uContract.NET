@@ -1170,7 +1170,12 @@ public static class Contract
     ///     is not reported by this rule: it is read with the getter that exists, that of its declaring type or of
     ///     the nearest declaration of the same virtual property that has one, and is compared once, in every
     ///     build. That getter runs, and a getter that throws ends the call in
-    ///     <see cref="System.Reflection.TargetInvocationException" />, as for any getter.
+    ///     <see cref="System.Reflection.TargetInvocationException" />, as for any getter. At the top level, a
+    ///     framework property without a getter that <typeparamref name="T" /> does not declare or inherit is not
+    ///     read, so it does not end the call (see the remarks).
+    ///     Also thrown, in any build, when a value at the top level is a sequence built on a framework class that is
+    ///     not a collection (see the remarks) and its runtime type is not <typeparamref name="T" />; it is not
+    ///     enumerated.
     /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare the public instance properties (indexers excluded)
@@ -1222,6 +1227,14 @@ public static class Contract
     ///     members alone, as any other class, and it is not enumerated. A <c>yield</c> iterator of yours (a class
     ///     marked <see cref="CompilerGeneratedAttribute" /> that implements <see cref="System.Collections.IEnumerator" />)
     ///     is compared by its elements alone, at every level: its fields are the state of the iteration.
+    ///     At the top level, a sequence built on a framework class that is not a collection (it implements none of
+    ///     <see cref="System.Collections.ICollection" />, <see cref="ICollection{T}" /> and
+    ///     <see cref="IReadOnlyCollection{T}" />: a LINQ query such as <c>source.Select(...)</c>,
+    ///     <c>GetConsumingEnumerable()</c>, an <c>XmlDocument</c>) is never enumerated: enumerating it could run a
+    ///     query, consume its source or block. When its runtime type is not <typeparamref name="T" />, the method
+    ///     throws <see cref="InvalidOperationException" /> and asks for a materialised collection (for example
+    ///     <c>ToList()</c>) or for the value's own type as <typeparamref name="T" />; passed as its own type, it is
+    ///     compared by its members only, as above. A nested one is enumerated as any other sequence.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
     ///     chains hold a framework class, and neither declares a member on a class that is not a framework class;
