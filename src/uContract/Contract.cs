@@ -1265,21 +1265,24 @@ public static class Contract
     ///     compared by address). The patterns do not apply and are not examined. A message names a frozen
     ///     collection by its public type, <c>FrozenSet&lt;T&gt;</c> or <c>FrozenDictionary&lt;TKey, TValue&gt;</c>,
     ///     not by its internal runtime type.
-    ///     Two frozen collections of one public type are compared so also when the framework built them as
-    ///     different internal classes.
-    ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
-    ///     delegate, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> (two <c>Stream</c>s, two
-    ///     <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever
-    ///     <typeparamref name="T" /> is and whatever their state: no member is read and the patterns do not apply.
-    ///     Check such a state with <see cref="Ensure(string, Func{bool})" />.
-    ///     Two values of different runtime types, either of which is compared as a whole or shared, are a
-    ///     violation that names both runtime types and <typeparamref name="T" />, except two sequences
-    ///     (<see cref="System.Collections.IEnumerable" /> other than a string), which are compared as below.
     ///     A nullable value type can therefore be compared less strictly than the same type without <c>?</c>
     ///     (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of it
     ///     cannot be listed as assignable. To compare it by its members, test both values for null first and pass the
     ///     unwrapped values, for example with <c>if (a is { } x &amp;&amp; b is { } y)</c>; do not read <c>.Value</c>
     ///     before that test: it throws when there is no value.
+    ///     Two frozen collections of one public type are compared as a whole also when the framework built them
+    ///     as different internal classes. Two boxed pointers (<see cref="System.Reflection.Pointer" />) of one
+    ///     runtime type are compared by address, as a member of that type is, whatever <typeparamref name="T" /> is.
+    ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
+    ///     delegate, a boxed pointer, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
+    ///     (two <c>Stream</c>s, two <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever
+    ///     <typeparamref name="T" /> is and whatever their state: no member is read and the patterns do not apply.
+    ///     This holds also for a shared type that is an <see cref="System.Collections.IEnumerable" /> (a
+    ///     <c>ConditionalWeakTable&lt;TKey, TValue&gt;</c>): the shared rule wins over the rule for sequences below.
+    ///     Check such a state with <see cref="Ensure(string, Func{bool})" />.
+    ///     Two values of different runtime types, either of which is compared as a whole or shared, are a
+    ///     violation that names both runtime types and <typeparamref name="T" />, except two sequences
+    ///     (<see cref="System.Collections.IEnumerable" /> other than a string), which are compared as below.
     ///     For every other <typeparamref name="T" /> the two values are compared by the members of their runtime
     ///     type (as <typeparamref name="T" /> = that type would compare them; a value of a value type other than
     ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; a primitive, an enum and an
@@ -1299,7 +1302,8 @@ public static class Contract
     ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
     ///     <see cref="Exception.InnerException" />, also where comparing by the members of
     ///     <typeparamref name="T" /> alone passed.
-    ///     When either runtime type is another <see cref="System.Collections.IEnumerable" />, when the two values
+    ///     When either runtime type is another <see cref="System.Collections.IEnumerable" /> (one that is not
+    ///     shared, or one that is shared and stands against a sequence of another runtime type), when the two values
     ///     are sequences of different runtime types, and when one instance of a type that is shared, and fixed
     ///     (a <c>Regex</c>), is on both sides, the members visible through <typeparamref name="T" /> are
     ///     compared instead: <see cref="object" /> has none, so nothing is compared beyond null; a base class
@@ -1483,7 +1487,8 @@ public static class Contract
             throw _DifferentRuntimeTypes(actualType, expectedType, declaredType);
         }
 
-        if (_IsComparedAsWhole(actualType))
+        // A boxed pointer is shared, but compared by address, as a member of it is (see MemberComparison.Start).
+        if (_IsComparedAsWhole(actualType) || actual is System.Reflection.Pointer)
         {
             _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), actual, expected);
             return true;

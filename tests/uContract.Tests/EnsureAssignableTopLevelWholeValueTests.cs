@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.ComponentModel;
 using System.Globalization;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using uContract.Exceptions;
 
@@ -222,6 +223,64 @@ public class EnsureAssignableTopLevelWholeValueTests
         );
 
         Assert.Equal(NotEqual(typeof(FrozenDictionary<string, int>)), exception.Description);
+    }
+
+    // ---- A boxed pointer: compared by address, as a member is ----
+
+    [Fact]
+    public unsafe void EnsureAssignable_WhenTIsObjectAndTwoPointerBoxesHoldTheSameAddress_DoesNotThrow()
+    {
+        int target = 1;
+        object actual = Pointer.Box(&target, typeof(int*));
+        object expected = Pointer.Box(&target, typeof(int*));
+        Assert.NotSame(actual, expected);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public unsafe void EnsureAssignable_WhenTIsAPointerAndTwoBoxesHoldTheSameAddress_DoesNotThrow()
+    {
+        int target = 1;
+        Pointer actual = (Pointer)Pointer.Box(&target, typeof(int*));
+        Pointer expected = (Pointer)Pointer.Box(&target, typeof(int*));
+        Assert.NotSame(actual, expected);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public unsafe void EnsureAssignable_WhenTIsObjectAndTwoPointerBoxesHoldDifferentAddresses_ReportsThePointerAsComparedAsAWhole()
+    {
+        int first = 1;
+        int second = 1;
+        object actual = Pointer.Box(&first, typeof(int*));
+        object expected = Pointer.Box(&second, typeof(int*));
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(Pointer)), exception.Description);
+    }
+
+    [Fact]
+    public unsafe void EnsureAssignable_WhenTIsAPointerAndTwoBoxesHoldDifferentAddresses_ReportsThePointerAsComparedAsAWhole()
+    {
+        int first = 1;
+        int second = 1;
+        Pointer actual = (Pointer)Pointer.Box(&first, typeof(int*));
+        Pointer expected = (Pointer)Pointer.Box(&second, typeof(int*));
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotEqual(typeof(Pointer)), exception.Description);
     }
 
     // ---- A shared type ----
