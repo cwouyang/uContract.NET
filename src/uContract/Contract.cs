@@ -1469,11 +1469,7 @@ public static class Contract
                 return false;
             }
 
-            throw new PostconditionViolationException(
-                $"actual and expected are of different runtime types: actual is {SharedTypes.PublicFrozenType(actualType)}, "
-                    + $"expected is {SharedTypes.PublicFrozenType(expectedType)}, and T is {declaredType}. "
-                    + "No member was compared, so assignable patterns do not apply."
-            );
+            throw _DifferentRuntimeTypes(actualType, expectedType, declaredType);
         }
 
         if (_IsComparedAsWhole(actualType))
@@ -1551,14 +1547,24 @@ public static class Contract
 
         if (actualType != expectedType)
         {
-            throw new PostconditionViolationException(
-                $"actual and expected are of different runtime types: actual is {actualType}, "
-                    + $"expected is {expectedType}, and T is {declaredType}. "
-                    + "No member was compared, so assignable patterns do not apply."
-            );
+            throw _DifferentRuntimeTypes(actualType, expectedType, declaredType);
         }
 
         return actualType;
+    }
+
+    // A frozen collection is named by its public type, not by its internal runtime type.
+    private static PostconditionViolationException _DifferentRuntimeTypes(
+        Type actualType,
+        Type expectedType,
+        Type declaredType
+    )
+    {
+        return new PostconditionViolationException(
+            $"actual and expected are of different runtime types: actual is {SharedTypes.PublicFrozenType(actualType)}, "
+                + $"expected is {SharedTypes.PublicFrozenType(expectedType)}, and T is {declaredType}. "
+                + "No member was compared, so assignable patterns do not apply."
+        );
     }
 
     private static bool _KeepsTheDeclaredType(Type runtimeType)
