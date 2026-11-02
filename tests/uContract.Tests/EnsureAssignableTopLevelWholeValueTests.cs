@@ -225,7 +225,7 @@ public class EnsureAssignableTopLevelWholeValueTests
         Assert.Equal(NotEqual(typeof(FrozenDictionary<string, int>)), exception.Description);
     }
 
-    // ---- A boxed pointer: compared by address, as a member is ----
+    // ---- A boxed pointer: under object compared by address, as a member is ----
 
     [Fact]
     public unsafe void EnsureAssignable_WhenTIsObjectAndTwoPointerBoxesHoldTheSameAddress_DoesNotThrow()
@@ -268,8 +268,9 @@ public class EnsureAssignableTopLevelWholeValueTests
         Assert.Equal(NotEqual(typeof(Pointer)), exception.Description);
     }
 
+    // T = Pointer is compared by the members of Pointer, as before: the address and the pointer type.
     [Fact]
-    public unsafe void EnsureAssignable_WhenTIsAPointerAndTwoBoxesHoldDifferentAddresses_ReportsThePointerAsComparedAsAWhole()
+    public unsafe void EnsureAssignable_WhenTIsAPointerAndTwoBoxesHoldDifferentAddresses_ReportsTheAddressField()
     {
         int first = 1;
         int second = 1;
@@ -280,7 +281,48 @@ public class EnsureAssignableTopLevelWholeValueTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal(NotEqual(typeof(Pointer)), exception.Description);
+        Assert.Equal(FieldsModified + "  - _ptr", exception.Description);
+    }
+
+    [Fact]
+    public unsafe void EnsureAssignable_WhenTIsAPointerAndTwoBoxesHoldOneAddressAsDifferentPointerTypes_ReportsThePointerTypeField()
+    {
+        int target = 1;
+        Pointer actual = (Pointer)Pointer.Box(&target, typeof(int*));
+        Pointer expected = (Pointer)Pointer.Box(&target, typeof(long*));
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(FieldsModified + "  - _ptrType", exception.Description);
+    }
+
+    // Under object a boxed pointer is compared as a member is: by address only, not by its pointer type.
+    [Fact]
+    public unsafe void EnsureAssignable_WhenTIsObjectAndTwoBoxesHoldOneAddressAsDifferentPointerTypes_DoesNotThrow()
+    {
+        int target = 1;
+        object actual = Pointer.Box(&target, typeof(int*));
+        object expected = Pointer.Box(&target, typeof(long*));
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public unsafe void EnsureAssignable_WhenTIsObjectAndAPointerBoxStandsAgainstANumber_NamesBothRuntimeTypesAndT()
+    {
+        int target = 1;
+        object actual = Pointer.Box(&target, typeof(int*));
+        object expected = 1;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DifferentRuntimeTypes(typeof(Pointer), typeof(int), typeof(object)), exception.Description);
     }
 
     // ---- A shared type ----
@@ -387,6 +429,8 @@ public class EnsureAssignableTopLevelWholeValueTests
     private static int One() => 1;
 
     private static int Two() => 2;
+
+    private const string FieldsModified = "Fields were modified that are not marked as assignable:\n";
 
     private static string NotEqual(Type type) =>
         $"actual and expected are not equal. {type} is compared as a whole, so assignable patterns do not apply.";

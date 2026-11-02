@@ -1271,8 +1271,11 @@ public static class Contract
     ///     unwrapped values, for example with <c>if (a is { } x &amp;&amp; b is { } y)</c>; do not read <c>.Value</c>
     ///     before that test: it throws when there is no value.
     ///     Two frozen collections of one public type are compared as a whole also when the framework built them
-    ///     as different internal classes. Two boxed pointers (<see cref="System.Reflection.Pointer" />) of one
-    ///     runtime type are compared by address, as a member of that type is, whatever <typeparamref name="T" /> is.
+    ///     as different internal classes. Two boxed pointers (<see cref="System.Reflection.Pointer" />) passed as
+    ///     <see cref="object" /> or an interface are compared as a member of that type is: by address only, so
+    ///     two boxes of one address as different pointer types (<c>int*</c> and <c>long*</c>) are equal. With
+    ///     <typeparamref name="T" /> = <see cref="System.Reflection.Pointer" /> their members (the address and the
+    ///     pointer type) are compared, as for any other class.
     ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
     ///     delegate, a boxed pointer, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
     ///     (two <c>Stream</c>s, two <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever
@@ -1458,9 +1461,15 @@ public static class Contract
     // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array) or by reference
     // (a shared type) is compared so whatever T is, and the patterns are not read. Two values of different
     // runtime types where either is such a value are a violation, except two sequences, which are left to the
-    // comparison by the members of T.
+    // comparison by the members of T. T = Pointer (sealed) keeps the comparison by its members, the address and
+    // the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
     private static bool _CompareByRuntimeType(Type declaredType, object actual, object expected)
     {
+        if (declaredType == typeof(System.Reflection.Pointer))
+        {
+            return false;
+        }
+
         Type actualType = actual.GetType();
         Type expectedType = expected.GetType();
         if (!_IsDecidedByRuntimeType(actualType) && !_IsDecidedByRuntimeType(expectedType))
