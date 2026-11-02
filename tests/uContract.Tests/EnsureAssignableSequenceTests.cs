@@ -482,39 +482,39 @@ public class EnsureAssignableSequenceTests
     {
         return $"\nMembers were listed from the runtime type {runtimeType}, not from T ({declaredType}).";
     }
-}
 
-// Holds a value as a member, so that it is compared as a nested value.
-internal sealed class Holder<TValue>
-{
-    public required TValue Value;
-}
-
-// A list of yours built on List<string>, with a field of its own.
-internal sealed class TagList : List<string>
-{
-    public string Owner = "";
-}
-
-// A collection of yours built on Collection<int>, with a field of its own.
-internal sealed class CodedCollection : Collection<int>
-{
-    public string Code = "";
-}
-
-// A class of yours that implements IEnumerable<int> itself, over a private list. Its enumerator throws, so a
-// comparison that enumerates it fails with that exception.
-internal sealed class LineBook(params int[] lines) : IEnumerable<int>
-{
-    private readonly List<int> _lines = [.. lines];
-
-    public IEnumerator<int> GetEnumerator()
+    // Holds a value as a member, so that it is compared as a nested value.
+    private sealed class Holder<TValue>
     {
-        throw new NotSupportedException("A LineBook is not enumerated by the comparison.");
+        public required TValue Value;
     }
 
-    IEnumerator IEnumerable.GetEnumerator()
+    // A list of yours built on List<string>, with a field of its own.
+    private sealed class TagList : List<string>
     {
-        return GetEnumerator();
+        public string Owner = "";
+    }
+
+    // A collection of yours built on Collection<int>, with a field of its own.
+    private sealed class CodedCollection : Collection<int>
+    {
+        public string Code = "";
+    }
+
+    // A class of yours that implements IEnumerable<int> itself, over a private list. Its enumerator throws, so
+    // a comparison that enumerates it fails with that exception.
+    private sealed class LineBook(params int[] lines) : IEnumerable<int>
+    {
+        private readonly List<int> _lines = [.. lines];
+
+        public IEnumerator<int> GetEnumerator()
+        {
+            throw new NotSupportedException("A LineBook is not enumerated by the comparison.");
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 }
