@@ -56,6 +56,19 @@ public class EnsureAssignableSequenceTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoListsOfEqualContentDifferInCapacity_DoesNotThrow()
+    {
+        List<int> actualList = new(SpareCapacity);
+        actualList.AddRange([1, 2]);
+        object actual = actualList;
+        object expected = ListOf(1, 2);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenTIsAReadOnlyListInterfaceAndTwoListsDifferInOneElement_ReportsTheElements()
     {
         IReadOnlyList<int> actual = ListOf(1, 2);
