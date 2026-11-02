@@ -1234,9 +1234,10 @@ public static class Contract
     ///     query, consume its source or block. When its runtime type is not <typeparamref name="T" />, the method
     ///     throws <see cref="InvalidOperationException" /> and asks for a materialised collection (for example
     ///     <c>ToList()</c>) or for the value's own type as <typeparamref name="T" />; passed as its own type, it is
-    ///     compared by all its members, the private fields of the framework included, as any other class
-    ///     (an <c>ImmutableQueue&lt;T&gt;</c> by its private fields). A nested one is enumerated as
-    ///     any other sequence.
+    ///     compared by all its members, as any other class: the private fields of <typeparamref name="T" />
+    ///     included (an <c>ImmutableQueue&lt;T&gt;</c> by its private fields), and those of its base classes up to the
+    ///     first framework class, so a class of yours derived from <c>XmlDocument</c> does not compare the private
+    ///     fields of <c>XmlDocument</c>. A nested one is enumerated as any other sequence.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
     ///     chains hold a framework class, and neither declares a member on a class that is not a framework class;
