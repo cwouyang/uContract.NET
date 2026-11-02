@@ -545,6 +545,76 @@ public class EnsureAssignableSequenceTests
         Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
+    // ---- Cycles ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoListsHoldThemselvesAndDifferInAnotherElement_ReportsTheElements()
+    {
+        List<object> actualList = ListHoldingItselfAnd(1);
+        List<object> expectedList = ListHoldingItselfAnd(2);
+        object actual = actualList;
+        object expected = expectedList;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + ElementsEntry + ListedFrom(typeof(List<object>), typeof(object)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoListsHoldThemselvesAndAnEqualElement_DoesNotThrow()
+    {
+        object actual = ListHoldingItselfAnd(1);
+        object expected = ListHoldingItselfAnd(1);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedNodeListWithAParentCycleDiffersInTheOwnFieldOfAChild_ReportsTheTopLevelMember()
+    {
+        Holder<Node> actual = new() { Value = NodeWithChildNamed("left") };
+        Holder<Node> expected = new() { Value = NodeWithChildNamed("right") };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTwoNestedNodeListsWithAParentCycleAreEqual_DoesNotThrow()
+    {
+        Holder<Node> actual = new() { Value = NodeWithChildNamed("left") };
+        Holder<Node> expected = new() { Value = NodeWithChildNamed("left") };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    private static List<object> ListHoldingItselfAnd(int number)
+    {
+        List<object> list = [];
+        list.Add(list);
+        list.Add(number);
+        return list;
+    }
+
+    private static Node NodeWithChildNamed(string childName)
+    {
+        Node root = new() { Name = "root" };
+        root.Add(new Node { Name = childName, Parent = root });
+        return root;
+    }
+
     private static string DifferentRuntimeTypes(Type actualType, Type expectedType, Type declaredType)
     {
         return $"actual and expected are of different runtime types: actual is {actualType}, expected is "
@@ -596,6 +666,13 @@ public class EnsureAssignableSequenceTests
     private sealed class TagList : List<string>
     {
         public string Owner = "";
+    }
+
+    // A tree node of yours built on List<Node>, whose children point back to it.
+    private sealed class Node : List<Node>
+    {
+        public string Name = "";
+        public Node? Parent;
     }
 
     // A collection of yours built on Collection<int>, with a field of its own.
