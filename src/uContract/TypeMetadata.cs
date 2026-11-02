@@ -13,9 +13,10 @@ internal sealed class TypeMetadata
     public List<MemberAccessor> Members { get; set; } = [];
 
     /// <summary>
-    ///     The number of members at the start of <see cref="Members" /> that reflection lists for the type (its
-    ///     public properties and the fields GetFields returns), before the private fields declared on its base
-    ///     classes; the "no members visible" rule is decided on them.
+    ///     The number of members in <see cref="Members" /> that decide the "no members visible" rule: those
+    ///     reflection lists for the type (its public properties and the fields GetFields returns), plus, when the
+    ///     private fields of base classes are walked up to a framework T, the private fields declared on T.
+    ///     Other private fields of base classes are not counted.
     /// </summary>
     public int OwnMemberCount { get; set; }
 }

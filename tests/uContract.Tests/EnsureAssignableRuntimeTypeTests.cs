@@ -897,7 +897,38 @@ public class EnsureAssignableRuntimeTypeWithoutDynamicCodeTests
         );
     }
 
+    // SeededRandom declares no member of its own; under Native AOT the private fields of Random (T) stay
+    // visible, because [DynamicallyAccessedMembers] on T preserves them, so they are compared.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAFrameworkClassAndTheSubclassHasNoOwnMembersButAnotherSeed_ReportsThePrivateFieldOfT()
+    {
+        Random actual = new SeededRandom(1);
+        Random expected = new SeededRandom(2);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - _impl"
+                + $"\nMembers were listed from the runtime type {typeof(SeededRandom)}, not from T ({typeof(Random)}).",
+            violation.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAFrameworkClassAndTheSubclassHasNoOwnMembersAndTheSameSeed_DoesNotThrow()
+    {
+        Random actual = new SeededRandom(1);
+        Random expected = new SeededRandom(1);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     private interface IMarker;
 
     private sealed class Marker : IMarker;
+
+    private sealed class SeededRandom(int seed) : Random(seed);
 }

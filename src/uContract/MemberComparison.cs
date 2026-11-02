@@ -101,11 +101,12 @@ internal static class MemberComparison
             .ToList();
 
         // GetFields does not return the private fields declared on a base class; they are added after the
-        // members above, which alone decide the "no members visible" rule.
+        // members above, which decide the "no members visible" rule together with the private fields declared
+        // on privateFieldsUpTo: [DynamicallyAccessedMembers] on T preserves those under Native AOT.
         int ownMemberCount = members.Count;
-        members.AddRange(
-            BaseClassPrivateFields(type, properties, privateFieldsUpTo).Select(f => new MemberAccessor(f))
-        );
+        List<FieldInfo> baseClassPrivateFields = BaseClassPrivateFields(type, properties, privateFieldsUpTo).ToList();
+        ownMemberCount += baseClassPrivateFields.Count(f => f.DeclaringType == privateFieldsUpTo);
+        members.AddRange(baseClassPrivateFields.Select(f => new MemberAccessor(f)));
 
         QualifyCollidingNames(members);
 
@@ -353,7 +354,8 @@ internal static class MemberComparison
 
     // Under Native AOT a type whose members were not preserved reflects as having none, which
     // would make every comparison of it pass. System.Object genuinely has none (lock objects). The rule is
-    // decided before the private fields of base classes are added, also when those fields are visible.
+    // decided on OwnMemberCount, which leaves out the private fields of base classes, also when those fields
+    // are visible, except the private fields declared on a framework T at the top level.
     internal static bool MembersAreHidden(Type type, TypeMetadata metadata)
     {
         return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;

@@ -1190,7 +1190,9 @@ public static class Contract
     ///     (or <c>All</c>); the objects those fields hold are compared by their members, so preserve their types
     ///     too, or two unequal instances of such a type end in "cannot compare". The rule "no members visible"
     ///     is decided on the members before the private fields of base classes are added, so a type whose only
-    ///     state is such fields still counts as having no members visible (see the exceptions). In a trimmed
+    ///     state is such fields still counts as having no members visible (see the exceptions); at the top level,
+    ///     the private fields declared on a framework class <typeparamref name="T" /> that the runtime type derives
+    ///     from count as visible, because the annotation on <typeparamref name="T" /> preserves them. In a trimmed
     ///     application without Native AOT these fields may not be preserved either; they are then not compared,
     ///     and that is not detected.
     ///     The walk goes deeper into nested objects and collection elements without recursion, so cycles and
