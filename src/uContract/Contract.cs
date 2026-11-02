@@ -1423,7 +1423,7 @@ public static class Contract
 
             if (
                 _CompareByRuntimeType(typeof(T), actual!, expected!)
-                || _CompareSequencesOfDifferentRuntimeTypes(typeof(T), actual!, expected!)
+                || _CompareSequencesOfDifferentRuntimeTypes(typeof(T), actual!, expected!, assignableFieldPatterns)
             )
             {
                 return;
@@ -1548,8 +1548,15 @@ public static class Contract
 
     // Returns true when the two values are sequences of different runtime types: they are compared by their
     // elements when neither runtime type declares members on a class of yours (see
-    // MemberComparison.GetSequenceRule), and are otherwise a violation. The patterns are not read.
-    private static bool _CompareSequencesOfDifferentRuntimeTypes(Type declaredType, object actual, object expected)
+    // MemberComparison.GetSequenceRule), and are otherwise a violation. When T is an interface, the properties
+    // it declares are compared after equal elements, read through it, and the patterns apply to them; the
+    // patterns are not read otherwise.
+    private static bool _CompareSequencesOfDifferentRuntimeTypes(
+        Type declaredType,
+        object actual,
+        object expected,
+        string[] assignableFieldPatterns
+    )
     {
         Type actualType = actual.GetType();
         Type expectedType = expected.GetType();
@@ -1572,6 +1579,7 @@ public static class Contract
         ComparisonContext context = new();
         if (MemberComparison.AreEqual(actual, expected, context))
         {
+            _CompareInterfaceProperties(declaredType, actual, expected, assignableFieldPatterns);
             return true;
         }
 
@@ -1585,6 +1593,33 @@ public static class Contract
                 + $"{SharedTypes.PublicFrozenType(actualType)}, expected is {SharedTypes.PublicFrozenType(expectedType)}, "
                 + $"and T is {declaredType}), compared by their elements, so assignable patterns do not apply."
         );
+    }
+
+    // The properties an interface T declares, read through it, as for any interface T.
+    private static void _CompareInterfaceProperties(
+        Type declaredType,
+        object actual,
+        object expected,
+        string[] assignableFieldPatterns
+    )
+    {
+        if (!declaredType.IsInterface)
+        {
+            return;
+        }
+
+        List<string> differences = _FindDifferences(
+            declaredType,
+            [.. MemberComparison.GetOrCacheMetadata(declaredType).Members],
+            actual,
+            expected,
+            assignableFieldPatterns,
+            byElements: false
+        );
+        if (differences.Count > 0)
+        {
+            throw _FieldsWereModified(differences, declaredType, declaredType);
+        }
     }
 
     private static bool _IsDecidedByRuntimeType(Type runtimeType)

@@ -545,6 +545,30 @@ public class EnsureAssignableSequenceTests
         Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenTIsACollectionInterfaceAndAListAndAReadOnlyCollectionHoldEqualElements_ReportsIsReadOnly()
+    {
+        ICollection<int> actual = ListOf(1);
+        ICollection<int> expected = new ReadOnlyCollection<int>([1]);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - IsReadOnly", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAPatternNamesIsReadOnlyAndAListAndAReadOnlyCollectionHoldEqualElements_DoesNotThrow()
+    {
+        ICollection<int> actual = ListOf(1);
+        ICollection<int> expected = new ReadOnlyCollection<int>([1]);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected, "IsReadOnly"));
+
+        Assert.Null(exception);
+    }
+
     // ---- Cycles ----
 
     [Fact]
