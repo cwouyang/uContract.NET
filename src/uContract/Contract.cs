@@ -1182,12 +1182,12 @@ public static class Contract
     ///     public key tokens of the .NET 8 shared frameworks (the runtime libraries, ASP.NET Core,
     ///     <c>Microsoft.Extensions.*</c>, WPF and Windows Forms); a library that is signed otherwise or not signed
     ///     is walked. The fields of a framework class that are not private (<c>List&lt;T&gt;._size</c>) are
-    ///     compared, as every inherited field that is not private is; its private fields are not. Static fields are not
-    ///     compared. An auto-property declared on a base class that is not public is compared as its backing
+    ///     compared, as every inherited field that is not private is, except in a sequence (see below); its private
+    ///     fields are not. Static fields are not compared. An auto-property declared on a base class that is not public is compared as its backing
     ///     field (<c>&lt;Note&gt;k__BackingField</c>); the backing field of an auto-property that is compared as
     ///     a property (a public one, also with a protected setter, and one read with the getter that exists, see
-    ///     the exceptions) is left out, so that property is compared once. A nested collection class of yours is
-    ///     still compared by its elements. A change of such a field, for example raising a domain event that a
+    ///     the exceptions) is left out, so that property is compared once. A collection class of yours is compared
+    ///     as a sequence (see below). A change of such a field, for example raising a domain event that a
     ///     base aggregate class keeps in a private list, is a violation unless the member is listed as
     ///     assignable.
     ///     Native AOT: the private fields declared on a base class are not preserved, so they are not compared,
@@ -1207,8 +1207,21 @@ public static class Contract
     ///     and that is not detected.
     ///     The walk goes deeper into nested objects and collection elements without recursion, so cycles and
     ///     deep graphs are safe.
+    ///     A sequence (a class that is an <see cref="System.Collections.IEnumerable" />, other than a string, an
+    ///     array, a frozen collection and a shared type, which keep their own rules) is compared by the class chain
+    ///     of its runtime type, at the top level and wherever a member, element, key or value holds it. When the
+    ///     chain holds a framework class below <see cref="object" /> (<c>List&lt;T&gt;</c>,
+    ///     <c>Collection&lt;T&gt;</c>, <c>Dictionary&lt;TKey, TValue&gt;</c>), it is compared by its elements and
+    ///     by the members of its runtime type that are declared on a class that is not a framework class; the
+    ///     private state of the framework (<c>_items</c>, <c>_version</c>, <c>Capacity</c>) is not compared, so two
+    ///     lists of equal content and different capacity or add and remove history are equal. Otherwise (a class of
+    ///     yours that implements <see cref="System.Collections.IEnumerable" /> itself) it is compared by its
+    ///     members alone, as any other class, and it is not enumerated.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
-    ///     runtime types are unequal, except two sequences, which are compared element by element. Two arrays, of
+    ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
+    ///     chains hold a framework class, and neither declares a member on a class that is not a framework class;
+    ///     an array and a value-type sequence such as <c>ImmutableArray&lt;T&gt;</c> qualify), which are compared
+    ///     element by element. Two arrays, of
     ///     one runtime type or of two, are equal only when they also have the same rank, and the same length and
     ///     lower bound in every dimension; this does not apply to an array and a sequence that is not an array, nor
     ///     to the two values passed to the method as a <typeparamref name="T" /> that is compared by its members,
@@ -1300,7 +1313,14 @@ public static class Contract
     ///     interface, the properties it declares are compared too, read through it (an explicitly implemented one
     ///     included, also beside a public property of the same name), after the members of the runtime type; one
     ///     of them is not reported when a member of its name was reported already. The patterns apply to them by
-    ///     their names. Two values of different runtime types are a violation. When the runtime type is not
+    ///     their names. A sequence whose class chain holds a framework class is compared, as above, by the members
+    ///     declared on a class that is not a framework class (the patterns apply to them, also to the properties of
+    ///     an interface <typeparamref name="T" /> that is not a framework interface) and by its elements, which no
+    ///     pattern excuses: a difference in them is reported as the entry
+    ///     <c>(the elements; assignable patterns do not apply to them)</c>. Two values of different runtime types
+    ///     are a violation, except two sequences that are compared by their elements alone (see above): their
+    ///     elements are compared, and a difference is a violation that names both runtime types and
+    ///     <typeparamref name="T" />. When the runtime type is not
     ///     <typeparamref name="T" />, a violation message names the runtime type the members were listed from.
     ///     The getters of the public properties of a reference type's runtime type, and of the properties of an
     ///     interface <typeparamref name="T" />, then run (a property of an interface <typeparamref name="T" />
@@ -1308,9 +1328,9 @@ public static class Contract
     ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
     ///     <see cref="Exception.InnerException" />, also where comparing by the members of
     ///     <typeparamref name="T" /> alone passed.
-    ///     When either runtime type is another <see cref="System.Collections.IEnumerable" /> (one that is not
-    ///     shared, or one that is shared and stands against a sequence of another runtime type), when the two values
-    ///     are sequences of different runtime types, and when one instance of a type that is shared, and fixed
+    ///     When either runtime type is a value type that is an <see cref="System.Collections.IEnumerable" />
+    ///     (<c>ImmutableArray&lt;T&gt;</c>, <c>ArraySegment&lt;T&gt;</c>) and the other is not a sequence of
+    ///     another runtime type, and when one instance of a type that is shared, and fixed
     ///     (a <c>Regex</c>), is on both sides, the members visible through <typeparamref name="T" /> are
     ///     compared instead: <see cref="object" /> has none, so nothing is compared beyond null; a base class
     ///     compares the members it declares or inherits, and an interface only the properties it declares itself;
