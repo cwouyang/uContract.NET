@@ -469,9 +469,10 @@ internal static class MemberComparison
         return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
     }
 
-    // Under Native AOT a type that nothing preserves shows no declared member of any kind to reflection, not
-    // even a constructor (measured), while the members it inherits may still show. Never true when dynamic code
-    // is supported.
+    // Under Native AOT a type that nothing preserves shows no declared field, property, method or constructor to
+    // reflection, not even a constructor (measured), while the members it inherits may still show. A nested type
+    // or an event it declares does not count: a nested type keeps metadata of its own (measured). Never true when
+    // dynamic code is supported.
     internal static bool ShowsNoDeclaredMember(Type type)
     {
         if (RuntimeFacts.IsDynamicCodeSupported)
@@ -490,13 +491,20 @@ internal static class MemberComparison
     )]
     private static bool ListsNoDeclaredMember(Type type)
     {
-        return type.GetMembers(
+        return !type.GetMembers(
                 BindingFlags.Public
                     | BindingFlags.NonPublic
                     | BindingFlags.Instance
                     | BindingFlags.Static
                     | BindingFlags.DeclaredOnly
-            ).Length == 0;
+            )
+            .Any(member =>
+                member.MemberType
+                    is MemberTypes.Field
+                        or MemberTypes.Property
+                        or MemberTypes.Method
+                        or MemberTypes.Constructor
+            );
     }
 
     // A compiler-generated backing field "<Name>k__BackingField" is shown as the property it backs.
@@ -756,9 +764,15 @@ internal static class MemberComparison
     }
 
     // The first class in the class chain of type, below System.Object, that is not a framework class and shows no
-    // declared member.
+    // declared member; none for a yield iterator of yours.
     private static Type? UnseenClassOfYours(Type type)
     {
+        // A yield iterator of yours is compared by its elements alone, which enumerating needs no metadata for.
+        if (GetSequenceRule(type).IsIterator)
+        {
+            return null;
+        }
+
         for (
             Type? classType = type;
             classType is not null && classType != typeof(object);

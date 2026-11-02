@@ -1167,12 +1167,16 @@ public static class Contract
     ///     <c>Equals</c> reports them unequal (a primitive, an enum and an inline array are then a violation, as
     ///     before), except two sequences of different runtime types, which ask no <c>Equals</c>: there a value
     ///     type throws as a class does, also when the two values are equal. No field, property, method or
-    ///     constructor it declares is visible, which is how Native AOT shows a type that nothing preserves (a
-    ///     framework collection included, when nothing in the application preserves it). Comparing it by the
-    ///     members of <typeparamref name="T" />, by those it inherits or by its elements would miss what it adds.
-    ///     The message names the runtime type and <typeparamref name="T" />, and gives the fix with the runtime type
-    ///     in C# syntax: <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a method that
-    ///     runs, or, when both values are of that type, pass them as that type. The messages for a nested value give the same fix for the type they
+    ///     constructor it declares is visible (a nested type or an event it declares does not count), which is how
+    ///     Native AOT shows a type that nothing preserves (a framework collection included, when nothing in the
+    ///     application preserves it). Comparing it by the members of <typeparamref name="T" />, by those it inherits
+    ///     or by its elements would miss what it adds. A yield iterator of yours is not affected: it is compared by
+    ///     its elements, as before, and enumerating it needs no metadata. A sequence that is not a collection is
+    ///     reported as such first (see below). The message names the runtime type and <typeparamref name="T" />
+    ///     (for two values of different runtime types, the runtime type of <paramref name="actual" /> or of
+    ///     <paramref name="expected" />), and gives the fix with the runtime type in C# syntax:
+    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a method that runs, or,
+    ///     when both values are of that type, pass them as that type. The messages for a nested value give the same fix for the type they
     ///     name. The named type must be accessible where the attribute is written: a compiler-generated type (an
     ///     anonymous type, a closure) cannot be written in <c>typeof</c> at all, and a private nested type only
     ///     inside its declaring type. A type that adds no state and
@@ -1282,7 +1286,7 @@ public static class Contract
     ///     preserves), also when the members it inherits are visible; two sequences that would be compared by their
     ///     elements are compared so too, not by their elements, when the runtime type of either, or one of its base
     ///     classes, is not a framework class and shows no declared member. A
-    ///     framework class reached as a nested value is compared as before. A type whose
+    ///     framework class reached as a nested value, and a yield iterator of yours, are compared as before. A type whose
     ///     <c>Equals</c> ignores state (for example entity equality by ID) therefore hides a change in such a
     ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
     ///     When the type compared at the top level (<typeparamref name="T" />, or the runtime type of the values
@@ -1616,8 +1620,8 @@ public static class Contract
 
         _ThrowIfNotACollection(actualType, declaredType);
         _ThrowIfNotACollection(expectedType, declaredType);
-        _ThrowIfShowsNoDeclaredMember(actualType, declaredType);
-        _ThrowIfShowsNoDeclaredMember(expectedType, declaredType);
+        _ThrowIfShowsNoDeclaredMember(actualType, declaredType, "actual");
+        _ThrowIfShowsNoDeclaredMember(expectedType, declaredType, "expected");
         if (
             !MemberComparison.IsComparedByElementsOnly(actualType)
             || !MemberComparison.IsComparedByElementsOnly(expectedType)
@@ -1705,22 +1709,23 @@ public static class Contract
     {
         Type comparedType = _TopLevelType(declaredType, actual, expected);
 
-        // A value of a value type other than T is compared as a member is: its Equals decides first, and only then
-        // is the rule asked (see _TopLevelMembers). Two sequences of different runtime types ask no Equals, so
-        // they keep the rule for a value type too (see _CompareSequencesOfDifferentRuntimeTypes).
-        if (!comparedType.IsValueType)
-        {
-            _ThrowIfShowsNoDeclaredMember(comparedType, declaredType);
-        }
-
         // A sequence that is not a collection, passed as its own type, is compared by all its members, as any
-        // other class, and is not enumerated.
+        // other class, and is not enumerated. Under another T it is reported first: the way out is to
+        // materialise it, which the rule below cannot offer for an internal type (a LINQ query).
         bool byElements =
             _IsComparedByElementsAndOwnMembers(comparedType, actual)
             && !(comparedType == declaredType && MemberComparison.IsNonCollectionSequence(comparedType));
         if (byElements)
         {
             _ThrowIfNotACollection(comparedType, declaredType);
+        }
+
+        // A value of a value type other than T is compared as a member is: its Equals decides first, and only then
+        // is the rule asked (see _TopLevelMembers). Two sequences of different runtime types ask no Equals, so
+        // they keep the rule for a value type too (see _CompareSequencesOfDifferentRuntimeTypes).
+        if (!comparedType.IsValueType)
+        {
+            _ThrowIfShowsNoDeclaredMember(comparedType, declaredType);
         }
 
         List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected);
@@ -1885,16 +1890,19 @@ public static class Contract
 
     // Under Native AOT a runtime type other than T that nothing preserves shows no declared member, and comparing
     // it by what does show (the members of T, those it inherits, its elements) would miss what it adds. A value
-    // compared as a whole lists no member of it.
-    private static void _ThrowIfShowsNoDeclaredMember(Type runtimeType, Type declaredType)
+    // compared as a whole lists no member of it, and a yield iterator of yours is compared by its elements alone,
+    // which enumerating needs no metadata for. side names the parameter whose runtime type this is when the two
+    // values are of different runtime types; null when they are of one.
+    private static void _ThrowIfShowsNoDeclaredMember(Type runtimeType, Type declaredType, string? side = null)
     {
         if (
             runtimeType != declaredType
             && !_IsComparedAsWhole(runtimeType)
             && MemberComparison.ShowsNoDeclaredMember(runtimeType)
+            && !MemberComparison.GetSequenceRule(runtimeType).IsIterator
         )
         {
-            throw _ShowsNoDeclaredMember(runtimeType, declaredType);
+            throw _ShowsNoDeclaredMember(runtimeType, declaredType, side);
         }
     }
 
@@ -1904,15 +1912,21 @@ public static class Contract
         return type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false);
     }
 
-    private static InvalidOperationException _ShowsNoDeclaredMember(Type runtimeType, Type declaredType)
+    // The values can be passed as the runtime type only when both are of it.
+    private static InvalidOperationException _ShowsNoDeclaredMember(
+        Type runtimeType,
+        Type declaredType,
+        string? side = null
+    )
     {
+        string whose = side ?? "the values";
+        string passAsIt = side is null ? ", or pass the values as that type" : "";
         return new InvalidOperationException(
-            $"EnsureAssignable cannot compare {runtimeType}, the runtime type of the values (T is {declaredType}): "
+            $"EnsureAssignable cannot compare {runtimeType}, the runtime type of {whose} (T is {declaredType}): "
                 + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
                 + "its members cannot be listed. Preserve it with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(runtimeType)}))] on a method "
-                + "that runs, or pass the values as that type; otherwise set DBC_POST=off (disables all postcondition "
-                + "checks)."
+                + $"that runs{passAsIt}; otherwise set DBC_POST=off (disables all postcondition checks)."
         );
     }
 

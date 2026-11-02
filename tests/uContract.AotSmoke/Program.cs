@@ -596,6 +596,12 @@ internal sealed class GenericTicket<TValue> : TicketBase
     public TValue? Value { get; set; }
 }
 
+// Preserved as the closed KeptGenericTicket<int> with DynamicDependency(All) by its check.
+internal sealed class KeptGenericTicket<TValue> : TicketBase
+{
+    public TValue? Value { get; set; }
+}
+
 internal sealed class UnseenDrawingRandom(int seed) : Random(seed)
 {
     public int Draws { get; set; }
@@ -624,6 +630,36 @@ internal sealed class InheritingChild : VisibleParent;
 internal sealed class ParentHolder
 {
     public VisibleParent Part { get; set; } = new();
+}
+
+// Nothing preserves UnseenOrder; its check preserves the nested enum alone, with
+// DynamicDependency(PublicFields, typeof(UnseenOrder.State)).
+internal sealed class UnseenOrder : TicketBase
+{
+    public enum State
+    {
+        Open,
+        Closed,
+    }
+
+    public State Status { get; set; }
+}
+
+// Nothing preserves UnseenOuter.Inner.
+internal sealed class UnseenOuter
+{
+    public int Level { get; set; }
+
+    internal sealed class Inner
+    {
+        public int Depth { get; set; }
+    }
+}
+
+// Passed as T; Items holds a yield iterator of this program, which nothing preserves.
+internal sealed class NumbersHolder
+{
+    public IEnumerable<int> Items { get; set; } = [];
 }
 
 internal sealed record Expect(
@@ -2245,6 +2281,141 @@ public static class Program
             ),
             Expect.Ok
         );
+
+        // ---- What counts as a declared member, iterators, and the C# name of a nested type (issue #40). ----
+
+        // Mutation: none. Visibility: T (TicketBase), and DynamicDependency(All) on the nested enum UnseenOrder.State
+        // only; a nested type is not a member of UnseenOrder, so UnseenOrder still shows none.
+        yield return new Check(
+            130,
+            "EnsureAssignable<TicketBase> unpreserved class whose nested type is preserved",
+            UnseenOrderWithPreservedState,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.UnseenOrder"),
+            Expect.Ok
+        );
+
+        // Mutation: none (two iterators of one yield method). Visibility: T (NumbersHolder); nothing preserves the
+        // iterator, which is enumerated, not read by its members.
+        yield return new Check(
+            131,
+            "Nested yield iterators of equal elements",
+            NestedIteratorsEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another last element. Visibility: as check 131.
+        yield return new Check(
+            132,
+            "Nested yield iterators of different elements",
+            NestedIteratorsDiffer,
+            Expect.Throws<PostconditionViolationException>("Items"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves the iterator; T is IEnumerable<int>. Measured: the rule for a
+        // runtime type that shows no declared member lets the iterator pass, but the older "no members visible"
+        // rule at the top level still reports it, although an iterator is compared by its elements alone.
+        yield return new Check(
+            133,
+            "EnsureAssignable<IEnumerable<int>> yield iterators of equal elements",
+            TopLevelIteratorsEqual,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.Program+<CountTo>",
+                "no properties or fields are visible to reflection"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves UnseenOuter.Inner; the fix names it in C# syntax.
+        yield return new Check(
+            134,
+            "EnsureAssignable<object> unpreserved nested class",
+            UnseenInnerAsObject,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenOuter+Inner",
+                "typeof(uContract.AotSmoke.UnseenOuter.Inner))]"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Value. Visibility: DynamicDependency(All, typeof(KeptGenericTicket<int>)) on the method that runs. (A
+        // generic definition of its own: preserving one GenericTicket<> would make GenericTicket<int> of check 120
+        // show its members too, measured.)
+        yield return new Check(
+            135,
+            "EnsureAssignable<TicketBase> preserved closed generic subclass changed",
+            PreservedGenericTicketChanged,
+            Expect.Throws<PostconditionViolationException>("Value"),
+            Expect.Ok
+        );
+
+        // Mutation: none. A LINQ query held by object is a sequence that is not a collection: the message says to
+        // materialise it, not to preserve the query's internal type.
+        yield return new Check(
+            136,
+            "EnsureAssignable<object> LINQ queries",
+            LinqQueriesAsObject,
+            Expect.Throws<InvalidOperationException>("is a sequence that is not a collection", "ToList()"),
+            Expect.Ok
+        );
+    }
+
+    private static IEnumerable<int> CountTo(int last)
+    {
+        for (int number = 1; number <= last; number++)
+        {
+            yield return number;
+        }
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicFields, typeof(UnseenOrder.State))]
+    private static object? UnseenOrderWithPreservedState()
+    {
+        TicketBase actual = new UnseenOrder { Status = UnseenOrder.State.Closed };
+        TicketBase expected = new UnseenOrder { Status = UnseenOrder.State.Closed };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? NestedIteratorsEqual() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                new NumbersHolder { Items = CountTo(2) },
+                new NumbersHolder { Items = CountTo(2) }
+            )
+        );
+
+    private static object? NestedIteratorsDiffer() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                new NumbersHolder { Items = CountTo(3) },
+                new NumbersHolder { Items = CountTo(2) }
+            )
+        );
+
+    private static object? TopLevelIteratorsEqual() =>
+        NoResult(static () => Contract.EnsureAssignable(CountTo(2), CountTo(2)));
+
+    private static object? UnseenInnerAsObject()
+    {
+        object actual = new UnseenOuter.Inner { Depth = 1 };
+        object expected = new UnseenOuter.Inner { Depth = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptGenericTicket<int>))]
+    private static object? PreservedGenericTicketChanged()
+    {
+        TicketBase actual = new KeptGenericTicket<int> { Number = 1, Value = 3 };
+        TicketBase expected = new KeptGenericTicket<int> { Number = 1, Value = 2 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? LinqQueriesAsObject()
+    {
+        object actual = s_numbers.Select(static number => number + 1);
+        object expected = s_numbers.Select(static number => number + 1);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
     }
 
     private static DateTime Noon(int ticks) => new DateTime(2026, 11, 2, 12, 0, 0, DateTimeKind.Utc).AddTicks(ticks);

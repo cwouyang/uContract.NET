@@ -23,6 +23,22 @@ public class EnsureAssignableUnseenRuntimeTypeTests
             + "checks).";
     }
 
+    // Two sequences of different runtime types: the message names the side, and the values cannot be passed as
+    // one runtime type.
+    private static string CannotCompareOneSide(
+        Type runtimeType,
+        string side,
+        Type declaredType,
+        string runtimeTypeInCSharp
+    )
+    {
+        return $"EnsureAssignable cannot compare {runtimeType}, the runtime type of {side} (T is {declaredType}): "
+            + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
+            + "its members cannot be listed. Preserve it with "
+            + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({runtimeTypeInCSharp}))] on a method "
+            + "that runs; otherwise set DBC_POST=off (disables all postcondition checks).";
+    }
+
     [Fact]
     public void EnsureAssignable_WhenTheRuntimeTypeThatShowsNoDeclaredMemberIsGeneric_NamesItInCSharpSyntaxInTheFix()
     {
@@ -203,7 +219,7 @@ public class EnsureAssignableUnseenRuntimeTypeTests
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Equal(
-            CannotCompare(typeof(TaggedList), typeof(IEnumerable<int>), $"{ThisClass}.TaggedList"),
+            CannotCompareOneSide(typeof(TaggedList), "expected", typeof(IEnumerable<int>), $"{ThisClass}.TaggedList"),
             cannotCompare.Message
         );
     }
@@ -223,7 +239,12 @@ public class EnsureAssignableUnseenRuntimeTypeTests
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Equal(
-            CannotCompare(typeof(TaggedNumbers), typeof(IEnumerable<int>), $"{ThisClass}.TaggedNumbers"),
+            CannotCompareOneSide(
+                typeof(TaggedNumbers),
+                "actual",
+                typeof(IEnumerable<int>),
+                $"{ThisClass}.TaggedNumbers"
+            ),
             cannotCompare.Message
         );
     }
@@ -335,12 +356,77 @@ public class EnsureAssignableUnseenRuntimeTypeTests
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Equal(
-            CannotCompare(typeof(TaggedList), typeof(IEnumerable<int>), $"{ThisClass}.TaggedList"),
+            CannotCompareOneSide(typeof(TaggedList), "actual", typeof(IEnumerable<int>), $"{ThisClass}.TaggedList"),
             cannotCompare.Message
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeIsAYieldIteratorThatShowsNoDeclaredMemberAndItsElementsAreEqual_DoesNotThrow()
+    {
+        IEnumerable<int> actual = CountTo(2);
+        IEnumerable<int> expected = CountTo(2);
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [CountTo(0).GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
+    // Preserving the internal type of a query cannot be written; materialising it can.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreQueriesThatShowNoDeclaredMember_ThrowsNotACollection()
+    {
+        int[] numbers = [1, 2];
+        object actual = numbers.Select(number => number + 1);
+        object expected = numbers.Select(number => number + 1);
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException notACollection = Assert.IsType<InvalidOperationException>(exception);
+        Assert.StartsWith(
+            $"EnsureAssignable cannot compare {actual.GetType()} as T ({typeof(object)}): it is a sequence that is not a "
+                + "collection",
+            notACollection.Message,
+            StringComparison.Ordinal
+        );
+    }
+
+    // ---- What counts as a declared member ----
+
+    // A nested type is not a member of the type that declares it: Native AOT can keep the metadata of a nested
+    // type while it keeps none of the type around it.
+    [Fact]
+    public void ShowsNoDeclaredMember_WhenTheTypeDeclaresOnlyANestedType_ReturnsTrue()
+    {
+        bool showsNone = TestRuntime.WithoutDynamicCode(() =>
+            MemberComparison.ShowsNoDeclaredMember(typeof(OnlyANestedType))
+        );
+
+        Assert.True(showsNone);
+    }
+
     // ---- Nested values ----
+
+    // A yield iterator of yours is compared by its elements: enumerating it needs no metadata.
+    [Fact]
+    public void EnsureAssignable_WhenANestedYieldIteratorShowsNoDeclaredMemberAndItsElementsAreEqual_DoesNotThrow()
+    {
+        Tray actual = new() { Numbers = CountTo(2) };
+        Tray expected = new() { Numbers = CountTo(2) };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [CountTo(0).GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
 
     [Fact]
     public void EnsureAssignable_WhenANestedClassShowsNoDeclaredMemberAndItsEqualsReportsDifferentInstancesUnequal_ThrowsCannotCompareNested()
@@ -497,6 +583,29 @@ public class EnsureAssignableUnseenRuntimeTypeTests
     private sealed class Shelf
     {
         public Part Part { get; set; } = new();
+    }
+
+    private static IEnumerable<int> CountTo(int last)
+    {
+        for (int number = 1; number <= last; number++)
+        {
+            yield return number;
+        }
+    }
+
+    private sealed class Tray
+    {
+        public IEnumerable<int> Numbers { get; set; } = [];
+    }
+
+    // Declares no field, property, method or constructor (a static class has no instance constructor).
+    private static class OnlyANestedType
+    {
+        public enum State
+        {
+            Open,
+            Closed,
+        }
     }
 
     private sealed class TaggedList : List<int>
