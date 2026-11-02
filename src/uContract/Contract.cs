@@ -1103,20 +1103,25 @@ public static class Contract
     /// <param name="assignableFieldPatterns">
     ///     Regular expression patterns matching top-level member names that are allowed to change.
     ///     A pattern matches anywhere in the member name (it is not anchored), so "Email" also matches
-    ///     "EmailVerified". An auto-property declared on the compared type is compared twice, as the property
-    ///     and as its backing field <c>&lt;Email&gt;k__BackingField</c>, so a pattern anchored with <c>^</c> and
-    ///     <c>$</c> must cover both, for example <c>^(Email|&lt;Email&gt;k__BackingField)$</c>. A public
-    ///     auto-property inherited from a base class is compared once, as the property, so <c>^Email$</c> is
-    ///     enough for it; an auto-property inherited from a base class that is not public is compared as its
-    ///     backing field only, so the anchored pattern is <c>^&lt;Email&gt;k__BackingField$</c>.
+    ///     "EmailVerified". A pattern is matched against the name that reflection gives the member and, for a
+    ///     backing field that the compiler generates for an auto-property (<c>&lt;Email&gt;k__BackingField</c>),
+    ///     also against the name of the property (<c>Email</c>). So <c>^Email$</c> excuses an auto-property
+    ///     <c>Email</c> where it is compared: declared on the compared type, where it is compared as the property
+    ///     and as its backing field; inherited and public, where it is compared as the property; and not public,
+    ///     where it is compared as its backing field only. <c>^&lt;Email&gt;k__BackingField$</c> excuses the
+    ///     backing field only. A field written by hand behind a property (<c>_email</c>) is matched by its own
+    ///     name only, so it needs a pattern of its own, for example <c>^(Email|_email)$</c>. The backing field
+    ///     of an explicitly implemented interface auto-property is matched by the qualified property name, for
+    ///     example <c>Ns.IFoo.Id</c>: <c>Id$</c> excuses it, <c>^Id$</c> does not.
     ///     Examples: "Email", ".*Timestamp", "^_.*"
-    ///     A pattern is matched against the plain name that reflection gives the member. When two members of one
-    ///     compared type have the same name (a private field declared on two levels, a field hidden with
-    ///     <c>new</c>), each is shown with its declaring type (its full name when two of those types have the same
-    ///     name): in a violation entry as <c>_state (declared on StateBase)</c>, where the text before the first
-    ///     space is the plain name, and in the path of a "cannot compare" message as <c>StateBase._state</c>. It
-    ///     is still matched by its plain name only: a pattern excuses every member of that name, the declaring
-    ///     type takes no part in matching, and one of them cannot be excused alone.
+    ///     A violation entry shows the name that reflection gives the member (<c>&lt;Email&gt;k__BackingField</c>
+    ///     for a backing field). When two members of one compared type have the same name (a private field
+    ///     declared on two levels, a field hidden with <c>new</c>), each is shown with its declaring type (its
+    ///     full name when two of those types have the same name): in a violation entry as
+    ///     <c>_state (declared on StateBase)</c>, where the text before the first space is the name that
+    ///     reflection gives it, and in the path of a "cannot compare" message as <c>StateBase._state</c>. The
+    ///     declaring type takes no part in matching: a pattern excuses every member whose name, or whose property
+    ///     name, it matches, and one of two members of the same name cannot be excused alone.
     ///     The patterns do not apply, and are not examined, when one of the two values is null, when the two
     ///     values are compared as a whole, or when one instance passed as <paramref name="actual" /> and as
     ///     <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can change.
