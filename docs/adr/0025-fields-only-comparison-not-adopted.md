@@ -89,7 +89,7 @@ Keeping raw names in violation entries was part of the plan the maintainer appro
 
 ### Compatibility
 
-The `[Unreleased]` section of `CHANGELOG.md` holds one **BREAKING** bullet that ends `(#46; ADR-0025)`. The rule widens what a pattern excuses: compared with 2.0.0, a pattern that matches the property name but not the raw name of a backing field (`^Email$`, `^E`, `Email$`, `Id$`) now also excuses the backing field of a public auto-property declared on `T` (2.0.0 excused the property and reported the backing field), of an auto-property that is not public, declared on `T`, and of an explicit interface auto-property declared on `T`. 2.0.0 compared those backing fields and reported a change. Of such an auto-property declared on a base class, 2.0.0 compared nothing: the backing field is a private field of the base class, which 2.0.0 did not list (`GetFields` of the compared type only). [ADR-0023](0023-comparison-of-base-class-members.md) (#40, also unreleased) compares it; such a pattern excuses it relative to that behaviour. A call that failed in 2.0.0 can now pass. No call that passed in 2.0.0 fails because of this rule.
+The `[Unreleased]` section of `CHANGELOG.md` holds one **BREAKING** bullet that ends `(#46; ADR-0025)`. The rule widens what a pattern excuses: compared with 2.0.0, a pattern that matches the property name but not the raw name of a backing field (`^Email$`, `^E`, `Email$`, `Id$`) now also excuses the backing field of a public auto-property declared on `T` (2.0.0 excused the property and reported the backing field), of an auto-property that is not public, declared on `T`, and of an explicit interface auto-property declared on `T`. 2.0.0 compared those backing fields and reported a change. Of an auto-property that is not public (or is explicitly implemented), declared on a base class, 2.0.0 compared nothing: the backing field is a private field of the base class, which 2.0.0 did not list (`GetFields` of the compared type only). [ADR-0023](0023-comparison-of-base-class-members.md) (#40, also unreleased) compares it; such a pattern excuses it relative to that behaviour. A call that failed in 2.0.0 can now pass. No call that passed in 2.0.0 fails because of this rule.
 
 ---
 
@@ -157,7 +157,7 @@ The `[Unreleased]` section of `CHANGELOG.md` holds one **BREAKING** bullet that 
 
 **Description**: Match each pattern against `SourceName(raw name)` alone.
 
-**Why rejected**: It breaks patterns that excuse a backing field by its raw form, which the 2.0.0 documentation recommended: `^<Email>k__BackingField$` for an auto-property that is not public, and `k__BackingField`. Rule (a) matches everything rule (b) matches and keeps those patterns.
+**Why rejected**: It breaks patterns that excuse a backing field by its raw form only, which 2.0.0 matched and so could be written against it: `^<Email>k__BackingField$` for an auto-property that is not public, declared on `T` (the documentation has also recommended this pattern since #40), and `k__BackingField` for every backing field. The pattern that the 2.0.0 documentation recommended, `^(Email|<Email>k__BackingField)$`, would still work under rule (b), because the property name `Email` matches it. Rule (a) matches everything rule (b) matches and keeps all of these patterns.
 
 ---
 

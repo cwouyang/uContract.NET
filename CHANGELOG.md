@@ -304,9 +304,11 @@ AOT](README.md#trimming-and-native-aot) in the README.
   auto-property declared on `T` (2.0.0 excused the property and reported the backing field), and of
   an auto-property that is not public, declared on `T` (2.0.0 reported it). The same holds for an
   explicitly implemented interface auto-property declared on `T`, whose backing field
-  `<Ns.IFoo.Id>k__BackingField` is matched as `Ns.IFoo.Id`, so `Id$` excuses it. Of such an
-  auto-property declared on a base class, 2.0.0 compared nothing (its backing field is a private
-  field of the base class); the entry above makes it compared, and such a pattern excuses it. A field
+  `<Ns.IFoo.Id>k__BackingField` is matched as `Ns.IFoo.Id`, so `Id$` excuses it. Of an
+  auto-property that is not public (or is explicitly implemented), declared on a base class, 2.0.0
+  compared nothing (its backing field is a private field of the base class); the entry above that
+  begins "`EnsureAssignable<T>()` compares the private fields declared on the base classes" makes it
+  compared, and such a pattern excuses it. A field
   written by hand behind a property (`_email`) is still matched by its own name only. Patterns
   still apply to top-level members only. Which members are compared does not change: fields-only
   comparison was evaluated and not adopted. (#46; ADR-0025)
