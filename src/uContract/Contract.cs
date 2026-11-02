@@ -1161,6 +1161,17 @@ public static class Contract
     ///     element.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
     ///     from this rule (no members visible) only, not from the rule for one shared instance above.
+    ///     Also thrown under Native AOT, also when the two values are equal, when at the top level the runtime type
+    ///     of the values is not <typeparamref name="T" />, they are not compared as a whole and are not a
+    ///     primitive, an enum or an inline array, and that runtime type shows no declared member to reflection: no
+    ///     field, property, method or constructor it declares is visible, which is how Native AOT shows a type that
+    ///     nothing preserves (a framework collection included, such as a <c>List&lt;int&gt;</c> held by
+    ///     <see cref="object" />). Comparing it by the members of <typeparamref name="T" />, or by those it
+    ///     inherits, would miss what it adds. The message names the runtime type and <typeparamref name="T" />;
+    ///     preserve the type with <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a
+    ///     method that runs, where X is that type, or pass the values as that type. A type that adds no state and
+    ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
+    ///     top level the rule for a class with no visible members above applies instead (see the remarks).
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method:
     ///     a write-only property, or one whose getter was removed by trimming.
     ///     This applies to properties of <typeparamref name="T" />, of nested members, of collection elements and
@@ -1205,9 +1216,10 @@ public static class Contract
     ///     the private fields declared on a class <typeparamref name="T" /> (a framework class or not) that the
     ///     runtime type derives from count as visible, because the annotation on <typeparamref name="T" />
     ///     preserves them; the private fields of the base classes of <typeparamref name="T" /> and of the classes
-    ///     between the runtime type and <typeparamref name="T" /> do not. So a runtime type whose own members were
-    ///     not preserved is then compared by those fields of <typeparamref name="T" /> only, and that is not
-    ///     detected. In a trimmed
+    ///     between the runtime type and <typeparamref name="T" /> do not. A runtime type other than
+    ///     <typeparamref name="T" /> whose own members were not preserved shows no declared member to reflection,
+    ///     and is not compared by those fields of <typeparamref name="T" /> alone: the method throws (see the
+    ///     exceptions). In a trimmed
     ///     application without Native AOT these fields may not be preserved either; they are then not compared,
     ///     and that is not detected.
     ///     The walk goes deeper into nested objects and collection elements without recursion, so cycles and
@@ -1258,13 +1270,19 @@ public static class Contract
     ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> are compared element by element, in enumeration order.
     ///     Under Native AOT, a nested class whose members were not preserved is compared by its own
     ///     <c>Equals</c>: equal when it returns true. When it returns false, the method throws
-    ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose
+    ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. Such a class is one
+    ///     with no visible members, or one that is not a framework class and shows no declared member (no field,
+    ///     property, method or constructor it declares is visible: Native AOT keeps none of a type that nothing
+    ///     preserves), also when the members it inherits are visible; a sequence whose class chain holds a class
+    ///     that is not a framework class and shows no declared member is compared so too, not by its elements. A
+    ///     framework class reached as a nested value is compared as before. A type whose
     ///     <c>Equals</c> ignores state (for example entity equality by ID) therefore hides a change in such a
     ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
     ///     When the type compared at the top level (<typeparamref name="T" />, or the runtime type of the values
     ///     when that is compared) has no visible members, the method throws; for a runtime type
     ///     other than <typeparamref name="T" />, which the annotation on <typeparamref name="T" /> does not
-    ///     preserve, the message names both types. It throws without asking <c>Equals</c> (except for a value of a
+    ///     preserve, the message names both types, and the method also throws when that runtime type shows no
+    ///     declared member (see the exceptions). It throws without asking <c>Equals</c> (except for a value of a
     ///     value type other than <typeparamref name="T" />, whose <c>Equals</c> decides first), unless <paramref name="actual" /> or <paramref name="expected" /> is null or
     ///     <typeparamref name="T" /> is compared as a whole. When one instance passed as <paramref name="actual" />
     ///     and as <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can
@@ -1590,6 +1608,8 @@ public static class Contract
 
         _ThrowIfNotACollection(actualType, declaredType);
         _ThrowIfNotACollection(expectedType, declaredType);
+        _ThrowIfShowsNoDeclaredMember(actualType, declaredType);
+        _ThrowIfShowsNoDeclaredMember(expectedType, declaredType);
         if (
             !MemberComparison.IsComparedByElementsOnly(actualType)
             || !MemberComparison.IsComparedByElementsOnly(expectedType)
@@ -1676,6 +1696,8 @@ public static class Contract
     )
     {
         Type comparedType = _TopLevelType(declaredType, actual, expected);
+        _ThrowIfShowsNoDeclaredMember(comparedType, declaredType);
+
         // A sequence that is not a collection, passed as its own type, is compared by all its members, as any
         // other class, and is not enumerated.
         bool byElements =
@@ -1846,10 +1868,38 @@ public static class Contract
         );
     }
 
+    // Under Native AOT a runtime type other than T that nothing preserves shows no declared member, and comparing
+    // it by what does show (the members of T, those it inherits, its elements) would miss what it adds. A value
+    // compared as a whole, or decided by its Equals alone, lists no member of it.
+    private static void _ThrowIfShowsNoDeclaredMember(Type runtimeType, Type declaredType)
+    {
+        if (
+            runtimeType != declaredType
+            && !_IsComparedAsWhole(runtimeType)
+            && !_IsDecidedByEqualsAlone(runtimeType)
+            && MemberComparison.ShowsNoDeclaredMember(runtimeType)
+        )
+        {
+            throw _ShowsNoDeclaredMember(runtimeType, declaredType);
+        }
+    }
+
     // A primitive, an enum and an inline array, as a value of a type other than T, are decided by Equals alone.
     private static bool _IsDecidedByEqualsAlone(Type type)
     {
         return type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false);
+    }
+
+    private static InvalidOperationException _ShowsNoDeclaredMember(Type runtimeType, Type declaredType)
+    {
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {runtimeType}, the runtime type of the values (T is {declaredType}): "
+                + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
+                + "its members cannot be listed. Preserve it with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] on a method that runs, where X is "
+                + $"{runtimeType}, or pass the values as that type; otherwise set DBC_POST=off (disables all "
+                + "postcondition checks)."
+        );
     }
 
     // The members the top level is compared by: those of comparedType, and, when T is an interface other than

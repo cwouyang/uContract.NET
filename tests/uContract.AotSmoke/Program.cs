@@ -556,6 +556,76 @@ internal sealed class CodedCollection : Collection<int>
     public int Code;
 }
 
+// ---- Runtime types other than T (issue #40). Nothing preserves a fixture unless its comment says so. ----
+
+internal sealed class UnseenTicket
+{
+    public int Seat { get; set; }
+}
+
+// Preserved with DynamicDependency(All, typeof(SeenTicket)) by its checks.
+internal sealed class SeenTicket
+{
+    public int Seat { get; set; }
+}
+
+// The T of the checks below; its own members are preserved by the annotation on T.
+internal class TicketBase
+{
+    public int Number { get; set; }
+}
+
+internal sealed class UnseenDerivedTicket : TicketBase
+{
+    public string Holder { get; set; } = "";
+}
+
+// Preserved with DynamicDependency(All, typeof(SeenDerivedTicket)) by its check.
+internal sealed class SeenDerivedTicket : TicketBase
+{
+    public string Holder { get; set; } = "";
+}
+
+internal sealed class UnseenStatelessTicket : TicketBase;
+
+// Preserved with DynamicDependency(All, typeof(SeenStatelessTicket)) by its check.
+internal sealed class SeenStatelessTicket : TicketBase;
+
+internal sealed class GenericTicket<TValue> : TicketBase
+{
+    public TValue? Value { get; set; }
+}
+
+internal sealed class UnseenDrawingRandom(int seed) : Random(seed)
+{
+    public int Draws { get; set; }
+}
+
+internal sealed class UnseenPlainRandom(int seed) : Random(seed);
+
+// Preserved with DynamicDependency(All, typeof(SeenPlainRandom)) by its check.
+internal sealed class SeenPlainRandom(int seed) : Random(seed);
+
+// Passed as T by one check, which preserves its members for every check; held by object in the others.
+internal sealed class TicketPassedAsT
+{
+    public int Seat { get; set; }
+}
+
+// Preserved with DynamicDependency(All, typeof(VisibleParent)) by its check; the class derived from it is not, so
+// it shows only the members it inherits.
+internal class VisibleParent
+{
+    public int Level { get; set; }
+}
+
+internal sealed class InheritingChild : VisibleParent;
+
+internal sealed class ParentHolder
+{
+    public VisibleParent Part { get; set; } = new();
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -1953,7 +2023,309 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // ---- A runtime type other than T that shows no declared member is not compared (issue #40). ----
+
+        // Mutation: none. Visibility: nothing preserves UnseenTicket, so its members cannot be listed.
+        yield return new Check(
+            109,
+            "EnsureAssignable<object> unpreserved class unchanged",
+            UnseenTicketAsObject,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenTicket",
+                "(T is System.Object)",
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]",
+                "where X is uContract.AotSmoke.UnseenTicket"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Seat. Visibility: DynamicDependency(All, typeof(SeenTicket)) on the method that runs.
+        yield return new Check(
+            110,
+            "EnsureAssignable<object> preserved class changed",
+            SeenTicketAsObjectChanged,
+            Expect.Throws<PostconditionViolationException>("Seat"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: as check 110.
+        yield return new Check(
+            111,
+            "EnsureAssignable<object> preserved class unchanged",
+            SeenTicketAsObjectUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (TicketBase) only; the derived type's Holder is not preserved.
+        yield return new Check(
+            112,
+            "EnsureAssignable<TicketBase> unpreserved derived type unchanged",
+            UnseenDerivedTicketUnchanged,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenDerivedTicket",
+                "(T is uContract.AotSmoke.TicketBase)"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Holder, declared on the derived type. Visibility: as check 112. It must not pass silently.
+        yield return new Check(
+            113,
+            "EnsureAssignable<TicketBase> unpreserved derived type, derived member changed",
+            UnseenDerivedTicketChanged,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.UnseenDerivedTicket"),
+            Expect.Ok
+        );
+
+        // Mutation: Holder. Visibility: DynamicDependency(All, typeof(SeenDerivedTicket)) on the method that runs.
+        yield return new Check(
+            114,
+            "EnsureAssignable<TicketBase> preserved derived type, derived member changed",
+            SeenDerivedTicketChanged,
+            Expect.Throws<PostconditionViolationException>("Holder"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (Random) only; the subclass's Draws is not preserved.
+        yield return new Check(
+            115,
+            "EnsureAssignable<Random> unpreserved subclass that adds a field",
+            UnseenDrawingRandomUnchanged,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenDrawingRandom",
+                "(T is System.Random)"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: none. Known false positive: the subclass adds nothing, but nothing preserves it.
+        yield return new Check(
+            116,
+            "EnsureAssignable<Random> unpreserved subclass that adds nothing",
+            UnseenPlainRandomUnchanged,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.UnseenPlainRandom"),
+            Expect.Ok
+        );
+
+        // Mutation: another seed. Visibility: DynamicDependency(All, typeof(SeenPlainRandom)) on the method that
+        // runs, and T (Random) preserves its own private field.
+        yield return new Check(
+            117,
+            "EnsureAssignable<Random> preserved subclass, another seed",
+            SeenPlainRandomOtherSeed,
+            Expect.Throws<PostconditionViolationException>("_impl"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Known false positive: a stateless subclass that nothing preserves, passed as its base.
+        yield return new Check(
+            118,
+            "EnsureAssignable<TicketBase> unpreserved stateless subclass",
+            UnseenStatelessTicketUnchanged,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.UnseenStatelessTicket"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: DynamicDependency(All, typeof(SeenStatelessTicket)) on the method that runs.
+        yield return new Check(
+            119,
+            "EnsureAssignable<TicketBase> preserved stateless subclass",
+            SeenStatelessTicketUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (TicketBase) only; nothing preserves GenericTicket<int>.
+        yield return new Check(
+            120,
+            "EnsureAssignable<TicketBase> unpreserved generic subclass",
+            GenericTicketUnchanged,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.GenericTicket`1[System.Int32]"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves Queue<int> for reflection; a framework collection is no
+        // exception. (Not List<int>: check 3 makes List<> visible to every check, so List<int> shows its members
+        // here and is compared.)
+        yield return new Check(
+            121,
+            "EnsureAssignable<object> Queue<int> unchanged",
+            IntQueueAsObject,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare System.Collections.Generic.Queue`1[System.Int32]",
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Seat. Visibility: T (TicketPassedAsT), which preserves its members for every check.
+        yield return new Check(
+            122,
+            "EnsureAssignable<TicketPassedAsT> changed",
+            TicketPassedAsTChanged,
+            Expect.Throws<PostconditionViolationException>("Seat"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: as check 122, though the values are held by object here.
+        yield return new Check(
+            123,
+            "EnsureAssignable<object> type passed elsewhere as T, unchanged",
+            TicketPassedAsTAsObjectUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: Seat. Visibility: as check 123.
+        yield return new Check(
+            124,
+            "EnsureAssignable<object> type passed elsewhere as T, changed",
+            TicketPassedAsTAsObjectChanged,
+            Expect.Throws<PostconditionViolationException>("Seat"),
+            Expect.Ok
+        );
+
+        // Mutation: none (two different instances). Visibility: DynamicDependency(All, typeof(VisibleParent)) on
+        // the method that runs; InheritingChild shows only the members it inherits.
+        yield return new Check(
+            125,
+            "Nested unpreserved class that only inherits visible members",
+            NestedInheritingChild,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.InheritingChild",
+                "reached through 'ParentHolder.Part'"
+            ),
+            Expect.Ok
+        );
     }
+
+    private static object? UnseenTicketAsObject()
+    {
+        object actual = new UnseenTicket { Seat = 1 };
+        object expected = new UnseenTicket { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenTicket))]
+    private static object? SeenTicketAsObjectChanged()
+    {
+        object actual = new SeenTicket { Seat = 2 };
+        object expected = new SeenTicket { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenTicket))]
+    private static object? SeenTicketAsObjectUnchanged()
+    {
+        object actual = new SeenTicket { Seat = 1 };
+        object expected = new SeenTicket { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenDerivedTicketUnchanged()
+    {
+        TicketBase actual = new UnseenDerivedTicket { Number = 1, Holder = "a" };
+        TicketBase expected = new UnseenDerivedTicket { Number = 1, Holder = "a" };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenDerivedTicketChanged()
+    {
+        TicketBase actual = new UnseenDerivedTicket { Number = 1, Holder = "b" };
+        TicketBase expected = new UnseenDerivedTicket { Number = 1, Holder = "a" };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenDerivedTicket))]
+    private static object? SeenDerivedTicketChanged()
+    {
+        TicketBase actual = new SeenDerivedTicket { Number = 1, Holder = "b" };
+        TicketBase expected = new SeenDerivedTicket { Number = 1, Holder = "a" };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenDrawingRandomUnchanged()
+    {
+        Random actual = new UnseenDrawingRandom(1) { Draws = 3 };
+        Random expected = new UnseenDrawingRandom(1) { Draws = 3 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenPlainRandomUnchanged()
+    {
+        Random actual = new UnseenPlainRandom(1);
+        Random expected = new UnseenPlainRandom(1);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenPlainRandom))]
+    private static object? SeenPlainRandomOtherSeed()
+    {
+        Random actual = new SeenPlainRandom(1);
+        Random expected = new SeenPlainRandom(2);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenStatelessTicketUnchanged()
+    {
+        TicketBase actual = new UnseenStatelessTicket { Number = 1 };
+        TicketBase expected = new UnseenStatelessTicket { Number = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenStatelessTicket))]
+    private static object? SeenStatelessTicketUnchanged()
+    {
+        TicketBase actual = new SeenStatelessTicket { Number = 1 };
+        TicketBase expected = new SeenStatelessTicket { Number = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? GenericTicketUnchanged()
+    {
+        TicketBase actual = new GenericTicket<int> { Number = 1, Value = 2 };
+        TicketBase expected = new GenericTicket<int> { Number = 1, Value = 2 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? IntQueueAsObject()
+    {
+        Queue<int> actual = new();
+        actual.Enqueue(1);
+        Queue<int> expected = new();
+        expected.Enqueue(1);
+        return NoResult(() => Contract.EnsureAssignable<object>(actual, expected));
+    }
+
+    private static object? TicketPassedAsTChanged() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(new TicketPassedAsT { Seat = 2 }, new TicketPassedAsT { Seat = 1 })
+        );
+
+    private static object? TicketPassedAsTAsObjectUnchanged()
+    {
+        object actual = new TicketPassedAsT { Seat = 1 };
+        object expected = new TicketPassedAsT { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? TicketPassedAsTAsObjectChanged()
+    {
+        object actual = new TicketPassedAsT { Seat = 2 };
+        object expected = new TicketPassedAsT { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(VisibleParent))]
+    private static object? NestedInheritingChild() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                new ParentHolder { Part = new InheritingChild { Level = 1 } },
+                new ParentHolder { Part = new InheritingChild { Level = 1 } }
+            )
+        );
 
     private static object? AutoPropertyAssignableByPropertyName() =>
         NoResult(static () =>

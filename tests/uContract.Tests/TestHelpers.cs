@@ -97,6 +97,23 @@ public static class TestRuntime
             RuntimeFacts.DynamicCodeSupportedOverride = null;
         }
     }
+
+    // Runs code with the given types showing no declared member, as Native AOT shows a type that nothing
+    // preserves; dynamic code is off unless dynamicCodeSupported says otherwise.
+    public static Exception? WithUnseenTypes(Type[] unseen, Action act, bool dynamicCodeSupported = false)
+    {
+        try
+        {
+            RuntimeFacts.DynamicCodeSupportedOverride = dynamicCodeSupported;
+            RuntimeFacts.ShowsNoDeclaredMemberOverride = unseen.Contains;
+            return Record.Exception(act);
+        }
+        finally
+        {
+            RuntimeFacts.DynamicCodeSupportedOverride = null;
+            RuntimeFacts.ShowsNoDeclaredMemberOverride = null;
+        }
+    }
 }
 
 /// <summary>

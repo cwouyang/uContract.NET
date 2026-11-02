@@ -19,6 +19,7 @@ internal static class MemberComparison
 {
     private static readonly TypeCache<TypeMetadata> MetadataCache = new();
     private static readonly TypeCache<SequenceRule> SequenceRuleCache = new();
+    private static readonly TypeCache<bool> NoDeclaredMemberCache = new();
 
     // The public key tokens the assemblies of the .NET runtime and libraries are signed with: every token that
     // occurs in the .NET 8 shared frameworks (Microsoft.NETCore.App, Microsoft.AspNetCore.App and
@@ -468,6 +469,36 @@ internal static class MemberComparison
         return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
     }
 
+    // Under Native AOT a type that nothing preserves shows no declared member of any kind to reflection, not
+    // even a constructor (measured), while the members it inherits may still show. Never true when dynamic code
+    // is supported.
+    internal static bool ShowsNoDeclaredMember(Type type)
+    {
+        if (RuntimeFacts.IsDynamicCodeSupported)
+        {
+            return false;
+        }
+
+        return RuntimeFacts.ShowsNoDeclaredMemberOverride?.Invoke(type)
+            ?? NoDeclaredMemberCache.GetOrAdd(type, ListsNoDeclaredMember);
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The members are only counted, never used: a type that the trimmer kept no member of is the one this detects."
+    )]
+    private static bool ListsNoDeclaredMember(Type type)
+    {
+        return type.GetMembers(
+                BindingFlags.Public
+                    | BindingFlags.NonPublic
+                    | BindingFlags.Instance
+                    | BindingFlags.Static
+                    | BindingFlags.DeclaredOnly
+            ).Length == 0;
+    }
+
     // A compiler-generated backing field "<Name>k__BackingField" is shown as the property it backs.
     internal static string SourceName(string memberName)
     {
@@ -641,7 +672,7 @@ internal static class MemberComparison
             actual is IEnumerable actualEnum
             && expected is IEnumerable expectedEnum
             && (actual.GetType() != expected.GetType() || GetSequenceRule(actual.GetType()).IsComparedByElements)
-                ? StartSequencesAndOwnMembers(actualEnum, expectedEnum)
+                ? StartSequencesOfSeenClasses(actualEnum, expectedEnum, context, out equalWithoutWalk)
                 : StartMembers(actual, expected, context, out equalWithoutWalk);
 
         // No walk means the pair was decided (different, equal by Equals, or not comparable) before any of its contents.
@@ -696,6 +727,51 @@ internal static class MemberComparison
         {
             return false;
         }
+    }
+
+    // Two sequences compared by their elements, unless a class of yours in the class chain of either shows no
+    // declared member (see ShowsNoDeclaredMember): they are then left to their own Equals, as a class whose
+    // members are hidden is (see StartMembers).
+    private static Walk? StartSequencesOfSeenClasses(
+        IEnumerable actual,
+        IEnumerable expected,
+        ComparisonContext context,
+        out bool equalWithoutWalk
+    )
+    {
+        equalWithoutWalk = false;
+        Type? unseen = UnseenClassOfYours(actual.GetType()) ?? UnseenClassOfYours(expected.GetType());
+        if (unseen is null)
+        {
+            return StartSequencesAndOwnMembers(actual, expected);
+        }
+
+        equalWithoutWalk = actual.Equals(expected);
+        if (!equalWithoutWalk)
+        {
+            context.Hidden = new HiddenMembers(unseen);
+        }
+
+        return null;
+    }
+
+    // The first class in the class chain of type, below System.Object, that is not a framework class and shows no
+    // declared member.
+    private static Type? UnseenClassOfYours(Type type)
+    {
+        for (
+            Type? classType = type;
+            classType is not null && classType != typeof(object);
+            classType = classType.BaseType
+        )
+        {
+            if (ShowsNoDeclaredMember(classType) && !IsFrameworkClass(classType))
+            {
+                return classType;
+            }
+        }
+
+        return null;
     }
 
     // Two sequences of one runtime type that declares members on a class of yours are compared by their
@@ -976,8 +1052,9 @@ internal static class MemberComparison
         return value is IEnumerable and not string;
     }
 
-    // Null means the pair needs no member walk. A type with no visible members is left to its own Equals;
-    // when that says "unequal" the pair could not be compared (context.Hidden is set).
+    // Null means the pair needs no member walk. A type with no visible members, or a class that is not a
+    // framework class and shows no declared member (see ShowsNoDeclaredMember), is left to its own Equals; when
+    // that says "unequal" the pair could not be compared (context.Hidden is set).
     private static MemberWalk? StartMembers(
         object actual,
         object expected,
@@ -989,7 +1066,7 @@ internal static class MemberComparison
         TypeMetadata metadata = GetOrCacheMetadata(type);
         equalWithoutWalk = false;
 
-        if (MembersAreHidden(type, metadata))
+        if (MembersAreHidden(type, metadata) || (ShowsNoDeclaredMember(type) && !IsFrameworkClass(type)))
         {
             equalWithoutWalk = actual.Equals(expected);
             if (!equalWithoutWalk)
