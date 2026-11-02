@@ -278,13 +278,44 @@ internal static class MemberComparison
         return new SequenceRule(
             hasFrameworkClass,
             GetOrCacheMetadata(type).Members.Where(m => !IsFrameworkClass(m.DeclaringType)).ToList().AsReadOnly()
-        );
+        )
+        {
+            IsCollection = IsCollection(type),
+        };
     }
 
     private static bool IsCompilerGeneratedIterator(Type type)
     {
         return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
             && typeof(IEnumerator).IsAssignableFrom(type);
+    }
+
+    // A collection holds its elements: it implements ICollection, ICollection<T> (the grouping GroupBy returns)
+    // or IReadOnlyCollection<T>. Another sequence (a LINQ query, a consuming enumerable) may compute, consume or
+    // wait for its elements when enumerated.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The runtime type is known only at run time; an interface the trimmer removed is one the type is not used as, and the type is then treated as not a collection, which makes the top level throw rather than enumerate it."
+    )]
+    private static bool IsCollection(Type type)
+    {
+        return typeof(ICollection).IsAssignableFrom(type)
+            || type.GetInterfaces()
+                .Any(i =>
+                    i.IsGenericType
+                    && (
+                        i.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>)
+                        || i.GetGenericTypeDefinition() == typeof(ICollection<>)
+                    )
+                );
+    }
+
+    // A sequence built on a framework class that is not a collection (see IsCollection).
+    internal static bool IsNonCollectionSequence(Type runtimeType)
+    {
+        SequenceRule rule = GetSequenceRule(runtimeType);
+        return rule.HasFrameworkClass && !rule.IsCollection;
     }
 
     // A sequence that is compared by its elements alone, also against a sequence of another runtime type: its
@@ -1139,6 +1170,9 @@ internal static class MemberComparison
     {
         // A yield iterator of yours: compared by its elements alone, at every level.
         public bool IsIterator { get; init; }
+
+        // Implements ICollection or IReadOnlyCollection<T> (see MemberComparison.IsCollection).
+        public bool IsCollection { get; init; }
 
         // Compared by its elements (and OwnMembers), not by its members alone.
         public bool IsComparedByElements => HasFrameworkClass || IsIterator;

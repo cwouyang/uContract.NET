@@ -1572,6 +1572,8 @@ public static class Contract
             return false;
         }
 
+        _ThrowIfNotACollection(actualType, declaredType);
+        _ThrowIfNotACollection(expectedType, declaredType);
         if (
             !MemberComparison.IsComparedByElementsOnly(actualType)
             || !MemberComparison.IsComparedByElementsOnly(expectedType)
@@ -1596,6 +1598,24 @@ public static class Contract
             "actual and expected are not equal. They are sequences of different runtime types (actual is "
                 + $"{SharedTypes.PublicFrozenType(actualType)}, expected is {SharedTypes.PublicFrozenType(expectedType)}, "
                 + $"and T is {declaredType}), compared by their elements, so assignable patterns do not apply."
+        );
+    }
+
+    // At the top level, a sequence built on a framework class that is not a collection (a LINQ query, a
+    // consuming enumerable) is not enumerated under a T other than its own type: enumerating it could run a query,
+    // consume its source or block. Passed as its own type, it is compared by its members.
+    private static void _ThrowIfNotACollection(Type runtimeType, Type declaredType)
+    {
+        if (runtimeType == declaredType || !MemberComparison.IsNonCollectionSequence(runtimeType))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"EnsureAssignable cannot compare {runtimeType} as T ({declaredType}): it is a sequence that is not a "
+                + "collection (it implements neither ICollection nor IReadOnlyCollection<T>), and enumerating it could "
+                + "run a query, consume its source or block. Pass a materialised collection (for example ToList()), "
+                + "or pass the value as its own type as T."
         );
     }
 
@@ -1640,21 +1660,26 @@ public static class Contract
     )
     {
         Type comparedType = _TopLevelType(declaredType, actual, expected);
-        List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected);
-
         bool byElements = _IsComparedByElementsAndOwnMembers(comparedType, actual);
+        if (byElements)
+        {
+            _ThrowIfNotACollection(comparedType, declaredType);
+        }
+
+        List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected);
         if (byElements)
         {
             _RemoveMembersASequenceIsNotComparedBy(members, comparedType, declaredType);
         }
 
+        // A sequence that is not a collection, passed as its own type, is compared by its members only.
         List<string> differences = _FindDifferences(
             comparedType,
             members,
             actual,
             expected,
             assignableFieldPatterns,
-            byElements
+            byElements && !MemberComparison.IsNonCollectionSequence(comparedType)
         );
 
         if (differences.Count > 0)

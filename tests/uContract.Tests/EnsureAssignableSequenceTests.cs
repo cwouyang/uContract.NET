@@ -209,8 +209,10 @@ public class EnsureAssignableSequenceTests
         Assert.Equal(Violation + "  - InnerXml\n  - OuterXml", exception.Description);
     }
 
+    // An XmlDocument is a sequence of its child nodes but not a collection: under a T other than its own type it
+    // is not compared at all.
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndAnAttributeOfAnXmlDocumentChanges_ReportsItsOuterXmlWithoutReadingItsXmlResolver()
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreXmlDocuments_AsksForTheirOwnTypeAsT()
     {
         XmlDocument actualDocument = new();
         actualDocument.LoadXml("<order status=\"open\" />");
@@ -219,15 +221,63 @@ public class EnsureAssignableSequenceTests
         object actual = actualDocument;
         object expected = expectedDocument;
 
-        // XmlDocument.XmlResolver, a framework property without a getter, is not read under T = object. Schemas
-        // is excused: the XmlSchemaSet it holds is a nested value, whose XmlResolver has no getter either.
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
-            Contract.EnsureAssignable(actual, expected, "^Schemas$")
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(NotACollection(typeof(XmlDocument), typeof(object)), exception.Message);
+    }
+
+    // ---- A sequence that is not a collection, under a T other than its own type ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndTheValuesAreSelectIterators_ThrowsWithoutEnumerating()
+    {
+        int selectorCalls = 0;
+        int[] numbers = [1, 2];
+        IEnumerable<int> actual = numbers.Select(number => ++selectorCalls + number);
+        IEnumerable<int> expected = numbers.Select(number => ++selectorCalls + number);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
         );
 
         Assert.Equal(
-            Violation + "  - InnerXml\n  - OuterXml" + ListedFrom(typeof(XmlDocument), typeof(object)),
-            exception.Description
+            (NotACollection(actual.GetType(), typeof(IEnumerable<int>)), 0),
+            (exception.Message, selectorCalls)
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheValuesAreSelectIterators_ThrowsWithoutEnumerating()
+    {
+        int selectorCalls = 0;
+        int[] numbers = [1, 2];
+        object actual = numbers.Select(number => ++selectorCalls + number);
+        object expected = numbers.Select(number => ++selectorCalls + number);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal((NotACollection(actual.GetType(), typeof(object)), 0), (exception.Message, selectorCalls));
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndASelectIteratorStandsAgainstAList_ThrowsWithoutEnumerating()
+    {
+        int selectorCalls = 0;
+        int[] numbers = [1, 2];
+        IEnumerable<int> actual = numbers.Select(number => ++selectorCalls + number);
+        IEnumerable<int> expected = ListOf(2, 4);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            (NotACollection(actual.GetType(), typeof(IEnumerable<int>)), 0),
+            (exception.Message, selectorCalls)
         );
     }
 
@@ -731,6 +781,14 @@ public class EnsureAssignableSequenceTests
         Node root = new() { Name = "root" };
         root.Add(new Node { Name = childName, Parent = root });
         return root;
+    }
+
+    private static string NotACollection(Type runtimeType, Type declaredType)
+    {
+        return $"EnsureAssignable cannot compare {runtimeType} as T ({declaredType}): it is a sequence that is not a "
+            + "collection (it implements neither ICollection nor IReadOnlyCollection<T>), and enumerating it could run "
+            + "a query, consume its source or block. Pass a materialised collection (for example ToList()), or pass "
+            + "the value as its own type as T.";
     }
 
     private static string DifferentRuntimeTypes(Type actualType, Type expectedType, Type declaredType)
