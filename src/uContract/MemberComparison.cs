@@ -267,7 +267,7 @@ internal static class MemberComparison
             runtimeType,
             t => new SequenceRule(
                 HasFrameworkClassBelowObject(t),
-                GetOrCacheMetadata(t).Members.Where(m => !IsFrameworkClass(m.DeclaringType)).ToList()
+                GetOrCacheMetadata(t).Members.Where(m => !IsFrameworkClass(m.DeclaringType)).ToList().AsReadOnly()
             )
         );
     }
@@ -663,7 +663,7 @@ internal static class MemberComparison
             return elements;
         }
 
-        List<MemberAccessor> ownMembers = GetSequenceRule(type).OwnMembers;
+        IReadOnlyList<MemberAccessor> ownMembers = GetSequenceRule(type).OwnMembers;
         return ownMembers.Count == 0
             ? elements
             : new ElementsThenMembersWalk(elements, new MemberWalk(ownMembers, actual, expected, fieldsOnly: false));
@@ -1012,8 +1012,12 @@ internal static class MemberComparison
 
     // Members in order, reading the actual value before the expected one. A value type is compared by its
     // fields only, and one without any is different (its Equals said "unequal").
-    private sealed class MemberWalk(List<MemberAccessor> members, object actual, object expected, bool fieldsOnly)
-        : Walk
+    private sealed class MemberWalk(
+        IReadOnlyList<MemberAccessor> members,
+        object actual,
+        object expected,
+        bool fieldsOnly
+    ) : Walk
     {
         private int _index = -1;
         private bool _comparedAny;
@@ -1115,7 +1119,8 @@ internal static class MemberComparison
         }
     }
 
-    internal sealed record SequenceRule(bool HasFrameworkClass, List<MemberAccessor> OwnMembers);
+    // OwnMembers is cached for every caller, so it is read-only.
+    internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers);
 
     // Created only when a comparison is blocked. The path is prepended one segment per level on
     // the way back up, so a comparison that is not blocked allocates nothing for it.
