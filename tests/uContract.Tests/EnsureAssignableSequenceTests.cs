@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Frozen;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Xml;
 using uContract.Exceptions;
@@ -294,6 +295,72 @@ public class EnsureAssignableSequenceTests
         );
 
         Assert.Contains($"{typeof(XmlDocument)}.XmlResolver", exception.Message, StringComparison.Ordinal);
+    }
+
+    // ---- A sequence that is not a collection, passed as its own type, keeps all its members ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnImmutableQueueAndItsElementDiffers_ReportsItsPrivateField()
+    {
+        ImmutableQueue<int> actual = ImmutableQueue.Create(1);
+        ImmutableQueue<int> expected = ImmutableQueue.Create(2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - _forwards", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnImmutableQueueAndTheElementsAreEqual_DoesNotThrow()
+    {
+        ImmutableQueue<int> actual = ImmutableQueue.Create(1);
+        ImmutableQueue<int> expected = ImmutableQueue.Create(1);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnImmutableStackAndItsElementDiffers_ReportsItsPrivateField()
+    {
+        ImmutableStack<int> actual = ImmutableStack.Create(1);
+        ImmutableStack<int> expected = ImmutableStack.Create(2);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - _head", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnImmutableStackAndTheElementsAreEqual_DoesNotThrow()
+    {
+        ImmutableStack<int> actual = ImmutableStack.Create(1);
+        ImmutableStack<int> expected = ImmutableStack.Create(1);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnXmlDocumentAndOnlyItsResolverChanges_ReportsItsPrivateField()
+    {
+        XmlDocument actual = new();
+        actual.LoadXml("<order />");
+        actual.XmlResolver = new XmlUrlResolver();
+        XmlDocument expected = new();
+        expected.LoadXml("<order />");
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "^(Schemas|XmlResolver)$")
+        );
+
+        Assert.Equal(Violation + "  - _resolver\n  - bSetResolver", exception.Description);
     }
 
     [Fact]

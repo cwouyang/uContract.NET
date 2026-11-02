@@ -1234,7 +1234,9 @@ public static class Contract
     ///     query, consume its source or block. When its runtime type is not <typeparamref name="T" />, the method
     ///     throws <see cref="InvalidOperationException" /> and asks for a materialised collection (for example
     ///     <c>ToList()</c>) or for the value's own type as <typeparamref name="T" />; passed as its own type, it is
-    ///     compared by its members only, as above. A nested one is enumerated as any other sequence.
+    ///     compared by all its members, the private fields of the framework included, as any other class
+    ///     (<c>ImmutableQueue&lt;T&gt;</c> by <c>_forwards</c> and <c>_backwards</c>). A nested one is enumerated as
+    ///     any other sequence.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
     ///     chains hold a framework class, and neither declares a member on a class that is not a framework class;
@@ -1673,7 +1675,11 @@ public static class Contract
     )
     {
         Type comparedType = _TopLevelType(declaredType, actual, expected);
-        bool byElements = _IsComparedByElementsAndOwnMembers(comparedType, actual);
+        // A sequence that is not a collection, passed as its own type, is compared by all its members, as any
+        // other class, and is not enumerated.
+        bool byElements =
+            _IsComparedByElementsAndOwnMembers(comparedType, actual)
+            && !(comparedType == declaredType && MemberComparison.IsNonCollectionSequence(comparedType));
         if (byElements)
         {
             _ThrowIfNotACollection(comparedType, declaredType);
@@ -1685,14 +1691,13 @@ public static class Contract
             _RemoveMembersASequenceIsNotComparedBy(members, comparedType, declaredType);
         }
 
-        // A sequence that is not a collection, passed as its own type, is compared by its members only.
         List<string> differences = _FindDifferences(
             comparedType,
             members,
             actual,
             expected,
             assignableFieldPatterns,
-            byElements && !MemberComparison.IsNonCollectionSequence(comparedType)
+            byElements
         );
 
         if (differences.Count > 0)
