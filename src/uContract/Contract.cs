@@ -1259,11 +1259,13 @@ public static class Contract
     ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; without a field, it is
     ///     then a violation), and the patterns apply to those members. When <typeparamref name="T" /> is an
     ///     interface, the properties it declares are compared too, read through it (an explicitly implemented one
-    ///     included), unless a member of the same name is compared already; the patterns apply to them by their
-    ///     names. Two values of different runtime types are a violation. When the runtime type is not
+    ///     included, also beside a public property of the same name), after the members of the runtime type; one
+    ///     of them is not reported when a member of its name was reported already. The patterns apply to them by
+    ///     their names. Two values of different runtime types are a violation. When the runtime type is not
     ///     <typeparamref name="T" />, a violation message names the runtime type the members were listed from.
-    ///     The getters of the public properties of the runtime type (and of an interface <typeparamref name="T" />)
-    ///     then run, and a getter that throws ends the call with
+    ///     The getters of the public properties of a reference type's runtime type, and of the properties of an
+    ///     interface <typeparamref name="T" />, then run (a property of an interface <typeparamref name="T" />
+    ///     that the runtime type implements publicly is read twice), and a getter that throws ends the call with
     ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
     ///     <see cref="Exception.InnerException" />, also where comparing by the members of
     ///     <typeparamref name="T" /> alone passed.
@@ -1550,17 +1552,11 @@ public static class Contract
         }
 
         // An explicitly implemented property is not a public property of the runtime type, and the Equals of a
-        // value type may ignore a property: the properties an interface T declares are read through it, unless
-        // a member of the same name is compared already.
+        // value type may ignore a property: the properties an interface T declares are read through it, after
+        // the members of comparedType (see _FindDifferences for how one name is reported once).
         if (declaredType.IsInterface && comparedType != declaredType)
         {
-            List<MemberAccessor> interfaceProperties = MemberComparison
-                .GetOrCacheMetadata(declaredType)
-                .Members.Where(property =>
-                    !members.Exists(member => string.Equals(member.RawName, property.RawName, StringComparison.Ordinal))
-                )
-                .ToList();
-            members.AddRange(interfaceProperties);
+            members.AddRange(MemberComparison.GetOrCacheMetadata(declaredType).Members);
         }
 
         return members;
@@ -1583,9 +1579,16 @@ public static class Contract
         // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
         context.EnterTopLevel(new ReferencePair(actual, expected));
 
+        // A property of an interface T is compared even when a member of comparedType has its name: its getter
+        // may be another implementation (an explicit one). It is not reported when a member of that name was
+        // reported already: one implementation reports once.
+        HashSet<string> reportedNames = new(StringComparer.Ordinal);
         foreach (MemberAccessor member in members)
         {
-            if (MemberComparison.IsAssignable(member, assignableFieldPatterns))
+            if (
+                MemberComparison.IsAssignable(member, assignableFieldPatterns)
+                || (member.DeclaringType.IsInterface && reportedNames.Contains(member.RawName))
+            )
             {
                 continue;
             }
@@ -1601,6 +1604,7 @@ public static class Contract
                 }
 
                 differences.Add(member.Name);
+                reportedNames.Add(member.RawName);
             }
         }
 

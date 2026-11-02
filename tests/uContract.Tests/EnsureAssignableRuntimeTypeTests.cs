@@ -476,6 +476,19 @@ public class EnsureAssignableRuntimeTypeTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenOnlyAnExplicitInterfacePropertyBesideAPublicOneOfTheSameNameChanged_ReportsIt()
+    {
+        IPriced actual = new Listing("12.50");
+        IPriced expected = new Listing("10.00");
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Price" + ListedFrom<Listing, IPriced>(), exception.Description);
+    }
+
     private interface IReading
     {
         string Label { get; }
@@ -500,6 +513,21 @@ public class EnsureAssignableRuntimeTypeTests
         {
             Prices.Add(this, price);
         }
+
+        string IPriced.Price => Prices.TryGetValue(this, out string? price) ? price : "";
+    }
+
+    // A public Price, unchanged, and an explicit IPriced.Price kept outside its fields.
+    private sealed class Listing : IPriced
+    {
+        private static readonly ConditionalWeakTable<Listing, string> Prices = [];
+
+        public Listing(string price)
+        {
+            Prices.Add(this, price);
+        }
+
+        public string Price { get; } = "on request";
 
         string IPriced.Price => Prices.TryGetValue(this, out string? price) ? price : "";
     }
