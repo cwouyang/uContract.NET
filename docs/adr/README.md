@@ -111,6 +111,7 @@ main decision, write a new ADR that supersedes the old one instead.
 - [ADR-0022: Faithful Old<T>() Copies and Robust EnsureAssignable<T>() Comparison](0022-faithful-old-copies-and-robust-comparison.md) — 2026-10-07
 - [ADR-0023: Comparison of Members Declared on Base Classes in EnsureAssignable<T>()](0023-comparison-of-base-class-members.md) — 2026-10-26
 - [ADR-0024: Per-Type Caches That Do Not Keep Collectible Types Alive](0024-per-type-caches-and-collectible-types.md) — 2026-10-31
+- [ADR-0025: Fields-Only Comparison Not Adopted; Assignable Patterns Also Match the Property Name of a Backing Field](0025-fields-only-comparison-not-adopted.md) — 2026-11-02
 
 **Third Priority (Publishing and Maintenance)**:
 - [ADR-0010: Testing Framework - xUnit](0010-testing-framework-xunit.md) — 2025-10-18

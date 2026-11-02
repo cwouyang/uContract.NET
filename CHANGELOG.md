@@ -15,7 +15,9 @@ types, shared references and cycles. Code that relied on the lossy JSON copy cha
 state you need, for example `Old(() => _balance)`), an `object` member holds the boxed value instead
 of a `JsonElement`, and a lazily evaluated sequence is cloned as an iterator instead of being
 materialized (capture it with `.ToList()`). `EnsureAssignable<T>()` now reports some differences it
-missed and no longer reports some it raised wrongly; each case is listed under Changed. In a class
+missed and no longer reports some it raised wrongly; each case is listed under Changed. An
+assignable pattern is now also matched against the property name of an auto-property's backing
+field, so a pattern such as `^Email$` can excuse a change that 2.0.0 reported. In a class
 that derives from a type that `Old<T>()` shares, replace the pair on `this` by `Contract.Ensure`
 checks of the state members. `EnsureAssignable<T>()` now compares the private fields declared on a
 base class that is not part of .NET (an aggregate base class of yours or of a library), so a
@@ -280,15 +282,36 @@ AOT](README.md#trimming-and-native-aot) in the README.
   the same compared type (a private field declared on two levels, a field hidden with `new`, two
   backing fields of one name) with its declaring type: as `<name> (declared on <type>)` in a
   violation entry, for example `_state (declared on StateBase)`, and as `<type>.<name>` in the path
-  of a "cannot compare" message, whose advice still names the plain name and says that it also
+  of a "cannot compare" message, whose advice still names the member without its declaring type
+  (for a backing field, the property name it backs) and says that it also
   excuses the other members of that name. The type is shown by its name, or by its full name when
-  two of the declaring types have the same name. Assignable patterns are unchanged: they are
-  matched against the plain name, so one pattern excuses every member of that name, and one of them
-  cannot be excused alone. This also renames entries that collide in 2.0.0 already (a field hidden
-  with `new`). Members whose names do not collide are shown as before. Under Native AOT the
+  two of the declaring types have the same name. The declaring type takes no part in matching
+  assignable patterns: they are matched against the plain name (and, for a backing field, its
+  property name; see the next entry), so one pattern excuses every member of that name, and one of
+  them cannot be excused alone. This also renames entries that collide in 2.0.0 already (a field
+  hidden with `new`). Members whose names do not collide are shown as before. Under Native AOT the
   comparison changes only for a property whose getter is not visible through the compared type, in
   the display of colliding names, and for a base class whose private fields the application
   preserves. (#40; ADR-0023)
+- **BREAKING**: `EnsureAssignable<T>()` matches an assignable pattern against the plain name of a
+  member and, for the backing field that the compiler generates for an auto-property
+  (`<Email>k__BackingField`), also against the property name (`Email`). One anchored pattern
+  `^Email$` now excuses an auto-property declared on `T`, as the property and as its backing field,
+  where 2.0.0 needed `^(Email|<Email>k__BackingField)$`. Every pattern that excused a member in
+  2.0.0 still excuses it, and violation entries still show the plain name. A pattern can now excuse
+  a change that 2.0.0 reported: a pattern that matches the property name but not the plain name of
+  the backing field (`^Email$`, `^E`, `Email$`) now also excuses the backing field of a public
+  auto-property declared on `T` (2.0.0 excused the property and reported the backing field), and of
+  an auto-property that is not public, declared on `T` (2.0.0 reported it). The same holds for an
+  explicitly implemented interface auto-property declared on `T`, whose backing field
+  `<Ns.IFoo.Id>k__BackingField` is matched as `Ns.IFoo.Id`, so `Id$` excuses it. Of an
+  auto-property that is not public (or is explicitly implemented), declared on a base class, 2.0.0
+  compared nothing (its backing field is a private field of the base class); the entry above that
+  begins "`EnsureAssignable<T>()` compares the private fields declared on the base classes" makes it
+  compared, and such a pattern excuses it. A field
+  written by hand behind a property (`_email`) is still matched by its own name only. Patterns
+  still apply to top-level members only. Which members are compared does not change: fields-only
+  comparison was evaluated and not adopted. (#46; ADR-0025)
 - **BREAKING**: `EnsureImmutableCollection<T>()` returns a `null` `collection` instead of throwing
   `ArgumentNullException` when it does not check it: with postconditions off, or in a call made
   while another contract check is running. This is a second exception to "parameter validation
@@ -345,8 +368,8 @@ AOT](README.md#trimming-and-native-aot) in the README.
   ADR-0022)
 - Known limitation: a property that returns a new instance of its own type on every read (for
   example `DirectoryInfo.Root`) now makes the comparison grow without bound, where 2.0.0 overflowed
-  the stack. Fields-only comparison ([#46](https://github.com/cwouyang/uContract.NET/issues/46))
-  would remove it. (ADR-0022)
+  the stack. Fields-only comparison would remove it; it was evaluated in
+  [#46](https://github.com/cwouyang/uContract.NET/issues/46) and not adopted. (ADR-0022, ADR-0025)
 - Known limitation, unchanged from 2.0.0: for fixed-size buffers and `[InlineArray]` structs, the
   elements after the first are invisible to reflection and to `ValueType.Equals`. A change there with
   an equal first element passes silently. (ADR-0022)

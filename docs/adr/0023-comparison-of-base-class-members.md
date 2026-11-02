@@ -7,6 +7,7 @@
 - **Date**: 2026-10-26
 - **Deciders**: Project maintainer (cwouyang)
 - **Status Date**: 2026-10-26
+- **Amended**: 2026-11-02 — an assignable pattern is also matched against the property name of a compiler-generated backing field (#46, [ADR-0025](0025-fields-only-comparison-not-adopted.md)); the decisions stand; see the Amendment under Implementation Notes
 
 ---
 
@@ -165,6 +166,18 @@ This ADR was written after the implementation so that it could record what the w
 - **Native AOT.** Smoke checks 93 to 100 pin the Native AOT side: the two item 4 shapes and the three-level chain (93–95), a hidden base private field passing (96), the way out with `DynamicDependency(NonPublicFields, typeof(Base))` (97), a preserved base with an overridden auto-property, with and without the pattern `^(P|<P>k__BackingField)$` (98, 99), and the framework stop (100). Measured on `win-x64` for the pull request that closed this work: 100 `PASS` with postconditions on and with `DBC_POST=off`. The variant with the hidden dictionary entry was not published for this change, and CI had not run for it when this ADR was written.
 - **Unit tests.** 1,167 unit tests passed in the pull request that closed this work. That figure is a snapshot.
 
+### Amendment (2026-11-02): Patterns also match the property name of a backing field (#46)
+
+The decisions are unchanged. [Issue #46](https://github.com/cwouyang/uContract.NET/issues/46) keeps the members that are compared and changes one pattern rule; [ADR-0025](0025-fields-only-comparison-not-adopted.md) records the decision, the measurements and the limits. A pattern is matched against the raw name of a member and, when the member is a compiler-generated backing field `<X>k__BackingField`, also against the property name `X` (`MemberComparison.SourceName`). The declaring type still takes no part in matching, and violation entries still show the raw name. Each statement of this ADR that the rule qualifies is quoted by its opening words:
+
+- The Decision: "while assignable patterns are still matched against the raw member name". Decision 3: "Assignable patterns are matched against the raw name only, as in 2.0.0." Neither holds for a backing field any more: such a member is also matched by its property name, so `^X$` excuses `<X>k__BackingField`. For every other member the rule is the one of 2.0.0. "One pattern therefore excuses every member of that name" stands, and it now covers the backing fields of that property name too.
+- Known Limitations: "**One member of a colliding pair cannot be excused alone.** Patterns are matched against the raw name". The limit stands, and it reaches further: of a public field `X` declared on a derived class and a private auto-property `X` declared on its base class, whose raw names do not collide, `^X$` excuses both, and no pattern excuses the field alone (measured with a probe program).
+- Alternative 3: "Matching against the raw name only cannot widen a pattern beyond 2.0.0". The rule of this amendment widens it on purpose: a pattern that matches the property name and not the raw name of a backing field excuses that backing field now (see the Compatibility of ADR-0025). The reasons for rejecting matching against the qualified name stand.
+- Alternative 4: "because patterns are matched against the raw name". The entry still starts with the raw name, and the raw name is still matched, so the text before the first space still excuses the member.
+- Implementation Notes: "`MemberAccessor` keeps the raw name (`RawName`, for patterns)". `IsAssignable` reads `RawName` and derives the property name from it.
+
+Unchanged: the member list, the framework stop, the merge of decision 2, the display of colliding names, and the trimming annotations.
+
 ---
 
 ## References
@@ -188,3 +201,4 @@ This ADR was written after the implementation so that it could record what the w
 | Date       | Status      | Notes                          |
 |------------|-------------|--------------------------------|
 | 2026-10-26 | Accepted    | Decision recorded after implementation (#40 items 1 and 4). Amends ADR-0021 and ADR-0022. |
+| 2026-11-02 | Amended     | Assignable patterns are also matched against the property name of a compiler-generated backing field (#46); decision in ADR-0025. Decisions unchanged. See Implementation Notes > Amendment. |

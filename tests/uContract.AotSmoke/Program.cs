@@ -1942,7 +1942,22 @@ public static class Program
             Expect.Throws<PostconditionViolationException>("is compared as a whole"),
             Expect.Ok
         );
+
+        // Mutation: set accessor of an auto-property declared on T (a public member with its own backing field,
+        // both visible through T). The anchored property name excuses the property and its backing field.
+        yield return new Check(
+            108,
+            "Auto-property changed, assignable by its property name",
+            AutoPropertyAssignableByPropertyName,
+            Expect.Ok,
+            Expect.Ok
+        );
     }
+
+    private static object? AutoPropertyAssignableByPropertyName() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(new KeptCounterDerived(1) { P = 2 }, new KeptCounterDerived(1) { P = 1 }, "^P$")
+        );
 
     private static int[,] Grid(int last) =>
         new[,]

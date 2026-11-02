@@ -53,7 +53,8 @@ internal sealed class MemberAccessor
     /// <summary>
     ///     Gets the name of the member in violation entries: its raw name, followed by "(declared on T)" when it
     ///     is qualified, so the text before the first space is always a pattern that excuses it (assignable
-    ///     patterns are matched against <see cref="RawName" />).
+    ///     patterns are matched against <see cref="RawName" />, and for a compiler-generated backing field also
+    ///     against the property name that <see cref="MemberComparison.SourceName" /> gives it).
     /// </summary>
     public string Name { get; private set; }
 

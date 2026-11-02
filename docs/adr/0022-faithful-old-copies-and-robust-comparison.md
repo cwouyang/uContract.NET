@@ -17,6 +17,7 @@
 - **Amended**: 2026-10-24 — records the measurements behind #69: private fields and auto-properties that are not public, declared on a base class of `T`, are not compared; two different `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes the pair on `this` in silence unless a public getter of `T` throws, which corrects one item of the Limits of the #54 amendment; the library is unchanged; see the eighth Amendment under Implementation Notes
 - **Amended**: 2026-10-26 — the private fields declared on base classes that are not part of .NET are compared, a property whose getter is not visible through the compared type is read through the getter that exists, and colliding member names are shown with their declaring type (#40 items 1 and 4, [ADR-0023](0023-comparison-of-base-class-members.md)); the scope statements on items 1 and 4 and the base-class limit of the #69 amendment no longer hold; R8 is decided before the added fields; the smoke program has 100 checks; see the ninth Amendment under Implementation Notes
 - **Amended**: 2026-10-26 — two arrays of one runtime type whose element type is `bool`, `char`, an integer type, `float`, `double` or an enum are compared without boxing an element, so the cost figure of limit 15 of the #57 amendment no longer holds for them; every result is unchanged, and `Old<T>()`, B1 to B8, R0 to R8 and rule S are unchanged (#64); the smoke program has 107 checks; see the tenth Amendment under Implementation Notes
+- **Amended**: 2026-11-02 — fields-only comparison was evaluated in #46 and is not adopted, so D9 stands and the statements that defer work to #46 are settled; an assignable pattern is also matched against the property name of a compiler-generated backing field ([ADR-0025](0025-fields-only-comparison-not-adopted.md)); the smoke program has 108 checks; see the eleventh Amendment under Implementation Notes
 
 ---
 
@@ -3864,6 +3865,35 @@ published for this change.
 
 **Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R8, rule S, and the messages.
 
+### Amendment (2026-11-02): Fields-only comparison is not adopted; patterns also match the property name of a backing field (#46)
+
+[Issue #46](https://github.com/cwouyang/uContract.NET/issues/46) evaluated comparing instance
+fields only. [ADR-0025](0025-fields-only-comparison-not-adopted.md) records the measurements and the
+decision: the members compared stay the public properties and the instance fields, and an assignable
+pattern is now also matched against the property name of a compiler-generated backing field
+(`^X$` excuses `<X>k__BackingField`). Each statement of this ADR that the decision settles or
+qualifies is quoted by its opening words:
+
+- D9: "Unchanged: public properties and instance fields. Fields-only comparison is evaluated in
+  #46." The evaluation is done, and D9 stands.
+- Known Limitations: "A property that returns a new instance of its own type on every read makes the
+  comparison grow without bound (fields-only comparison, #46, would remove it)." Fields-only
+  comparison is not adopted, so the limit stays.
+- The #54 amendment, rejected alternative "Copy the user-derived class (option 2 of the issue)":
+  "To avoid that needs fields-only comparison (#46)", and "It is deferred to #46, not closed." The
+  same amendment: "#46 (fields-only comparison) receives option 2 of #54 as a deferred
+  alternative." #46 does not take up option 2, and the obstacle named there stays: the comparison
+  would still read the public properties of the framework base class.
+- The #69 amendment, "**What stays open.**": "#46 (fields-only comparison) changes which members are
+  compared, and with it whether property getters run." Neither changes: the members compared and the
+  getters that run stay as they were.
+- The #40 amendment: "Assignable patterns are matched against the raw name, as before." A pattern is
+  still matched against the raw name, and for a backing field also against its property name. The
+  display of colliding names is unchanged.
+
+**Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R8, rule S, and the messages.
+The smoke program has 108 checks (check 108 is listed in the #46 amendment of ADR-0021).
+
 ---
 
 ## References
@@ -3916,3 +3946,4 @@ published for this change.
 | 2026-10-24 | Amended     | The measurements behind #69: base-class private members are not compared; two `Stream`s as `T` end in `TargetInvocationException` when a getter throws; in the measured cases a class derived from a fixed shared type passes in silence unless a public getter of `T` throws (corrects one item of the Limits of the #54 amendment). Library unchanged. Decision unchanged. See Implementation Notes > eighth Amendment. |
 | 2026-10-26 | Amended     | Base-class private fields up to the first framework class are compared, the two property shapes with a hidden getter are read through the getter that exists, and colliding names are shown with their declaring type (#40 items 1 and 4; decision in ADR-0023); the scope statements on items 1 and 4 and the base-class limit of the #69 amendment no longer hold; 100 smoke checks. Decision unchanged. See Implementation Notes > ninth Amendment. |
 | 2026-10-26 | Amended     | Two arrays of one runtime type whose element type is `bool`, `char`, an integer type, `float`, `double` or an enum are compared without boxing an element; the cost figure of limit 15 of the #57 amendment no longer holds for them; results unchanged (#64); 107 smoke checks. Decision unchanged. See Implementation Notes > tenth Amendment. |
+| 2026-11-02 | Amended     | Fields-only comparison evaluated and not adopted (#46), so D9 stands; assignable patterns also match the property name of a backing field; decision in ADR-0025; 108 smoke checks. Decision unchanged. See Implementation Notes > eleventh Amendment. |
