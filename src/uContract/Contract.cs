@@ -1865,44 +1865,9 @@ public static class Contract
             $"EnsureAssignable cannot compare {comparedType}, the runtime type of the values (T is {declaredType}): "
                 + "no properties or fields are visible to reflection under Native AOT. If the type has members, "
                 + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
-                + $"typeof({_CSharpName(comparedType)}))] on a method that runs, or pass the values as that type; "
+                + $"typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs, or pass the values as that type; "
                 + "otherwise set DBC_POST=off (disables all postcondition checks)."
         );
-    }
-
-    // The name of type as C# writes it inside typeof: namespace-qualified, with generic arguments in angle
-    // brackets, a nested type after its declaring type and a dot, and an array with its rank in brackets.
-    private static string _CSharpName(Type type)
-    {
-        if (type.IsArray)
-        {
-            return $"{_CSharpName(type.GetElementType()!)}[{new string(',', type.GetArrayRank() - 1)}]";
-        }
-
-        return type.IsGenericParameter ? type.Name : _CSharpName(type, type.GetGenericArguments());
-    }
-
-    // The generic arguments of a nested type include those of its declaring types, first; each type in the chain
-    // takes the arguments its own definition adds.
-    private static string _CSharpName(Type type, Type[] arguments)
-    {
-        Type? declaringType = type.IsNested ? type.DeclaringType : null;
-        string prefix =
-            declaringType is not null ? _CSharpName(declaringType, arguments) + "."
-            : type.Namespace is { } ns ? ns + "."
-            : "";
-
-        string name = type.Name;
-        int tick = name.IndexOf('`', StringComparison.Ordinal);
-        if (tick < 0)
-        {
-            return prefix + name;
-        }
-
-        int outerCount = declaringType?.GetGenericArguments().Length ?? 0;
-        int ownCount = int.Parse(name[(tick + 1)..], System.Globalization.CultureInfo.InvariantCulture);
-        IEnumerable<string> own = arguments.Skip(outerCount).Take(ownCount).Select(a => _CSharpName(a));
-        return $"{prefix}{name[..tick]}<{string.Join(", ", own)}>";
     }
 
     // Under Native AOT a runtime type other than T that nothing preserves shows no declared member, and comparing
@@ -1934,7 +1899,7 @@ public static class Contract
             $"EnsureAssignable cannot compare {runtimeType}, the runtime type of the values (T is {declaredType}): "
                 + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
                 + "its members cannot be listed. Preserve it with "
-                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({_CSharpName(runtimeType)}))] on a method "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(runtimeType)}))] on a method "
                 + "that runs, or pass the values as that type; otherwise set DBC_POST=off (disables all postcondition "
                 + "checks)."
         );
