@@ -8,6 +8,7 @@
 - **Deciders**: Project maintainer (cwouyang)
 - **Status Date**: 2026-10-26
 - **Amended**: 2026-11-02 — an assignable pattern is also matched against the property name of a compiler-generated backing field (#46, [ADR-0025](0025-fields-only-comparison-not-adopted.md)); the decisions stand; see the Amendment under Implementation Notes
+- **Amended**: 2026-11-02 — the top level compares the members of the runtime type of the two values; for a framework class as `T` the walk goes up to and including `T`; a collection class of yours is compared by its class chain, no longer by its elements alone (#40 item 2, [ADR-0026](0026-top-level-runtime-type-comparison.md)); the decisions stand; see the second Amendment under Implementation Notes
 
 ---
 
@@ -178,6 +179,22 @@ The decisions are unchanged. [Issue #46](https://github.com/cwouyang/uContract.N
 
 Unchanged: the member list, the framework stop, the merge of decision 2, the display of colliding names, and the trimming annotations.
 
+### Amendment (2026-11-02): The top level compares the runtime type; sequences by their class chain (#40)
+
+The decisions are unchanged. [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), item 2 and the rest of item 3, makes the top level compare the two values by their runtime type, and compares a sequence by the class chain of its runtime type; [ADR-0026](0026-top-level-runtime-type-comparison.md) records the decision, the measurements and the limits. Each statement of this ADR that it qualifies is quoted by its opening words:
+
+- Constraints: "Not in scope: the rest of #40 (the top-level comparison by the declared `T` rather than the runtime type". That part of #40 is done in ADR-0026.
+- Decision 1: "For each type that the comparison compares by its members — `T`, the runtime type of a nested object". At the top level the type compared by its members is now the runtime type of the two values, which is `T` when they are of type `T`.
+- Decision 1, **Framework stop**: "That class and the classes above it add nothing." One exception, at the top level: when `T` is a framework class other than `object` and the runtime type derives from it, the private fields of the base classes are walked up to and including `T` (`MemberComparison.GetTopLevelMetadata`). So `EnsureAssignable<Random>(a, b)` for two instances of a subclass of yours still reports `_impl` of `Random`, as it did when the members of `T` were compared. Framework classes above `T` still add nothing.
+- Decision 1, **Unchanged**: "The fields of a framework base class that are not private are listed by `GetFields` and are compared as before." Not in a sequence whose class chain holds a framework class: its elements stand in for the framework's non-public fields (`List<T>._items`, `_size`, `_version`), which are not compared. At the top level its public framework properties are compared, except `Capacity`.
+- The same: "A nested collection class of yours is compared by its elements, as before." No longer holds. A class of yours derived from a framework collection is compared by its elements and by the members declared on its classes that are not framework classes; a class of yours that implements `IEnumerable` itself is compared by its members only, and is not enumerated.
+- Decision 1, **"No members visible"**: "is decided on the members of the 2.0.0 list, before the base-class private fields are added." At the top level, the private fields declared on a class `T` that the runtime type derives from count as visible members too, because the annotation on `T` preserves them.
+- Implementation Notes: "The smoke check for the stop (check 100) uses `Collection<int>`". It still does, and now expects `Code|(the elements; assignable patterns do not apply to them)|frameworkPrivateFields=items`, because `CodedCollection` is compared by its elements too.
+
+Still true: the Known Limitation on Native AOT. A private field of a base class between a visible runtime type and `T` is not compared when that base class is not preserved (F11 of the spike of ADR-0026), as with `T` = the runtime type.
+
+Unchanged: the merge of decision 2, the display of colliding names, the pattern rule of the amendment above, and the trimming annotations.
+
 ---
 
 ## References
@@ -202,3 +219,4 @@ Unchanged: the member list, the framework stop, the merge of decision 2, the dis
 |------------|-------------|--------------------------------|
 | 2026-10-26 | Accepted    | Decision recorded after implementation (#40 items 1 and 4). Amends ADR-0021 and ADR-0022. |
 | 2026-11-02 | Amended     | Assignable patterns are also matched against the property name of a compiler-generated backing field (#46); decision in ADR-0025. Decisions unchanged. See Implementation Notes > Amendment. |
+| 2026-11-02 | Amended     | The top level compares the runtime type; for a framework class as `T` the walk goes up to and including `T`; a collection class of yours is compared by its class chain (#40 item 2); decision in ADR-0026. Decisions unchanged. See Implementation Notes > second Amendment. |

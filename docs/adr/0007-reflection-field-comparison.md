@@ -13,6 +13,7 @@
 - **Amended**: 2026-10-10 — at the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared member by member: the call throws `InvalidOperationException`, and the patterns do not apply (#54, rule S of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fourth Amendment under Implementation Notes
 - **Amended**: 2026-10-10 — two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared element by element, not by reference, and one of the two types as `T` is compared as a whole, without the patterns (#49, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the fifth Amendment under Implementation Notes
 - **Amended**: 2026-10-11 — an array type or `System.Array` as `T` is compared as a whole, without the patterns; two arrays are equal only when they have the same rank, and the same length and lower bound in every dimension; two arrays of pointers or of function pointers are compared by address; an array whose element type is declared in `System.Collections.Frozen` and a value of a value type declared there are no longer compared by reference (#57, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the sixth Amendment under Implementation Notes
+- **Amended**: 2026-11-02 — for a `T` that is not compared as a whole, the top level compares the two values by their runtime type, not by the members of `T`, and a sequence is compared by the class chain of its runtime type (#40 item 2, [ADR-0026](0026-top-level-runtime-type-comparison.md)); see the seventh Amendment under Implementation Notes
 
 ---
 
@@ -587,6 +588,36 @@ Still true:
 
 This amendment adds no decision. It is the record that this ADR was considered for #57.
 
+### Amendment (2026-11-02): The top level compares the runtime type (#40)
+
+The reflection comparison of this ADR stands. [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40),
+item 2, changes the shape of the top level that the amendments above record.
+[ADR-0026](0026-top-level-runtime-type-comparison.md) records the decision, the measurements and the
+limits. In a call that compares two values that are not `null`, and for a `T` that is not compared as
+a whole, the top level now decides on the runtime type of the two values: a runtime type that is
+compared as a whole is compared so, two different instances of a shared type are a violation by
+reference, two values of different runtime types are a violation (two sequences excepted), and any
+other value is compared by the members of its runtime type, the properties of an interface `T`
+included. A sequence is compared by the class chain of its runtime type, at the top level and below
+it. These statements, each quoted by its opening words, no longer hold as written:
+
+- The listing under Details: "`var type = typeof(T);`". The top level lists the members of the
+  runtime type.
+- The third Amendment: "This ADR is the record of the shape of the top level: the members of `T` are
+  compared one by one". When the runtime type is not `T`, its members are compared, and the patterns
+  apply to them.
+- The third Amendment: "Each still holds for every other `T` with two values that are not `null`."
+  It holds only when the runtime type of the two values is `T`.
+- The sixth Amendment, "Still true": "That includes a `T` such as `object` or an interface whose two
+  values are arrays: such a call is not compared as a whole." Two arrays of one runtime type are now
+  compared as a whole whatever `T` is, and two arrays of different runtime types are compared by
+  their elements, as two sequences.
+
+Unchanged: the members of a type that is compared by its members, the patterns, and the rules of the
+amendments above for a `null` side, for a `T` that is compared as a whole and for one changing shared
+instance on both sides. This amendment adds no decision here. It is the record that this ADR was
+considered for #40 item 2.
+
 ---
 
 ## References
@@ -609,3 +640,4 @@ This amendment adds no decision. It is the record that this ADR was considered f
 | 2026-10-10 | Amended     | At the top level, one instance of a shared type whose state can change, passed as `actual` and as `expected`, is not compared: `InvalidOperationException` (#54, ADR-0022). Decision unchanged. See Implementation Notes > fourth Amendment. |
 | 2026-10-10 | Amended     | Two `FrozenSet<T>` or `FrozenDictionary<TKey, TValue>` values of one runtime type that a member or element holds are compared by element, not by reference; one of the two types as `T` is compared as a whole (#49, ADR-0022). Decision unchanged. See Implementation Notes > fifth Amendment. |
 | 2026-10-11 | Amended     | An array type or `System.Array` as `T` is compared as a whole; two arrays are equal only with the same rank, lengths and lower bounds; two arrays of pointers or of function pointers are compared by address; an array whose element type is declared in `System.Collections.Frozen`, and a value of a value type declared there, are no longer compared by reference (#57, ADR-0022). Decision unchanged. See Implementation Notes > sixth Amendment. |
+| 2026-11-02 | Amended     | The top level compares the runtime type of the two values, and a sequence is compared by the class chain of its runtime type (#40 item 2, ADR-0026). Reflection comparison unchanged. See Implementation Notes > seventh Amendment. |

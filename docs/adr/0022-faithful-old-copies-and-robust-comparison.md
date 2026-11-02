@@ -18,6 +18,7 @@
 - **Amended**: 2026-10-26 — the private fields declared on base classes that are not part of .NET are compared, a property whose getter is not visible through the compared type is read through the getter that exists, and colliding member names are shown with their declaring type (#40 items 1 and 4, [ADR-0023](0023-comparison-of-base-class-members.md)); the scope statements on items 1 and 4 and the base-class limit of the #69 amendment no longer hold; R8 is decided before the added fields; the smoke program has 100 checks; see the ninth Amendment under Implementation Notes
 - **Amended**: 2026-10-26 — two arrays of one runtime type whose element type is `bool`, `char`, an integer type, `float`, `double` or an enum are compared without boxing an element, so the cost figure of limit 15 of the #57 amendment no longer holds for them; every result is unchanged, and `Old<T>()`, B1 to B8, R0 to R8 and rule S are unchanged (#64); the smoke program has 107 checks; see the tenth Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — fields-only comparison was evaluated in #46 and is not adopted, so D9 stands and the statements that defer work to #46 are settled; an assignable pattern is also matched against the property name of a compiler-generated backing field ([ADR-0025](0025-fields-only-comparison-not-adopted.md)); the smoke program has 108 checks; see the eleventh Amendment under Implementation Notes
+- **Amended**: 2026-11-02 — the top level of `EnsureAssignable<T>()` compares the runtime type of the two values, so "the top level comparing the members of `typeof(T)`" no longer holds; R6 and R7 compare a sequence by the class chain of its runtime type; under Native AOT R8 also covers a nested class of yours that shows no declared member, and its message names the type in C# syntax; two different instances of a shared type as `T` are a violation by reference (#40 item 2, [ADR-0026](0026-top-level-runtime-type-comparison.md)); the smoke program has 139 checks; see the twelfth Amendment under Implementation Notes
 
 ---
 
@@ -3894,6 +3895,63 @@ qualifies is quoted by its opening words:
 **Unchanged.** The decisions of this ADR, `Old<T>()`, B1 to B8, R0 to R8, rule S, and the messages.
 The smoke program has 108 checks (check 108 is listed in the #46 amendment of ADR-0021).
 
+### Amendment (2026-11-02): The top level compares the runtime type; sequences by their class chain (#40)
+
+[Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), item 2 and the rest of item 3, makes
+the top level of `EnsureAssignable<T>()` compare the two values by their runtime type with the rules
+of a member pair, and compares a sequence by the class chain of its runtime type, at the top level
+and below it. [ADR-0026](0026-top-level-runtime-type-comparison.md) records the decision, the
+measurements and the limits. Each statement of this ADR that it settles or qualifies is quoted by
+its opening words:
+
+- Comparison rules R0–R8: "Unchanged: which members are compared (D9), the top level comparing the
+  members of `typeof(T)`". D9 stands. For a `T` that is not compared as a whole, the top level now
+  compares the members of the runtime type of the two values (and, for an interface `T`, the
+  properties that the interface declares), so R0 holds at the top level too, after a `null` side and
+  rule S. A runtime type that is compared as a whole is compared so, two different instances of a
+  shared type are a violation by reference (R5 at the top level), and two values of different runtime
+  types are a violation (R6 at the top level).
+- R6: "Exception: when both are `IEnumerable` and neither is a `string`, they are compared by R7."
+  The exception now holds only when neither runtime type declares members on a class that is not a
+  framework class (`MemberComparison.IsComparedByElementsOnly`). Two sequences of different runtime
+  types where one has state of its own are unequal.
+- R7: "Any other `IEnumerable` is compared element by element, in order." A reference-type sequence
+  is compared by the class chain of its runtime type. When the chain holds a framework class below
+  `object`, it is compared by its elements (a dictionary as before) and by the members declared on
+  its classes that are not framework classes. A class of yours that implements `IEnumerable` itself is
+  compared by its members, as any other class, and is not enumerated. A `yield` iterator of an
+  assembly that is not part of .NET is compared by its elements. Arrays, frozen collections, shared
+  types and value-type sequences keep their rules.
+- R8: "For a nested class other than `System.Object` with no visible members". Under Native AOT the
+  rule also applies to a nested class that is not a framework class and shows no declared member (no
+  field, property, method or constructor that it declares is visible), also when the members it
+  inherits are visible, and, for a nested sequence, to each class of yours in its chain. The message
+  now writes the type in `typeof`, in C# syntax: "… for example with
+  [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({C# type name}))] on a method that
+  runs; …", where it said "typeof(X))] where X is that type". The same holds for the message below a
+  whole value (the #52 amendment). "R8 applies to the nested walk only. When `T` itself has no visible
+  members, the top-level message of ADR-0021 is unchanged." Still true for `T`; for a runtime type
+  other than `T` the top level has messages of its own (ADR-0021, eleventh amendment).
+- The #52 amendment, "Nothing changes when `T` is any other type": "`T` = `object`. `object` has no
+  members, so nothing is compared beyond `null`", "A base class as `T`. The members that it declares or
+  inherits are compared", "An interface as `T`. Only the properties that the interface itself declares
+  are compared", and "A shared type (B3) other than `string` or a delegate as `T`". None of these holds
+  any more when the runtime type is not `T`; two different instances of a shared type as `T` are a
+  violation by reference also when the runtime type is `T`.
+- The #52 amendment, "**Left in #40**: the rest of item 2." It is done, apart from what ADR-0026 lists
+  as known limitations.
+- The #57 amendment: "Rows 77 and 78 stay with #40: the members that the declared type shows are
+  compared." Two arrays of one runtime type are now compared as a whole whatever `T` is.
+- The #69 amendment, "**A `Stream` as `T`.**": "`EnsureAssignable<Stream>` with two different
+  `MemoryStream`s threw" `TargetInvocationException`. Two different instances of a shared type are now
+  a violation by reference, so no getter of them runs and the patterns do not apply. One instance of a
+  shared, fixed type on both sides (a class derived from `Regex`, `Type` or `MemberInfo`) is still
+  compared by the members of `T`, and its getters still run.
+
+**Unchanged.** `Old<T>()`, B1 to B8, R1 to R5, rule S, D9, and the messages of R8 apart from the
+type name in `typeof`. The smoke program has 139 checks (check 100 changes and checks 109 to 139 are
+listed in the #40 amendment of ADR-0021 dated 2026-11-02).
+
 ---
 
 ## References
@@ -3947,3 +4005,4 @@ The smoke program has 108 checks (check 108 is listed in the #46 amendment of AD
 | 2026-10-26 | Amended     | Base-class private fields up to the first framework class are compared, the two property shapes with a hidden getter are read through the getter that exists, and colliding names are shown with their declaring type (#40 items 1 and 4; decision in ADR-0023); the scope statements on items 1 and 4 and the base-class limit of the #69 amendment no longer hold; 100 smoke checks. Decision unchanged. See Implementation Notes > ninth Amendment. |
 | 2026-10-26 | Amended     | Two arrays of one runtime type whose element type is `bool`, `char`, an integer type, `float`, `double` or an enum are compared without boxing an element; the cost figure of limit 15 of the #57 amendment no longer holds for them; results unchanged (#64); 107 smoke checks. Decision unchanged. See Implementation Notes > tenth Amendment. |
 | 2026-11-02 | Amended     | Fields-only comparison evaluated and not adopted (#46), so D9 stands; assignable patterns also match the property name of a backing field; decision in ADR-0025; 108 smoke checks. Decision unchanged. See Implementation Notes > eleventh Amendment. |
+| 2026-11-02 | Amended     | The top level compares the runtime type of the two values; R6 and R7 compare a sequence by the class chain of its runtime type; R8 also covers a nested class of yours that shows no declared member under Native AOT, and names the type in C# syntax (#40 item 2); decision in ADR-0026; 139 smoke checks. `Old<T>()` unchanged. See Implementation Notes > twelfth Amendment. |

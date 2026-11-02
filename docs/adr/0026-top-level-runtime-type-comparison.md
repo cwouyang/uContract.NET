@@ -1,0 +1,252 @@
+# ADR-0026: EnsureAssignable<T>() Compares the Runtime Type at the Top Level
+
+## Status
+
+**Accepted**
+
+- **Date**: 2026-11-02
+- **Deciders**: Project maintainer (cwouyang)
+- **Status Date**: 2026-11-02
+
+---
+
+## Context
+
+### Problem Statement
+
+`Contract.EnsureAssignable<T>()` is a postcondition: "nothing changed except the assignable members". On master at `70d7083`, and in 2.0.0, the top level compared only what the declared `T` shows (`Contract._FindDifferences` read the metadata of `typeof(T)`), while every nested member and element was compared by its runtime type (R0 of [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)). So the same object was checked fully when it was a member, and not at all, or only in part, when it was passed as `T`:
+
+- `T` = `object`: nothing was compared beyond `null`, also for two different strings or two arrays with a different element.
+- `T` = an interface: only the properties that the interface itself declares were compared (`IReadOnlySet<T>` declares none).
+- `T` = a base class: what the runtime type adds was not compared. This covers the documented pair `EnsureAssignable(this, Contract.Old(() => this))` written in a base class and run on a subclass instance.
+
+Each such call passed silently. [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40) lists this as item 2. Item 3 (the own members of a class that is also enumerable; dictionary values; members typed as a non-enumerable interface) is the nested side of the same question.
+
+### Relevant Context
+
+- Earlier changes took parts of item 2: a `null` side, a `string`, a delegate type and a nullable value type as `T` (#52); one changing shared instance on both sides (#54); a frozen collection as `T` (#49); an array type or `System.Array` as `T` (#57). Each applied only when `T` itself was such a type. The rest of item 2 is this ADR.
+- Two throwaway spikes measured the options on master at `70d7083`, on one machine (.NET SDK 8.0.204, `win-x64`), under the JIT and under Native AOT. Nothing of them was committed. Their reports, source diffs, probe programs and result files are archived outside the repository at `C:\Users\cwouyang\Desktop\Dev\personal\sdd-archive\uContract.NET-40-item2-runtime-type\spike\` (`spike-40-report.md`, `spike-40b-report.md`). Row ids below (O1, BA1, F3, …) refer to those reports. The spikes measured variants close to the final design, not the design itself.
+- Spike 1 measured three variants: R (compare the runtime type; under Native AOT throw when its members are hidden, "R-throw"), R-fallback (the same, but fall back to the metadata of `typeof(T)` when the runtime type's members are hidden), and R-seq (R, and compare a top-level sequence by its elements only).
+- Spike 2 measured five rules (H1 to H5) for a runtime type that Native AOT does not preserve but whose inherited members still show.
+- Under Native AOT, an instantiated type that nothing preserves keeps no reflection metadata at all, not even a constructor (spike 2, section 1). Its inherited members can still show, through a base class that something preserves.
+- The trimming analyzer gives no signal that the top level reflects on a runtime type that the annotation on `T` does not preserve (spike 1, "Trim / AOT warnings").
+
+### Constraints
+
+- No public API signature change; the `PublicAPI.*` baseline files are unchanged. `[DynamicallyAccessedMembers]` on `T` stays as it is.
+- No new dependency ([ADR-0011](0011-zero-dependency-principle.md)).
+- The Native AOT smoke program builds with `-warnaserror`; no new trimming suppression beyond the existing `IL2070` pattern without a written reason.
+- The work targets 3.0.0 and lands under `[Unreleased]` in `CHANGELOG.md`.
+
+---
+
+## Decision
+
+**The top level of `EnsureAssignable<T>()` compares the two values by their runtime type, with the rules a member pair follows. Under Native AOT, a runtime type other than `T` that shows no declared member makes the call throw, also when the two values are equal. A sequence is compared by the class chain of its runtime type, at the top level and below it.**
+
+The maintainer's rule for this decision is: "以為有檢查其實沒檢查比較糟" (a check that silently compares nothing is worse than a check that starts to fail after an upgrade). When the library cannot compare, it says so.
+
+The maintainer chose these options; each label is quoted verbatim:
+
+1. Direction: "照實際型別，AOT 大聲失敗" — compare the runtime type with the rules of a member; under Native AOT a runtime type whose members cannot be seen throws, also for equal values; the fix is `DynamicDependency`.
+2. A base class as `T` under Native AOT, which stayed silent in spike 1: measured in spike 2, then "採用 H3".
+3. Collections: first "和成員一樣逐元素". Spike 2 showed that this drops a collection subclass's own field (smoke check 100, `CodedCollection.Code`), so it was replaced by "元素＋自己成員，巢狀也一起改".
+4. After a check of the design by its builder:
+   - a framework collection held by an `object` or interface `T` under Native AOT: "套 H3，大聲失敗";
+   - nested values under Native AOT: "使用者型別套 H3";
+   - two sequences of different runtime types, one with state of its own: "算違反";
+   - a class of yours that implements `IEnumerable<T>` itself, with no framework collection as a base: "只比成員".
+5. During the implementation, each answer changed the design:
+   - an interface `T`: "合併：也比 interface 的屬性" — the properties that the interface declares are compared too, read through it, because an explicitly implemented property is not a public property of the runtime type and a value type's `Equals` can ignore a property;
+   - a framework class as `T`: "走訪到 T 為止" — the private fields of the base classes are walked up to and including `T`, because `EnsureAssignable<Random>(new MyRandom(1), new MyRandom(2))` reported `_impl` on master and would otherwise pass;
+   - the public state of a framework sequence at the top level: "公開屬性照比，排除 Capacity";
+   - a `yield` iterator: "當成序列逐元素比";
+   - a sequence that is not a collection at the top level: "頂層非集合序列拋錯", refined by "只在實際型別≠T 時拋錯";
+   - a framework property without a getter at the top level: "跳過沒有 getter 的框架屬性";
+   - a top-level `yield` iterator from any assembly that is not part of .NET: "寫進文件，維持列舉";
+   - a runtime type that something partly preserves under Native AOT: "接受為已知限制，寫進 ADR";
+   - a `yield` method that returns only an enumerator: "接受延後，spec 用詞收窄並寫進文件".
+
+### Details
+
+"Runtime type" is `actual.GetType()`, after `null` has been decided. A "framework class" is one that `MemberComparison.IsFrameworkClass` accepts: its assembly is signed with a public key token of the .NET 8 shared frameworks ([ADR-0023](0023-comparison-of-base-class-members.md)). Steps 1 to 4 of `EnsureAssignable<T>()` stay as they are and in that order: the pattern-array check, the recursion guard and the postconditions switch, `null` as a value, and one changing shared instance on both sides. A `T` that is compared as a whole (a `string`, a delegate type, a nullable value type, a frozen collection, an array type or `System.Array`) keeps its rule. A nullable value type as `T` keeps its rule and messages, because a boxed `int?` has the runtime type `int`.
+
+1. **The runtime type decides** (`Contract._CompareByRuntimeType`, `_CompareByMembers`).
+   - A runtime type that is a `string`, a delegate type, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, or an array type is compared as a whole, also when `T` is `object`, an interface or a base class. The patterns do not apply and are not examined. Two frozen collections of one public type are compared as a whole also when the framework built them as different internal classes; a message names the public type.
+   - Two different instances of a type that `Old<T>()` shares, other than those above and a boxed pointer, are a violation by reference, whatever `T` is and whatever their state. This also changes `T` = such a type itself (two `MemoryStream`s as `T` = `Stream`, two `Regex`es). One instance of a shared, fixed type on both sides (a `Regex`) keeps master's path: the members of `T` are compared. `T` = `System.Reflection.Pointer` keeps its comparison by members; under another `T` two boxed pointers are compared by address.
+   - Two values of different runtime types are a violation that names both runtime types and `T`, except two sequences (rule 3 below).
+   - A boxed value type other than `T` is compared as a member is: its `Equals` first, then its fields. A primitive, an enum and an inline array are decided by `Equals` alone.
+   - Any other value is compared by the members of its runtime type: public instance properties, instance fields, and the private fields of its base classes up to the first framework class. When `T` is a framework class other than `object` that the runtime type derives from, the walk goes up to and including `T`.
+   - When `T` is an interface, the properties that it declares are compared too, read through it, after the members of the runtime type. One of them is not reported when a member of its name was reported already.
+   - When the runtime type is not `T`, a violation message adds the line "Members were listed from the runtime type X, not from T (Y)."
+2. **Patterns** apply to the top-level members that the comparison walks, listed from the runtime type, with the rules of [ADR-0025](0025-fields-only-comparison-not-adopted.md). A pattern written against `T` still excuses that member. A member that only the runtime type has is excused only by a pattern that names it. Elements are never excused.
+3. **Sequences** (an `IEnumerable` reference type other than a `string`, an array, a frozen collection and a shared type) are compared by the class chain of the runtime type, at the top level and below it (`MemberComparison.GetSequenceRule`):
+   - **The chain holds a framework class below `object`** (`List<T>`, `Collection<T>`, `Dictionary<TKey, TValue>`): compared by its elements (a dictionary entry by entry, in enumeration order) and by the members declared on its classes that are not framework classes. The framework's non-public fields are not compared, so two lists of equal content and different capacity or history are equal. At the top level the public properties declared on its framework classes are compared too, except one named `Capacity` and one without a getter that `T` does not declare or inherit. An element difference at the top level is reported as the entry `(the elements; assignable patterns do not apply to them)`.
+   - **No framework class in the chain** (a class of yours that implements `IEnumerable` itself): compared by its members only, as any other class, and not enumerated, at every level.
+   - **A `yield` iterator** of an assembly that is not part of .NET (a class marked `[CompilerGenerated]` that implements `IEnumerator`, reached as an `IEnumerable`): compared by its elements alone, at every level. Its fields are the state of the iteration.
+   - **Not a collection, at the top level.** A sequence whose chain holds a framework class and that implements none of `ICollection`, `ICollection<T>` and `IReadOnlyCollection<T>` (a LINQ query, `GetConsumingEnumerable()`, an `XmlDocument`) is never enumerated at the top level. When its runtime type is not `T`, the call throws `InvalidOperationException` and asks for a materialised collection (`ToList()`) or for the value's own type as `T`. Passed as its own type, it is compared by all its members, as on master. Below the top level it is enumerated, as on master.
+   - **Two sequences of different runtime types** are compared by their elements only when neither runtime type declares members on a class that is not a framework class. Otherwise they are unequal; at the top level that is a violation that names both runtime types. With equal elements, the properties of an interface `T` are then compared.
+4. **Native AOT: a runtime type that shows no declared member** (`MemberComparison.ShowsNoDeclaredMember`, rule H3). "Shows no declared member" means that reflection lists no field, property, method or constructor that the type declares (`DeclaredOnly`, public and non-public, instance and static). A nested type and an event do not count. The rule runs only when dynamic code is not supported.
+   - **Top level, runtime type ≠ `T`**, not compared as a whole: the call throws `InvalidOperationException`, also when the two values are equal. A framework collection is covered too (a `Queue<int>` or a `List<int>` held by `object`, when nothing preserves it). A value type other than `T` asks `Equals` first and throws only when `Equals` reports the values unequal; a primitive, an enum and an inline array need no metadata and are not covered. Two sequences of different runtime types ask no `Equals`, so there a value type throws as a class does. A `yield` iterator is not covered: enumerating it needs no metadata.
+   - **Nested values**: a class that is not a framework class and shows no declared member is handled as a class with no visible members (R8 of ADR-0022): equal when its `Equals` returns `true`, "cannot compare" otherwise. For a sequence whose chain holds a framework class, the same test applies to each class of yours in the chain. A framework class reached as a nested value keeps master's behaviour.
+   - **Runtime type = `T`**: the top level is unchanged; the annotation on `T` preserves `T`.
+   - The message names the runtime type and `T`, and gives the fix with the runtime type in C# syntax: `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(<type>))]` on a method that runs (measured to work: spike 1 A1–A3o, spike 2 F5 and F6aP), or, when both values are of that type, passing them as that type. It does not suggest `[DynamicallyAccessedMembers]` on a base type of yours, which does not help (spike 1 A4–A6). The nested "cannot compare" messages now name the type in C# syntax too (`CSharpTypeName`).
+
+### Compatibility
+
+The `[Unreleased]` section of `CHANGELOG.md` holds one **BREAKING** bullet that ends `(#40; ADR-0026)`. Compared with master at `70d7083` and with 2.0.0:
+
+- Calls with `T` = `object`, an interface or a base class compare what they skipped, and can start to fail. A documented example such as `EnsureAssignable(this, Contract.Old(() => this))` keeps working under the JIT, and on a subclass instance it compares the subclass's state too.
+- Under Native AOT such calls throw "cannot compare" until the runtime type is preserved, also when nothing changed. This includes `EnsureAssignable(this, Contract.Old(() => this))` written in a base class and run on a subclass instance, and a framework collection passed as `object` that nothing preserves.
+- Under Native AOT, a nested object of a type of yours that nothing preserves and that only inherits visible members ends in "cannot compare" when its `Equals` reports the values unequal, instead of a partial comparison.
+- A framework collection as `T` (`List<int>`) is compared by its elements and its public properties: a pattern that excused its private fields (`_items`) no longer applies, and a change of capacity alone is no longer a violation.
+- A nested class of yours that implements `IEnumerable<T>` itself is compared by its members, not its elements.
+- Two different instances of a shared type are a violation also when `T` is that type.
+- Downstream: ezDDD.NET has no `EnsureAssignable` or `Old` call (spike 1, M7). The documentation examples pass the concrete type.
+
+---
+
+## Consequences
+
+### Positive Consequences
+
+- ✅ Under the JIT, the cases that master passed silently with `T` = `object`, an interface or a base class are compared (spike 1, M1 rows).
+- ✅ Under Native AOT, each such case is either compared or ends in "cannot compare" with a fix that was measured to work. No case that master reports passes silently, apart from the known limitations below.
+- ✅ Two collections of equal content and different capacity or history are equal at the top level too (spike 1, O5d, O5e, I2c, L2).
+- ✅ #40 item 3 is closed: the own members of a collection class are compared at every level, and its other two parts (dictionary values, members typed as a non-enumerable interface) were already compared by the full rules on master (`DictionaryWalk`, and `MemberComparison.Start` by runtime type).
+
+### Negative Consequences
+
+- ❌ **Breaking** (see Compatibility).
+- ❌ Under Native AOT, a call that passed for equal values can throw until the user adds `DynamicDependency`. A stateless subclass that nothing preserves throws too (false positive, below).
+- ❌ More getters run: those of the runtime type's public properties, and of an interface `T`'s properties. A getter that throws ends the call in `TargetInvocationException`, also where comparing by `T` alone passed.
+
+### Neutral Consequences
+
+- ⚖️ No public API signature and no trimming annotation changed. The library adds `IL2070` suppressions in the existing pattern on the new reflection helpers (`MemberComparison.GetTopLevelMetadata`, `IsCollection`, `ListsNoDeclaredMember`), each with a justification.
+- ⚖️ When the runtime type equals `T`, the cost per call is unchanged within noise (spike 1, M6: same allocation). With `T` = `object`, a call now costs what a real comparison costs.
+
+---
+
+## Known Limitations
+
+- **H3 false positives.** Under Native AOT a stateless runtime type that nothing preserves (a subclass that declares nothing, an override-only subclass, a stateless derived record) throws "cannot compare", also for equal values (spike 2: F3, F6a, F6aB, F7l, F7v; smoke check 118). The fix in the message removes it (smoke check 119).
+- **Partial preservation is not detected (A1).** If anything keeps any member of the runtime type (for example a constructor kept by a dependency-injection registration), H3 treats it as preserved. Its hidden fields are then not compared, and the call compares only what stays visible, which can be the members of `T` alone. This is not detected (spike 2, "Known misses of H3"; inferred, not measured).
+- **Preservation is per generic definition.** Under Native AOT, preserving one closed generic type (`GenericTicket<long>`) made another instantiation of the same definition (`GenericTicket<int>`) show its declared members (measured while smoke check 120 was written). An instantiation that nothing preserves, of a definition that something preserves, is not detected.
+- **Private fields of a middle base class under Native AOT (F11).** When the runtime type is visible and a base class between it and `T` is not, that base class's private fields are not compared. This is the limit of [ADR-0023](0023-comparison-of-base-class-members.md), which also holds with `T` = the runtime type.
+- **`Old<T>()` shares what it cannot see (#39).** Under Native AOT `Old<T>()` shares the hidden fields of a type it cannot see, so a comparison of elements can pass while an element changed (spike 1, OL4). Framework types reached as nested values, with hidden private state, are left to [issue #39](https://github.com/cwouyang/uContract.NET/issues/39).
+- **Framework private state of a top-level sequence is not compared.** At the top level the non-public fields of the framework classes of a sequence are left to the elements. A comparer kept only in a non-public field (`Hashtable`, `Lookup<TKey, TElement>`) is not compared: with `T` = `Hashtable`, master reported a comparer change, and it passes now (read from the code). The event-handler fields of a framework class (the subscribers of an `ObservableCollection<T>`'s `CollectionChanged`) are not compared at the top level either.
+- **A framework property without a getter.** At the top level such a property is not read unless `T` declares or inherits it. When `T` does, the call ends in `InvalidOperationException`, as on master: `T` = `XmlDocument` reads `XmlResolver`, which has no getter, unless a pattern excuses it. With `T` = `object` or `XmlNode`, an `XmlDocument` ends in `InvalidOperationException` too, because it is a sequence that is not a collection.
+- **A nested class of yours that implements `IEnumerable` is not enumerated.** It is compared by its fields. Elements that it produces from the captured state of a delegate are missed: a delegate is compared by its methods, not its target.
+- **A `yield` iterator of a library is enumerated.** A `[CompilerGenerated]` iterator from any assembly that is not part of .NET, a NuGet package included, is enumerated at the top level. An infinite one does not return, and an exception from its body leaves the call unwrapped.
+- **A `yield` method that returns only an enumerator.** "Compared by its elements" holds for a `yield` method that returns `IEnumerable` or `IEnumerable<T>`. One that returns `IEnumerator` or `IEnumerator<T>` gives an enumerator, not a sequence. It is compared by its fields (the state of the iteration) under the JIT, and under Native AOT, when nothing preserves it, the call throws "no properties or fields are visible" with a `typeof` that cannot be written for a compiler-generated class (read from the code; deferred).
+- **Message wording.** The message for a sequence that is not a collection says that enumerating it "could run a query, consume its source or block"; that is not true for a materialised one (`ImmutableQueue<T>`, `StringDictionary`, `XmlNodeList`). When two sequences of different runtime types have equal elements and a property of an interface `T` differs, the violation does not say that the runtime types differ. The message for a property without a getter (`MemberAccessor.GetValue`) still reads "typeof(X))] where X is that type" instead of naming the type in C# syntax.
+
+---
+
+## Alternatives Considered
+
+### Alternative 1: Fall back to the metadata of `T` (R-fallback)
+
+**Description**: Compare the runtime type; under Native AOT, when its members are hidden, compare by the members of `T`, as master did.
+
+**Pros**:
+- Under the JIT it equals R (spike 1: identical outputs, 32 of 1243 unit tests change).
+- No call that passed on master throws under Native AOT.
+
+**Cons**:
+- Under Native AOT it keeps master's silent result for `T` = `object` or an interface holding a type that nothing preserves (spike 1, M4).
+
+**Why rejected**: A silent fallback to `typeof(T)` is what the maintainer's rule forbids. The maintainer chose "照實際型別，AOT 大聲失敗".
+
+---
+
+### Alternative 2: H1 — no visible instance field
+
+**Description**: Under Native AOT, throw when the runtime type declares no visible instance field.
+
+**Why rejected**: It throws also for a preserved stateless type (spike 2: F5, F6aP), a false positive that the user's fix cannot remove except by adding a field.
+
+---
+
+### Alternative 3: H2 — a class in the chain without a visible field
+
+**Description**: Throw when a class between the runtime type and `T` declares no visible instance field.
+
+**Why rejected**: It has H1's false positives, and one more: a stateless middle base under a preserved leaf (spike 2, F6bP), which `DynamicDependency(All)` on the leaf keeps only as a constructor.
+
+---
+
+### Alternative 4: H4 — instance size larger than the base's
+
+**Description**: Like H2, but blame a class without visible fields only when its instance size (`MethodTable` base size) is larger than its base's.
+
+**Why rejected**: It misses state that fits in the base's padding (spike 2: Z1, Z2, F6b, F7r), and it reads a CoreCLR/ILC layout detail at offset 4, which is not a public API.
+
+---
+
+### Alternative 5: H5 — H3 or the H4 size test
+
+**Description**: H3, or the H4 size test on the chain.
+
+**Why rejected**: It catches F11 but adds the D10 false positive and depends on the size read. Spike 2 recommended H5 only if the F11 limit were to be closed too; it was not.
+
+---
+
+### Alternative 6: Elements only for a sequence (R-seq)
+
+**Description**: Compare a top-level sequence by its elements only, as master compared a nested one. This was the first answer, "和成員一樣逐元素".
+
+**Why rejected**: It drops a collection subclass's own members: smoke check 100 failed (`CodedCollection.Code`), and the patterns on a sequence no longer applied (3 more unit tests; spike 2, section 4). The maintainer replaced it by "元素＋自己成員，巢狀也一起改".
+
+---
+
+### Alternative 7: Literal R for a sequence (by its members)
+
+**Description**: Compare a top-level `List<int>` by the members of its runtime type, as any other class.
+
+**Why rejected**: It walks the framework's private fields, so two lists of equal content and different capacity are a violation (spike 1, O5d, O5e, I2c; master's L2 for `T` = `List<int>`).
+
+---
+
+## Related Decisions
+
+- **Amends**: [ADR-0007 - Reflection and Field Comparison for EnsureAssignable<T>()](0007-reflection-field-comparison.md) — its record of the top level as "the members of `T` one by one" no longer holds. Carries an amendment.
+- **Amends**: [ADR-0021 - Postcondition Helpers under Trimming and Native AOT](0021-postconditions-under-trimming-and-aot.md) — the gap list of its Known Limitations and the exemption of `EnsureAssignable<object>`; smoke checks 109 to 139. Carries an amendment.
+- **Amends**: [ADR-0022 - Faithful Old<T>() Copies and Robust EnsureAssignable<T>() Comparison](0022-faithful-old-copies-and-robust-comparison.md) — "the top level comparing the members of `typeof(T)`", R6, R7 and R8. Carries an amendment.
+- **Amends**: [ADR-0023 - Comparison of Members Declared on Base Classes in EnsureAssignable<T>()](0023-comparison-of-base-class-members.md) — its scope statement, "a nested collection class of yours is compared by its elements", and the framework stop for a framework class as `T`. Carries an amendment.
+- **Related to**: [ADR-0025 - Fields-Only Comparison Not Adopted](0025-fields-only-comparison-not-adopted.md) — the pattern rule that applies to the runtime type's members.
+
+---
+
+## Implementation Notes
+
+This ADR was written after the implementation so that it could record what the work turned up.
+
+- **Where it lives.** `Contract.EnsureAssignable<T>()` step 5: `_CompareByRuntimeType` (whole values, shared types, different runtime types), `_CompareSequencesOfDifferentRuntimeTypes`, then `_CompareByMembers` with `_TopLevelType`, `_TopLevelMembers`, `_ThrowIfNotACollection`, `_ThrowIfShowsNoDeclaredMember` and `_RemoveMembersASequenceIsNotComparedBy`. `MemberComparison.GetTopLevelMetadata` lists the private fields up to a class `T`; `GetSequenceRule` holds the sequence rule (cached per type); `ShowsNoDeclaredMember` holds H3 (cached per type); `CSharpTypeName.Of` writes a type in C# syntax for the fixes.
+- **The "no members visible" count at the top level.** The private fields declared on a class `T` that the runtime type derives from count as visible, because the annotation on `T` preserves them. Without this, a subclass of `Random` that declares nothing threw "no members visible" under Native AOT where master reported `_impl`.
+- **A test seam for H3.** Under the JIT every type shows its members (spike 2, section 3), so unit tests set `RuntimeFacts.ShowsNoDeclaredMemberOverride` under a simulated runtime without dynamic code. Only the smoke program measures H3 itself.
+- **Unit tests.** New test classes `EnsureAssignableRuntimeTypeTests`, `EnsureAssignableTopLevelWholeValueTests`, `EnsureAssignableSequenceTests` and `EnsureAssignableUnseenRuntimeTypeTests`; tests that pinned the old gaps were rewritten to the new result, not deleted. On master at `70d7083` 1243 unit tests passed; on this branch 1408 passed. Both figures are snapshots.
+- **Native AOT.** Smoke check 100 now expects `Code|(the elements; assignable patterns do not apply to them)|frameworkPrivateFields=items`. Checks 109 to 139 are added: an `object`-typed class of yours (109–111), a base class `T` with an unpreserved, a preserved and a stateless derived type (112–120), a `Queue<int>` as `object` (121), a type passed as `T` elsewhere (122–124), a nested unpreserved class that only inherits visible members (125), boxed `DateTime` and `decimal` (126–129), a preserved nested type in an unpreserved class (130), `yield` iterators nested and at the top level (131–133, 137–139), an unpreserved nested class as `object` (134), a preserved closed generic (135) and LINQ queries as `object` (136). Measured on `win-x64` with the Native AOT publish of the default build (`-warnaserror`, no IL warnings): 139 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`. The check list "`List<int>` as `object`" is pinned with `Queue<int>`: check 3 of the same program preserves `List<>`. The CI workflow had not run for this change when this ADR was written.
+
+---
+
+## References
+
+- [Issue #40: `EnsureAssignable<T>()` comparison gaps that exist in every build](https://github.com/cwouyang/uContract.NET/issues/40)
+- [Issue #39: `Old`/`EnsureAssignable` under Native AOT](https://github.com/cwouyang/uContract.NET/issues/39)
+- [`Contract.cs`](../../src/uContract/Contract.cs) — `EnsureAssignable<T>()`, its top-level helpers and its XML documentation
+- [`MemberComparison.cs`](../../src/uContract/MemberComparison.cs) — `GetTopLevelMetadata`, `GetSequenceRule`, `ShowsNoDeclaredMember` and the nested walk
+- [`CSharpTypeName.cs`](../../src/uContract/CSharpTypeName.cs) — the type name in the fixes
+- [`EnsureAssignableRuntimeTypeTests.cs`](../../tests/uContract.Tests/EnsureAssignableRuntimeTypeTests.cs), [`EnsureAssignableTopLevelWholeValueTests.cs`](../../tests/uContract.Tests/EnsureAssignableTopLevelWholeValueTests.cs), [`EnsureAssignableSequenceTests.cs`](../../tests/uContract.Tests/EnsureAssignableSequenceTests.cs), [`EnsureAssignableUnseenRuntimeTypeTests.cs`](../../tests/uContract.Tests/EnsureAssignableUnseenRuntimeTypeTests.cs) — the unit tests
+- [`tests/uContract.AotSmoke/Program.cs`](../../tests/uContract.AotSmoke/Program.cs) — smoke checks 100 and 109 to 139
+- [`CHANGELOG.md`](../../CHANGELOG.md) — the `[Unreleased]` bullet
+- [ADR-0007](0007-reflection-field-comparison.md), [ADR-0021](0021-postconditions-under-trimming-and-aot.md), [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md), [ADR-0023](0023-comparison-of-base-class-members.md), [ADR-0025](0025-fields-only-comparison-not-adopted.md)
+
+---
+
+## Revision History
+
+| Date       | Status      | Notes                          |
+|------------|-------------|--------------------------------|
+| 2026-11-02 | Accepted    | Decision recorded after implementation (#40 item 2 and the rest of item 3). Amends ADR-0007, ADR-0021, ADR-0022 and ADR-0023. |
