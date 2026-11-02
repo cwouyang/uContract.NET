@@ -1673,7 +1673,7 @@ public static class Contract
             && !comparedType.IsValueType
             && actual is IEnumerable and not string
             && !SharedTypes.IsShared(comparedType)
-            && MemberComparison.GetSequenceRule(comparedType).HasFrameworkClass;
+            && MemberComparison.GetSequenceRule(comparedType).IsComparedByElements;
     }
 
     // A violation entry is named as today; when the members were listed from a runtime type other than T,

@@ -277,7 +277,7 @@ internal static class MemberComparison
     internal static bool IsComparedByElementsOnly(Type runtimeType)
     {
         SequenceRule rule = GetSequenceRule(runtimeType);
-        return rule.HasFrameworkClass && rule.OwnMembers.Count == 0;
+        return rule.IsComparedByElements && rule.OwnMembers.Count == 0;
     }
 
     private static bool HasFrameworkClassBelowObject(Type type)
@@ -594,7 +594,7 @@ internal static class MemberComparison
         Walk? walk =
             actual is IEnumerable actualEnum
             && expected is IEnumerable expectedEnum
-            && (actual.GetType() != expected.GetType() || GetSequenceRule(actual.GetType()).HasFrameworkClass)
+            && (actual.GetType() != expected.GetType() || GetSequenceRule(actual.GetType()).IsComparedByElements)
                 ? StartSequencesAndOwnMembers(actualEnum, expectedEnum)
                 : StartMembers(actual, expected, context, out equalWithoutWalk);
 
@@ -1120,7 +1120,11 @@ internal static class MemberComparison
     }
 
     // OwnMembers is cached for every caller, so it is read-only.
-    internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers);
+    internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers)
+    {
+        // Compared by its elements (and OwnMembers), not by its members alone.
+        public bool IsComparedByElements => HasFrameworkClass;
+    }
 
     // Created only when a comparison is blocked. The path is prepended one segment per level on
     // the way back up, so a comparison that is not blocked allocates nothing for it.
