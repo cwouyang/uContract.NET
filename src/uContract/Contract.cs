@@ -1091,10 +1091,11 @@ public static class Contract
     ///     <see cref="Array" />, the two values are
     ///     compared as a whole and no member of it is compared; for a nullable value type the fields of the
     ///     underlying type, and for an array type the members of the element type, may not be preserved.
-    ///     <see cref="object" /> compares nothing beyond null; a base class that is not compared as a whole
-    ///     (<see cref="Delegate" />, <see cref="MulticastDelegate" />, a <c>FrozenSet&lt;T&gt;</c>, a
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and <see cref="Array" /> are) compares the members it
-    ///     declares or inherits, and an interface only the properties it declares itself.
+    ///     For any other type (<see cref="object" />, an interface, a base class, or the type of the values
+    ///     itself) the two values are compared by their runtime type, as a member of that type is, and for an
+    ///     interface also by the properties it declares (see the remarks). The members of a runtime type other
+    ///     than this type are not preserved: under Native AOT such a runtime type that nothing preserves can make
+    ///     the method throw (see the exceptions).
     ///     Whatever it is, <see cref="object" /> included, nothing is compared and the method throws
     ///     <see cref="InvalidOperationException" /> when one instance is passed as <paramref name="actual" />
     ///     and as <paramref name="expected" /> and its runtime type is a type that <see cref="Old{T}" />
@@ -1170,9 +1171,14 @@ public static class Contract
     ///     constructor it declares is visible (a nested type or an event it declares does not count), which is how
     ///     Native AOT shows a type that nothing preserves (a framework collection included, when nothing in the
     ///     application preserves it). Comparing it by the members of <typeparamref name="T" />, by those it inherits
-    ///     or by its elements would miss what it adds. A yield iterator of yours is not affected, by this rule or by
-    ///     the rule for no visible members: at every level it is compared by its elements, as before, and
-    ///     enumerating it needs no metadata. A sequence that is not a collection is
+    ///     or by its elements would miss what it adds. A yield iterator of yours that is a sequence (from a method
+    ///     that returns <see cref="System.Collections.IEnumerable" /> or <see cref="IEnumerable{T}" />) is not
+    ///     affected, by this rule or by the rule for no visible members: at every level it is compared by its
+    ///     elements, as before, and enumerating it needs no metadata. One from a method that returns only
+    ///     <see cref="System.Collections.IEnumerator" /> or <see cref="IEnumerator{T}" /> is an enumerator, not a
+    ///     sequence: it is compared by its fields, and under Native AOT, when nothing preserves it, the rule for
+    ///     no visible members makes the method throw, with a <c>typeof</c> that cannot be written for a
+    ///     compiler-generated class. A sequence that is not a collection is
     ///     reported as such first (see below). The message names the runtime type and <typeparamref name="T" />
     ///     (for two values of different runtime types, the runtime type of <paramref name="actual" /> or of
     ///     <paramref name="expected" />), and gives the fix with the runtime type in C# syntax:
@@ -1230,7 +1236,11 @@ public static class Contract
     ///     between the runtime type and <typeparamref name="T" /> do not. A runtime type other than
     ///     <typeparamref name="T" /> whose own members were not preserved shows no declared member to reflection,
     ///     and is not compared by those fields of <typeparamref name="T" /> alone: the method throws (see the
-    ///     exceptions). In a trimmed
+    ///     exceptions). A runtime type of which something preserves some members (a constructor kept by a
+    ///     dependency-injection registration) does not show that: it is compared by the members that are
+    ///     visible, which can be those of <typeparamref name="T" /> alone, and that is not detected. Native AOT
+    ///     preserves per generic definition, so an instantiation that nothing preserves shows its members when
+    ///     another instantiation of its definition is preserved. In a trimmed
     ///     application without Native AOT these fields may not be preserved either; they are then not compared,
     ///     and that is not detected.
     ///     The walk goes deeper into nested objects and collection elements without recursion, so cycles and
@@ -1247,9 +1257,20 @@ public static class Contract
     ///     (<c>_items</c>, <c>_version</c>) are not compared, so two lists of equal content and different capacity
     ///     or add and remove history are equal. Otherwise (a class of
     ///     yours that implements <see cref="System.Collections.IEnumerable" /> itself) it is compared by its
-    ///     members alone, as any other class, and it is not enumerated. A <c>yield</c> iterator of yours (a class
-    ///     marked <see cref="CompilerGeneratedAttribute" /> that implements <see cref="System.Collections.IEnumerator" />)
-    ///     is compared by its elements alone, at every level: its fields are the state of the iteration.
+    ///     members alone, as any other class, and it is not enumerated. Elements that such a class produces from
+    ///     the captured state of a delegate are therefore not compared: a delegate is compared by its methods. A
+    ///     <c>yield</c> iterator of yours (a class marked <see cref="CompilerGeneratedAttribute" /> that implements
+    ///     <see cref="System.Collections.IEnumerator" />, reached as an <see cref="System.Collections.IEnumerable" />:
+    ///     the result of a <c>yield</c> method that returns <see cref="System.Collections.IEnumerable" /> or
+    ///     <see cref="IEnumerable{T}" />) is compared by its elements alone, at every level: its fields are the
+    ///     state of the iteration. "Yours" means any assembly that is not part of .NET, a NuGet package
+    ///     included. Enumerating it runs its body: an infinite iterator does not return, and an exception from
+    ///     its body leaves the method as it is, not wrapped. A <c>yield</c> method that returns only an
+    ///     enumerator gives a class that is not a sequence, compared by its fields (see the exceptions).
+    ///     The non-public fields of the framework classes of a sequence are not compared, at any level, so a
+    ///     comparer kept only in such a field (<c>Hashtable</c>, <c>Lookup&lt;TKey, TElement&gt;</c>) and the
+    ///     event handlers that a framework class keeps (the subscribers of an
+    ///     <c>ObservableCollection&lt;T&gt;</c>) are not compared either.
     ///     At the top level, a sequence built on a framework class that is not a collection (it implements none of
     ///     <see cref="System.Collections.ICollection" />, <see cref="ICollection{T}" /> and
     ///     <see cref="IReadOnlyCollection{T}" />: a LINQ query such as <c>source.Select(...)</c>,
@@ -1420,7 +1441,7 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of T are preserved; those of a runtime type other than T, which the top level compares, and the types of nested objects and collection elements are not. For a nullable value type, the fields of the underlying type may not be preserved."
+        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of T are preserved; those of a runtime type other than T, which the top level compares, and the types of nested objects and collection elements are not. Under Native AOT a runtime type other than T that nothing preserves can make the call throw; preserve it with DynamicDependency. For a nullable value type, the fields of the underlying type may not be preserved."
     )]
     public static void EnsureAssignable<[DynamicallyAccessedMembers(MemberComparison.ComparedMembers)] T>(
         T actual,
