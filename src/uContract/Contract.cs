@@ -1846,6 +1846,12 @@ public static class Contract
         );
     }
 
+    // A primitive, an enum and an inline array, as a value of a type other than T, are decided by Equals alone.
+    private static bool _IsDecidedByEqualsAlone(Type type)
+    {
+        return type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false);
+    }
+
     // The members the top level is compared by: those of comparedType, and, when T is an interface other than
     // comparedType, the properties the interface declares.
     private static List<MemberAccessor> _TopLevelMembers(
@@ -1863,14 +1869,7 @@ public static class Contract
         bool asAMember = comparedType.IsValueType && comparedType != declaredType;
         if (!asAMember || !Equals(actual, expected))
         {
-            if (
-                asAMember
-                && (
-                    comparedType.IsPrimitive
-                    || comparedType.IsEnum
-                    || comparedType.IsDefined(typeof(InlineArrayAttribute), inherit: false)
-                )
-            )
+            if (asAMember && _IsDecidedByEqualsAlone(comparedType))
             {
                 throw new PostconditionViolationException(
                     $"actual and expected are not equal. They are compared as {comparedType} by its Equals alone, "
