@@ -1252,15 +1252,27 @@ public static class Contract
     ///     did not happen, or misses one: take the snapshot outside such a check.
     ///     When <typeparamref name="T" /> is a <see cref="string" />, a delegate type, a nullable value type, a
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or
-    ///     <see cref="Array" />, the two
-    ///     values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
+    ///     <see cref="Array" />, and also when <typeparamref name="T" /> is any other type (<see cref="object" />,
+    ///     an interface, a base class) and the two values are of one runtime type that is a string, a delegate
+    ///     type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type,
+    ///     the two values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
     ///     delegate by its methods (not its targets, so the same method on another object is equal;
     ///     <see cref="Delegate" /> and <see cref="MulticastDelegate" /> count as delegate types, and two delegates of
     ///     different runtime types are unequal), a nullable value type with <c>Equals</c> first and then by the fields
     ///     of the underlying type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
     ///     element by element, in enumeration order, two arrays element by element, each element as a member or
     ///     element is, under the rule for two arrays above (two arrays of pointers or of function pointers are
-    ///     compared by address). The patterns do not apply.
+    ///     compared by address). The patterns do not apply and are not examined. A message names a frozen
+    ///     collection by its public type, <c>FrozenSet&lt;T&gt;</c> or <c>FrozenDictionary&lt;TKey, TValue&gt;</c>,
+    ///     not by its internal runtime type.
+    ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a
+    ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> (two <c>Stream</c>s, two
+    ///     <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever
+    ///     <typeparamref name="T" /> is and whatever their state: no member is read and the patterns do not apply.
+    ///     Check such a state with <see cref="Ensure(string, Func{bool})" />.
+    ///     Two values of different runtime types, either of which is compared as a whole or shared, are a
+    ///     violation that names both runtime types and <typeparamref name="T" />, except two sequences
+    ///     (<see cref="System.Collections.IEnumerable" /> other than a string), which are compared as below.
     ///     A nullable value type can therefore be compared less strictly than the same type without <c>?</c>
     ///     (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of it
     ///     cannot be listed as assignable. To compare it by its members, test both values for null first and pass the
@@ -1285,31 +1297,17 @@ public static class Contract
     ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
     ///     <see cref="Exception.InnerException" />, also where comparing by the members of
     ///     <typeparamref name="T" /> alone passed.
-    ///     When either runtime type is a string, a delegate type, a <c>FrozenSet&lt;T&gt;</c> or a
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, an array, another <see cref="System.Collections.IEnumerable" />
-    ///     or a type that <see cref="Old{T}" /> shares, the members visible through <typeparamref name="T" /> are
-    ///     compared instead: <see cref="object" /> has none, so nothing is compared beyond null; a base class that
-    ///     is not compared as a whole (<see cref="Delegate" />, <see cref="MulticastDelegate" />, a
-    ///     <c>FrozenSet&lt;T&gt;</c>, a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and <see cref="Array" />
-    ///     are) compares the
-    ///     members it declares or inherits, and an interface only the properties it declares itself; in
-    ///     neither case what the runtime type adds. Two different instances
-    ///     of a type that <see cref="Old{T}" /> shares (two <c>Stream</c>s) are still compared member by member,
-    ///     and so is a type that is shared, and fixed (a <c>Regex</c>), also for one instance on both sides; in
-    ///     both cases unless <typeparamref name="T" /> is a string, a delegate type, a <c>FrozenSet&lt;T&gt;</c> or a
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or <see cref="Array" />, which are
-    ///     compared as a whole. The getters of the public properties of <typeparamref name="T" /> then run, also
-    ///     for one instance on both sides, and a getter that throws ends the call with
+    ///     When either runtime type is another <see cref="System.Collections.IEnumerable" />, when the two values
+    ///     are sequences of different runtime types, and when one instance of a type that is shared, and fixed
+    ///     (a <c>Regex</c>), is on both sides, the members visible through <typeparamref name="T" /> are
+    ///     compared instead: <see cref="object" /> has none, so nothing is compared beyond null; a base class
+    ///     compares the members it declares or inherits, and an interface only the properties it declares itself;
+    ///     in neither case what the runtime type adds. The getters of the public properties of
+    ///     <typeparamref name="T" /> then run, and a getter that throws ends the call with
     ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
-    ///     <see cref="Exception.InnerException" />. Two different <c>Stream</c>s that keep the <c>ReadTimeout</c>
-    ///     getter of <c>Stream</c>, which throws, end the call so (measured for two <c>MemoryStream</c>s); a
-    ///     stream that cannot seek can throw at <c>Length</c> first. So can one instance of a class derived from
-    ///     <c>Type</c> or <c>MemberInfo</c> on both sides (measured for a class derived from <c>TypeDelegator</c>
-    ///     and one derived from <c>MemberInfo</c>); for that case see <see cref="Old{T}" />. For two streams, list
-    ///     the properties that throw as assignable (for two <c>MemoryStream</c>s, <c>Timeout$</c>), or check the
-    ///     state with <see cref="Ensure(string, Func{bool})" />. With <typeparamref name="T" /> = <c>Stream</c>
-    ///     and that pattern, the properties of the stream (<c>Length</c>, <c>Position</c>, ...) are compared, not
-    ///     its content: two <c>MemoryStream</c>s of the same length and different content pass (measured).
+    ///     <see cref="Exception.InnerException" />. One instance of a class derived from <c>Type</c> or
+    ///     <c>MemberInfo</c> on both sides can end the call so (measured for a class derived from
+    ///     <c>TypeDelegator</c> and one derived from <c>MemberInfo</c>); for that case see <see cref="Old{T}" />.
     ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
     ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
     ///     in a class derived from <c>Stream</c>, <c>Task</c> or <c>Component</c> compares the object with
@@ -1375,7 +1373,9 @@ public static class Contract
 
         // Step 5: Execute with guard. A string, a delegate type, a nullable value type, a FrozenSet<T> or a
         // FrozenDictionary<TKey, TValue>, and an array type or System.Array are compared as one pair, without
-        // the patterns and without the member metadata of T; any other T is compared member by member.
+        // the patterns and without the member metadata of T; for any other T the runtime type of the two values
+        // decides first (compared as a whole, by reference, or a violation for different runtime types), and
+        // what it leaves is compared member by member.
         try
         {
             Entered.Value = true;
@@ -1436,9 +1436,9 @@ public static class Contract
     }
 
     // A string, a delegate type, a nullable value type, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, and
-    // an array type or System.Array are compared as one pair, as a member of that type is. The declared type
-    // decides, and its member metadata is not read: two arrays passed as object, as an interface or inside a
-    // collection class are compared by the members of that type.
+    // an array type or System.Array are compared as one pair, as a member of that type is. Asked of T first and
+    // then, at the top level, of the runtime type of the two values (see _CompareByRuntimeType); the member
+    // metadata of the type is not read.
     private static bool _IsComparedAsWhole(Type type)
     {
         return type == typeof(string)

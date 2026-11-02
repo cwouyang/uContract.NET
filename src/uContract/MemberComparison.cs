@@ -337,7 +337,8 @@ internal static class MemberComparison
 
     // The comparison of a nullable value type, of a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or of an
     // array type or System.Array, as a whole met a class whose members are not visible. For a nullable value
-    // type, wholeType is the underlying type; for the others it is T itself. The path starts with the name of
+    // type, wholeType is the underlying type; for the others it is T itself, or the runtime type of the two
+    // values when that decided (a frozen collection by its public type). The path starts with the name of
     // wholeType, except below an array type or System.Array, where it starts with the parameter name: the
     // name of an array type holds brackets of its own ("X[]"), which would read as one more element.
     internal static InvalidOperationException CannotCompareBelowWhole(Type wholeType, HiddenMembers hidden)
