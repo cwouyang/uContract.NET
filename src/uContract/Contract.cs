@@ -1170,8 +1170,9 @@ public static class Contract
     ///     constructor it declares is visible (a nested type or an event it declares does not count), which is how
     ///     Native AOT shows a type that nothing preserves (a framework collection included, when nothing in the
     ///     application preserves it). Comparing it by the members of <typeparamref name="T" />, by those it inherits
-    ///     or by its elements would miss what it adds. A yield iterator of yours is not affected: it is compared by
-    ///     its elements, as before, and enumerating it needs no metadata. A sequence that is not a collection is
+    ///     or by its elements would miss what it adds. A yield iterator of yours is not affected, by this rule or by
+    ///     the rule for no visible members: at every level it is compared by its elements, as before, and
+    ///     enumerating it needs no metadata. A sequence that is not a collection is
     ///     reported as such first (see below). The message names the runtime type and <typeparamref name="T" />
     ///     (for two values of different runtime types, the runtime type of <paramref name="actual" /> or of
     ///     <paramref name="expected" />), and gives the fix with the runtime type in C# syntax:
@@ -1728,7 +1729,7 @@ public static class Contract
             _ThrowIfShowsNoDeclaredMember(comparedType, declaredType);
         }
 
-        List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected);
+        List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected, byElements);
         if (byElements)
         {
             _RemoveMembersASequenceIsNotComparedBy(members, comparedType, declaredType);
@@ -1931,12 +1932,15 @@ public static class Contract
     }
 
     // The members the top level is compared by: those of comparedType, and, when T is an interface other than
-    // comparedType, the properties the interface declares.
+    // comparedType, the properties the interface declares. A yield iterator of yours compared by its elements
+    // keeps none of its own members (see _RemoveMembersASequenceIsNotComparedBy), so its members being hidden
+    // under Native AOT, as they are when nothing preserves it, leaves nothing uncompared.
     private static List<MemberAccessor> _TopLevelMembers(
         Type comparedType,
         Type declaredType,
         object actual,
-        object expected
+        object expected,
+        bool byElements
     )
     {
         List<MemberAccessor> members = [];
@@ -1962,7 +1966,10 @@ public static class Contract
             }
 
             TypeMetadata metadata = MemberComparison.GetTopLevelMetadata(comparedType, declaredType);
-            if (MemberComparison.MembersAreHidden(comparedType, metadata))
+            if (
+                MemberComparison.MembersAreHidden(comparedType, metadata)
+                && !(byElements && MemberComparison.GetSequenceRule(comparedType).IsIterator)
+            )
             {
                 throw _NoMembersVisible(comparedType, declaredType);
             }

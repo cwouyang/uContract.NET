@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.Runtime.CompilerServices;
 using uContract.Exceptions;
 
 namespace uContract.Tests;
@@ -375,6 +376,20 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         Assert.Null(exception);
     }
 
+    // Under Native AOT a yield iterator that nothing preserves lists no field to reflection, which the older "no
+    // members visible" rule reads as hidden members. Under the JIT a real iterator lists its state fields, so a
+    // hand-written iterator that declares no field stands in for it.
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeIsAYieldIteratorThatListsNoMemberAndItsElementsAreEqual_DoesNotThrow()
+    {
+        IEnumerable<int> actual = new IteratorWithoutFields();
+        IEnumerable<int> expected = new IteratorWithoutFields();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // Preserving the internal type of a query cannot be written; materialising it can.
     [Fact]
     public void EnsureAssignable_WhenTIsObjectAndTheValuesAreQueriesThatShowNoDeclaredMember_ThrowsNotACollection()
@@ -591,6 +606,37 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         {
             yield return number;
         }
+    }
+
+    // Marked as the compiler marks a yield iterator, and declares no field and no public property: its elements
+    // come from a fresh enumerator of a fixed array.
+    [CompilerGenerated]
+    private sealed class IteratorWithoutFields : IEnumerable<int>, IEnumerator<int>
+    {
+        private static readonly int[] Elements = [1, 2];
+
+        int IEnumerator<int>.Current => throw new NotSupportedException();
+
+        object IEnumerator.Current => throw new NotSupportedException();
+
+        public IEnumerator<int> GetEnumerator()
+        {
+            return ((IEnumerable<int>)Elements).GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        bool IEnumerator.MoveNext()
+        {
+            return false;
+        }
+
+        void IEnumerator.Reset() { }
+
+        void IDisposable.Dispose() { }
     }
 
     private sealed class Tray

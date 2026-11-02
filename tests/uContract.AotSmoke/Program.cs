@@ -2313,17 +2313,45 @@ public static class Program
             Expect.Ok
         );
 
-        // Mutation: none. Visibility: nothing preserves the iterator; T is IEnumerable<int>. Measured: the rule for a
-        // runtime type that shows no declared member lets the iterator pass, but the older "no members visible"
-        // rule at the top level still reports it, although an iterator is compared by its elements alone.
+        // Mutation: none. Visibility: nothing preserves the iterator, which lists no member; T is IEnumerable<int>.
+        // An iterator is compared by its elements, so neither the rule for a runtime type that shows no declared
+        // member nor the older "no members visible" rule reports it.
         yield return new Check(
             133,
             "EnsureAssignable<IEnumerable<int>> yield iterators of equal elements",
             TopLevelIteratorsEqual,
-            Expect.Throws<InvalidOperationException>(
-                "cannot compare uContract.AotSmoke.Program+<CountTo>",
-                "no properties or fields are visible to reflection"
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none (two iterators of one yield method). Visibility: nothing preserves the iterator; T is
+        // IEnumerable<int>.
+        yield return new Check(
+            137,
+            "EnsureAssignable<IEnumerable<int>> yield iterators of different elements",
+            TopLevelIteratorsDiffer,
+            Expect.Throws<PostconditionViolationException>(
+                "Members were listed from the runtime type uContract.AotSmoke.Program+<CountTo>"
             ),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves the iterator; List<int> shows its members (see check 3). The
+        // two values are of different runtime types, compared by their elements.
+        yield return new Check(
+            138,
+            "EnsureAssignable<IEnumerable<int>> yield iterator against List<int> of equal elements",
+            IteratorAgainstListEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another last element. Visibility: as check 138.
+        yield return new Check(
+            139,
+            "EnsureAssignable<IEnumerable<int>> yield iterator against List<int> of different elements",
+            IteratorAgainstListDiffer,
+            Expect.Throws<PostconditionViolationException>("They are sequences of different runtime types"),
             Expect.Ok
         );
 
@@ -2395,6 +2423,21 @@ public static class Program
 
     private static object? TopLevelIteratorsEqual() =>
         NoResult(static () => Contract.EnsureAssignable(CountTo(2), CountTo(2)));
+
+    private static object? TopLevelIteratorsDiffer() =>
+        NoResult(static () => Contract.EnsureAssignable(CountTo(3), CountTo(2)));
+
+    private static object? IteratorAgainstListEqual()
+    {
+        List<int> expected = [1, 2];
+        return NoResult(() => Contract.EnsureAssignable<IEnumerable<int>>(CountTo(2), expected));
+    }
+
+    private static object? IteratorAgainstListDiffer()
+    {
+        List<int> expected = [1, 2];
+        return NoResult(() => Contract.EnsureAssignable<IEnumerable<int>>(CountTo(3), expected));
+    }
 
     private static object? UnseenInnerAsObject()
     {
