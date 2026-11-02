@@ -597,75 +597,87 @@ public unsafe class EnsureAssignableArrayAsTTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndOneElementOfTwoArraysDiffers_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsObjectAndOneElementOfTwoArraysDiffers_ReportsTheArrayAsComparedAsAWhole()
     {
         object actual = new[] { 1, 2 };
         object expected = new[] { 1, 3 };
         Assert.NotSame(actual, expected);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(int[])), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsEnumerableOfIntegersAndOneElementOfTwoArraysDiffers_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsEnumerableOfIntegersAndOneElementOfTwoArraysDiffers_ReportsTheArrayAsComparedAsAWhole()
     {
         IEnumerable<int> actual = new[] { 1, 2 };
         IEnumerable<int> expected = new[] { 1, 3 };
         Assert.NotSame(actual, expected);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(int[])), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsListInterfaceOfIntegersAndOneElementOfTwoArraysDiffers_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsListInterfaceOfIntegersAndOneElementOfTwoArraysDiffers_ReportsTheArrayAsComparedAsAWhole()
     {
         IList<int> actual = new[] { 1, 2 };
         IList<int> expected = new[] { 1, 3 };
         Assert.NotSame(actual, expected);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(int[])), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsReadOnlyListOfIntegersAndOneElementOfTwoArraysDiffers_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsReadOnlyListOfIntegersAndOneElementOfTwoArraysDiffers_ReportsTheArrayAsComparedAsAWhole()
     {
         IReadOnlyList<int> actual = new[] { 1, 2 };
         IReadOnlyList<int> expected = new[] { 1, 3 };
         Assert.NotSame(actual, expected);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(int[])), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsTheNonGenericListInterfaceAndOneElementOfTwoArraysDiffers_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsTheNonGenericListInterfaceAndOneElementOfTwoArraysDiffers_ReportsTheArrayAsComparedAsAWhole()
     {
         IList actual = new[] { 1, 2 };
         IList expected = new[] { 1, 3 };
         Assert.NotSame(actual, expected);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(int[])), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsCloneableAndOneElementOfTwoArraysDiffers_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsCloneableAndOneElementOfTwoArraysDiffers_ReportsTheArrayAsComparedAsAWhole()
     {
         ICloneable actual = new[] { 1, 2 };
         ICloneable expected = new[] { 1, 3 };
         Assert.NotSame(actual, expected);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(int[])), exception.Description);
     }
 
     [Fact]

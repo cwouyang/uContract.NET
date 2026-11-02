@@ -1952,13 +1952,15 @@ public class EnsureAssignableTests
         Assert.Null(exception);
     }
 
-    // The declared type decides, and object has no members.
+    // The runtime type decides, so two strings passed as object are compared as a whole.
     [Fact]
-    public void EnsureAssignable_WhenStringsAreComparedAsObject_DoesNotThrow()
+    public void EnsureAssignable_WhenStringsAreComparedAsObject_ReportsTheStringAsComparedAsAWhole()
     {
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable<object>("a", "b"));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable<object>("a", "b")
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(string)), exception.Description);
     }
 
     [Fact]

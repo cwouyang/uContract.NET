@@ -483,10 +483,10 @@ public class EnsureAssignableSameSharedInstanceTests
         Assert.Null(exception);
     }
 
-    // ---- Two different instances ----
+    // ---- Two different instances: compared by reference, whatever T is ----
 
     [Fact]
-    public void EnsureAssignable_WhenTwoDifferentComponentsDiffer_ReportsTheChangedMember()
+    public void EnsureAssignable_WhenTwoDifferentComponentsDiffer_ReportsComparedByReference()
     {
         using Worker actual = new() { State = 1 };
         using Worker expected = new();
@@ -495,34 +495,38 @@ public class EnsureAssignableSameSharedInstanceTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.EndsWith(
-            "Fields were modified that are not marked as assignable:\n  - State",
-            exception.Message,
-            StringComparison.Ordinal
+        Assert.Equal(ComparedByReference(typeof(Worker)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTwoDifferentComponentsAreComparedAsObject_ReportsComparedByReference()
+    {
+        using Worker actual = new() { State = 1 };
+        using Worker expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable<object>(actual, expected)
         );
+
+        Assert.Equal(ComparedByReference(typeof(Worker)), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTwoDifferentComponentsAreComparedAsObject_DoesNotThrow()
+    public void EnsureAssignable_WhenTwoDifferentComponentsAreComparedThroughAnInterface_ReportsComparedByReference()
     {
         using Worker actual = new() { State = 1 };
         using Worker expected = new();
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable<object>(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable<IDisposable>(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(ComparedByReference(typeof(Worker)), exception.Description);
     }
 
-    [Fact]
-    public void EnsureAssignable_WhenTwoDifferentComponentsAreComparedThroughAnInterface_DoesNotThrow()
-    {
-        using Worker actual = new() { State = 1 };
-        using Worker expected = new();
-
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable<IDisposable>(actual, expected));
-
-        Assert.Null(exception);
-    }
+    private static string ComparedByReference(Type type) =>
+        $"actual and expected are different instances of {type}, which is compared by reference: its state is "
+        + "not compared, and assignable patterns do not apply. To check its state, use Contract.Ensure.";
 
     // ---- The same instance of a type that is shared and fixed, or that is not shared ----
 

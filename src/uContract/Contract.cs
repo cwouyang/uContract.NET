@@ -1386,6 +1386,11 @@ public static class Contract
                 return;
             }
 
+            if (_CompareByRuntimeType(typeof(T), actual!, expected!))
+            {
+                return;
+            }
+
             _CompareByMembers(typeof(T), actual!, expected!, assignableFieldPatterns);
         }
         finally
@@ -1441,6 +1446,59 @@ public static class Contract
             || Nullable.GetUnderlyingType(type) is not null
             || SharedTypes.IsFrozenSetOrDictionary(type)
             || MemberComparison.IsArrayTypeOrSystemArray(type);
+    }
+
+    // Returns true when the runtime type of the two values settled the comparison: a value that is compared as a
+    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array) or by reference
+    // (a shared type) is compared so whatever T is, and the patterns are not read. Two values of different
+    // runtime types where either is such a value are a violation, except two sequences, which are left to the
+    // comparison by the members of T.
+    private static bool _CompareByRuntimeType(Type declaredType, object actual, object expected)
+    {
+        Type actualType = actual.GetType();
+        Type expectedType = expected.GetType();
+        if (!_IsDecidedByRuntimeType(actualType) && !_IsDecidedByRuntimeType(expectedType))
+        {
+            return false;
+        }
+
+        if (actualType != expectedType)
+        {
+            if (actual is IEnumerable and not string && expected is IEnumerable and not string)
+            {
+                return false;
+            }
+
+            throw new PostconditionViolationException(
+                $"actual and expected are of different runtime types: actual is {SharedTypes.PublicFrozenType(actualType)}, "
+                    + $"expected is {SharedTypes.PublicFrozenType(expectedType)}, and T is {declaredType}. "
+                    + "No member was compared, so assignable patterns do not apply."
+            );
+        }
+
+        if (_IsComparedAsWhole(actualType))
+        {
+            _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), actual, expected);
+            return true;
+        }
+
+        // One instance on both sides keeps the path it had before the runtime type decided: step 4 reported it
+        // when its state can change, and otherwise it is compared by the members of T.
+        if (ReferenceEquals(actual, expected))
+        {
+            return false;
+        }
+
+        throw new PostconditionViolationException(
+            $"actual and expected are different instances of {actualType}, which is compared by reference: "
+                + "its state is not compared, and assignable patterns do not apply. To check its state, use "
+                + "Contract.Ensure."
+        );
+    }
+
+    private static bool _IsDecidedByRuntimeType(Type runtimeType)
+    {
+        return _IsComparedAsWhole(runtimeType) || SharedTypes.IsShared(runtimeType);
     }
 
     // The top level compared member by member, by the members of the type _TopLevelType picks.

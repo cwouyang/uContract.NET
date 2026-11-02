@@ -278,7 +278,7 @@ public class EnsureAssignableRuntimeTypeTests
         Assert.Equal(Violation + "  - Radius\n  - <Radius>k__BackingField", exception.Description);
     }
 
-    // ---- A sequence, a string, a shared type or a delegate keeps the comparison by T ----
+    // ---- Two sequences of different runtime types keep the comparison by T ----
 
     [Fact]
     public void EnsureAssignable_WhenTIsObjectAndTheValuesAreSequencesOfDifferentRuntimeTypes_ComparesByTAsBefore()
@@ -291,39 +291,47 @@ public class EnsureAssignableRuntimeTypeTests
         Assert.Null(exception);
     }
 
+    // ---- A string, a shared type or a delegate against a class of another runtime type ----
+
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndOneValueIsAString_ComparesByTAsBefore()
+    public void EnsureAssignable_WhenTIsObjectAndOneValueIsAString_ReportsBothRuntimeTypesAndT()
     {
         object actual = "renamed";
         object expected = new Vault();
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(DifferentRuntimeTypes<string, Vault, object>(), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndOneValueIsOfASharedType_ComparesByTAsBefore()
+    public void EnsureAssignable_WhenTIsObjectAndOneValueIsOfASharedType_ReportsBothRuntimeTypesAndT()
     {
         using MemoryStream stream = new();
         object actual = stream;
         object expected = new Vault();
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(DifferentRuntimeTypes<MemoryStream, Vault, object>(), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndOneValueIsADelegate_ComparesByTAsBefore()
+    public void EnsureAssignable_WhenTIsObjectAndOneValueIsADelegate_ReportsBothRuntimeTypesAndT()
     {
         Func<int> callback = () => 1;
         object actual = callback;
         object expected = new Vault();
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(DifferentRuntimeTypes<Func<int>, Vault, object>(), exception.Description);
     }
 
     [Fact]

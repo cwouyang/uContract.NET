@@ -533,21 +533,24 @@ public class EnsureAssignableArrayDimensionTests
         Assert.Equal(ItemsChanged, exception.Description);
     }
 
-    // ICollection as T is compared by the properties it declares: Count, IsSynchronized and SyncRoot. The two
-    // arrays hold the same number of elements, and SyncRoot of an array is the array itself: it leads back
-    // to the two values passed to the method, which counts as equal. The rank, the lengths and the lower
-    // bounds of the two arrays are not compared in such a call.
+    // ICollection as T: the runtime type decides, so the two arrays are compared as a whole, and their lengths
+    // differ in each dimension, although they hold the same number of elements.
     [Fact]
-    public void EnsureAssignable_WhenOneByTwoAndTwoByOneArraysArePassedAsCollections_DoesNotThrow()
+    public void EnsureAssignable_WhenOneByTwoAndTwoByOneArraysArePassedAsCollections_ReportsTheArrayAsComparedAsAWhole()
     {
         ICollection actual = OneByTwo();
         ICollection expected = TwoByOne();
         Assert.NotSame(actual, expected);
         Assert.Equal(expected.Count, actual.Count);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(
+            $"actual and expected are not equal. {typeof(int[,])} is compared as a whole, so assignable patterns do not apply.",
+            exception.Description
+        );
     }
 
     // Each helper below returns a new array on every call, also for a length of 0.
