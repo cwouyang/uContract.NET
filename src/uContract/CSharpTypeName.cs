@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace uContract;
 
@@ -23,6 +24,30 @@ internal static class CSharpTypeName
         }
 
         return (type.IsGenericParameter ? type.Name : Of(type, type.GetGenericArguments())) + ranks;
+    }
+
+    // False for a type that C# cannot name in typeof: one the compiler generated (marked [CompilerGenerated], or
+    // with a '<' in its name, which C# cannot write), nested in such a type, or with such a type among its generic
+    // arguments or as its element type.
+    internal static bool CanBeWritten(Type type)
+    {
+        while (type.HasElementType)
+        {
+            type = type.GetElementType()!;
+        }
+
+        for (Type? declaring = type; declaring is not null; declaring = declaring.DeclaringType)
+        {
+            if (
+                declaring.Name.Contains('<', StringComparison.Ordinal)
+                || declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+            )
+            {
+                return false;
+            }
+        }
+
+        return !type.IsGenericType || type.GetGenericArguments().All(CanBeWritten);
     }
 
     // The generic arguments of a nested type include those of its declaring types, first; each type in the chain

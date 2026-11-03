@@ -413,6 +413,21 @@ internal static class MemberComparison
             && string.Equals(comparedBase.Name, declaredBase.Name, StringComparison.Ordinal);
     }
 
+    // The ways out for a type that C# cannot name in typeof (see CSharpTypeName.CanBeWritten). firstWayOut is
+    // empty, or a way out that ends with "; ". An enumerator (from a yield method that returns only IEnumerator or
+    // IEnumerator<T>) cannot be materialised; its method can return a sequence instead.
+    internal static string WaysOutForAnUnnamedType(Type type, string firstWayOut = "")
+    {
+        string replaceIt =
+            typeof(IEnumerator).IsAssignableFrom(type) && !typeof(IEnumerable).IsAssignableFrom(type)
+                ? "return IEnumerable<T> from the yield method that builds it, or use a value of a type of yours instead; "
+                : "use a materialised value (for example ToList()) or a value of a type of yours instead; ";
+        return "The type is compiler-generated and cannot be named in typeof. Ways out: "
+            + firstWayOut
+            + replaceIt
+            + "or set DBC_POST=off (disables all postcondition checks).";
+    }
+
     internal static InvalidOperationException CannotCompareNested(
         Type comparedType,
         MemberAccessor topLevelMember,
@@ -424,13 +439,22 @@ internal static class MemberComparison
         // Patterns are matched against raw names and source names (see IsAssignable), so the advice names the
         // member without its qualifier, and a qualified member shares that name with another member, which it excuses too.
         string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
+        string cannotList =
+            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
+            + "no properties or fields are visible to reflection under Native AOT. "
+            + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
+        string listAsAssignable =
+            $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
+            + $"matched against top-level member names, so use the plain member name{sharedName}); ";
+        if (!CSharpTypeName.CanBeWritten(hidden.Type))
+        {
+            return new InvalidOperationException(cannotList + WaysOutForAnUnnamedType(hidden.Type, listAsAssignable));
+        }
 
         return new InvalidOperationException(
-            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-                + "no properties or fields are visible to reflection under Native AOT. "
-                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
-                + $"Ways out: list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
-                + $"matched against top-level member names, so use the plain member name{sharedName}); "
+            cannotList
+                + "Ways out: "
+                + listAsAssignable
                 + "if the type has members, preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
@@ -447,11 +471,17 @@ internal static class MemberComparison
     {
         string start = IsArrayTypeOrSystemArray(wholeType) ? "actual" : wholeType.Name;
         string path = $"{start}{hidden.PathBelowTopLevelMember}";
+        string cannotList =
+            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
+            + "no properties or fields are visible to reflection under Native AOT. "
+            + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
+        if (!CSharpTypeName.CanBeWritten(hidden.Type))
+        {
+            return new InvalidOperationException(cannotList + WaysOutForAnUnnamedType(hidden.Type));
+        }
 
         return new InvalidOperationException(
-            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-                + "no properties or fields are visible to reflection under Native AOT. "
-                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
+            cannotList
                 + "Ways out: if the type has members, preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks)."

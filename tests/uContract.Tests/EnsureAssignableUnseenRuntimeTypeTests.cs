@@ -40,6 +40,51 @@ public class EnsureAssignableUnseenRuntimeTypeTests
             + "that runs; otherwise set DBC_POST=off (disables all postcondition checks).";
     }
 
+    // A compiler-generated type cannot be named in typeof, so the fix offers what can be written instead.
+    private const string CompilerGeneratedWaysOut =
+        "The type is compiler-generated and cannot be named in typeof. Ways out: use a materialised value (for "
+        + "example ToList()) or a value of a type of yours instead; or set DBC_POST=off (disables all postcondition "
+        + "checks).";
+
+    private static string CannotCompareCompilerGenerated(Type runtimeType, Type declaredType)
+    {
+        return $"EnsureAssignable cannot compare {runtimeType}, the runtime type of the values (T is {declaredType}): "
+            + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
+            + "its members cannot be listed. "
+            + CompilerGeneratedWaysOut;
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberIsAnonymous_NamesNoTypeofInTheFix()
+    {
+        object actual = new { Seat = 1 };
+        object expected = new { Seat = 1 };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(CannotCompareCompilerGenerated(actual.GetType(), typeof(object)), cannotCompare.Message);
+    }
+
+    // List<T> can be written, but not with an anonymous type as T.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberHasAnAnonymousGenericArgument_NamesNoTypeofInTheFix()
+    {
+        object actual = new[] { new { Seat = 1 } }.ToList();
+        object expected = new[] { new { Seat = 1 } }.ToList();
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(CannotCompareCompilerGenerated(actual.GetType(), typeof(object)), cannotCompare.Message);
+    }
+
     [Fact]
     public void EnsureAssignable_WhenTheRuntimeTypeThatShowsNoDeclaredMemberIsGeneric_NamesItInCSharpSyntaxInTheFix()
     {
@@ -390,6 +435,27 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         Assert.Null(exception);
     }
 
+    // Under Native AOT a yield enumerator that nothing preserves lists no field to reflection. Under the JIT a real
+    // one lists its state fields, so a hand-written enumerator that declares no field stands in for it.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumeratorInterfaceAndTheYieldEnumeratorListsNoMember_SuggestsReturningASequenceFromItsMethod()
+    {
+        IEnumerator<int> actual = new EnumeratorWithoutFields();
+        IEnumerator<int> expected = new EnumeratorWithoutFields();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(EnumeratorWithoutFields)}, the runtime type of the values (T is "
+                + $"{typeof(IEnumerator<int>)}): no properties or fields are visible to reflection under Native AOT. "
+                + "The type is compiler-generated and cannot be named in typeof. Ways out: return IEnumerable<T> from "
+                + "the yield method that builds it, or use a value of a type of yours instead; or set DBC_POST=off "
+                + "(disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
     // Preserving the internal type of a query cannot be written; materialising it can.
     [Fact]
     public void EnsureAssignable_WhenTIsObjectAndTheValuesAreQueriesThatShowNoDeclaredMember_ThrowsNotACollection()
@@ -457,6 +523,75 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.StartsWith(
             $"EnsureAssignable cannot compare {typeof(Part)} (reached through 'Shelf.Part'): ",
+            cannotCompare.Message,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedAnonymousValueShowsNoDeclaredMemberAndItsEqualsReportsItUnequal_NamesNoTypeofInTheFix()
+    {
+        Crate actual = new() { Content = new { Level = 2 } };
+        Crate expected = new() { Content = new { Level = 1 } };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.Content.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {actual.Content.GetType()} (reached through 'Crate.Content'): "
+                + "no properties or fields are visible to reflection under Native AOT. Their Equals reports them "
+                + "unequal (without an Equals override this only means they are different instances), and their "
+                + "members cannot be listed. The type is compiler-generated and cannot be named in typeof. Ways out: "
+                + "list 'Content' as assignable (patterns are regular expressions matched against top-level member "
+                + "names, so use the plain member name); use a materialised value (for example ToList()) or a value of "
+                + "a type of yours instead; or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnArrayComparedAsAWholeHoldsAnonymousValuesThatShowNoDeclaredMember_NamesNoTypeofInTheFix()
+    {
+        object[] actual = [new { Level = 2 }];
+        object[] expected = [new { Level = 1 }];
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual[0].GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {actual[0].GetType()} (reached through 'actual[]'): no properties or "
+                + "fields are visible to reflection under Native AOT. Their Equals reports them unequal (without an "
+                + "Equals override this only means they are different instances), and their members cannot be "
+                + "listed. "
+                + CompilerGeneratedWaysOut,
+            cannotCompare.Message
+        );
+    }
+
+    // An enumerator cannot be materialised; the yield method that builds it can return a sequence instead.
+    [Fact]
+    public void EnsureAssignable_WhenANestedYieldEnumeratorShowsNoDeclaredMember_SuggestsReturningASequenceFromItsMethod()
+    {
+        Crate actual = new() { Content = CountUpTo(2) };
+        Crate expected = new() { Content = CountUpTo(2) };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.Content.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.EndsWith(
+            "The type is compiler-generated and cannot be named in typeof. Ways out: list 'Content' as assignable "
+                + "(patterns are regular expressions matched against top-level member names, so use the plain member "
+                + "name); return IEnumerable<T> from the yield method that builds it, or use a value of a type of yours "
+                + "instead; or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message,
             StringComparison.Ordinal
         );
@@ -588,6 +723,11 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         }
     }
 
+    private sealed class Crate
+    {
+        public object Content { get; set; } = new();
+    }
+
     private sealed class Rack
     {
         public List<int> Numbers { get; set; } = [];
@@ -675,6 +815,34 @@ public class EnsureAssignableUnseenRuntimeTypeTests
     }
 
     private static IEnumerable<int> CountTo(int last)
+    {
+        for (int number = 1; number <= last; number++)
+        {
+            yield return number;
+        }
+    }
+
+    // Marked as the compiler marks the enumerator of a yield method that returns only IEnumerator<T>, and declares
+    // no field and no public property.
+    [CompilerGenerated]
+    private sealed class EnumeratorWithoutFields : IEnumerator<int>
+    {
+        int IEnumerator<int>.Current => throw new NotSupportedException();
+
+        object IEnumerator.Current => throw new NotSupportedException();
+
+        bool IEnumerator.MoveNext()
+        {
+            return false;
+        }
+
+        void IEnumerator.Reset() { }
+
+        void IDisposable.Dispose() { }
+    }
+
+    // A yield method that returns only an enumerator.
+    private static IEnumerator<int> CountUpTo(int last)
     {
         for (int number = 1; number <= last; number++)
         {

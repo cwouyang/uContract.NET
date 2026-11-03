@@ -1911,9 +1911,17 @@ public static class Contract
             );
         }
 
-        return new InvalidOperationException(
+        string cannotSee =
             $"EnsureAssignable cannot compare {comparedType}, the runtime type of the values (T is {declaredType}): "
-                + "no properties or fields are visible to reflection under Native AOT. If the type has members, "
+            + "no properties or fields are visible to reflection under Native AOT. ";
+        if (!CSharpTypeName.CanBeWritten(comparedType))
+        {
+            return new InvalidOperationException(cannotSee + MemberComparison.WaysOutForAnUnnamedType(comparedType));
+        }
+
+        return new InvalidOperationException(
+            cannotSee
+                + "If the type has members, "
                 + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
                 + $"typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs, or pass the values as that type; "
                 + "otherwise set DBC_POST=off (disables all postcondition checks)."
@@ -1953,10 +1961,18 @@ public static class Contract
     {
         string whose = side ?? "the values";
         string passAsIt = side is null ? ", or pass the values as that type" : "";
-        return new InvalidOperationException(
+        string cannotList =
             $"EnsureAssignable cannot compare {runtimeType}, the runtime type of {whose} (T is {declaredType}): "
-                + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
-                + "its members cannot be listed. Preserve it with "
+            + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
+            + "its members cannot be listed. ";
+        if (!CSharpTypeName.CanBeWritten(runtimeType))
+        {
+            return new InvalidOperationException(cannotList + MemberComparison.WaysOutForAnUnnamedType(runtimeType));
+        }
+
+        return new InvalidOperationException(
+            cannotList
+                + "Preserve it with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(runtimeType)}))] on a method "
                 + $"that runs{passAsIt}; otherwise set DBC_POST=off (disables all postcondition checks)."
         );
