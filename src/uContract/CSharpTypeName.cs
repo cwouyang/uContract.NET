@@ -61,6 +61,7 @@ internal static class CSharpTypeName
         return FileClassesIn(type).Select(FilePrefix).Distinct(StringComparer.Ordinal).Skip(1).Any();
     }
 
+    // The file classes in the type: in its element type, its declaring chain, then its generic arguments, at any depth.
     private static IEnumerable<Type> FileClassesIn(Type type)
     {
         while (type.HasElementType)
@@ -147,28 +148,8 @@ internal static class CSharpTypeName
     // with no file class in it, so its message keeps its text.
     internal static string WhereItCanBeWritten(Type type)
     {
-        Type? fileClass = FirstFileClass(type);
+        Type? fileClass = FileClassesIn(type).FirstOrDefault();
         return fileClass is null ? "" : $" inside the file that declares {SourceName(fileClass.Name)}";
-    }
-
-    private static Type? FirstFileClass(Type type)
-    {
-        while (type.HasElementType)
-        {
-            type = type.GetElementType()!;
-        }
-
-        for (Type? declaring = type; declaring is not null; declaring = declaring.DeclaringType)
-        {
-            if (FileClassName.IsMatch(declaring.Name))
-            {
-                return declaring;
-            }
-        }
-
-        return type.IsGenericType
-            ? type.GetGenericArguments().Select(FirstFileClass).FirstOrDefault(found => found is not null)
-            : null;
     }
 
     // A file class is emitted as <File>F{checksum}__Name; inside its file C# names it Name.
