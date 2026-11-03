@@ -79,6 +79,51 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
     }
 
+    // Without dynamic code an anonymous type with no property lists no member: the "no members visible" rule for a
+    // runtime type other than T names no typeof for it.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAnAnonymousTypeListsNoMember_NamesNoTypeofInTheFix()
+    {
+        object actual = new { };
+        object expected = new { };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {actual.GetType()}, the runtime type of the values (T is {typeof(object)}): "
+                + "no properties or fields are visible to reflection under Native AOT. "
+                + CompilerGeneratedWaysOut,
+            cannotCompare.Message
+        );
+    }
+
+    // A Dictionary<int, List<anonymous type>> has the anonymous type inside a generic argument, not as one.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberHasAnAnonymousTypeInsideAGenericArgument_NamesNoTypeofInTheFix()
+    {
+        object actual = SeatsByRow(new { Seat = 1 });
+        object expected = SeatsByRow(new { Seat = 1 });
+        Type dictionaryType = actual.GetType();
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [dictionaryType],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompareCompilerGenerated(
+                dictionaryType,
+                typeof(object),
+                "The type has a compiler-generated type inside its generic arguments and cannot be named in typeof. "
+                    + "Ways out: use a type of yours in place of the compiler-generated one; or set DBC_POST=off "
+                    + "(disables all postcondition checks)."
+            ),
+            cannotCompare.Message
+        );
+    }
+
     // List<T> can be written, but not with an anonymous type as T.
     [Fact]
     public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberHasAnAnonymousGenericArgument_NamesNoTypeofInTheFix()
@@ -956,6 +1001,11 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         void IEnumerator.Reset() { }
 
         void IDisposable.Dispose() { }
+    }
+
+    private static Dictionary<int, List<TSeat>> SeatsByRow<TSeat>(TSeat seat)
+    {
+        return new Dictionary<int, List<TSeat>> { [1] = [seat] };
     }
 
     // A public class marked [CompilerGenerated], with one public field and a default constructor, in an assembly

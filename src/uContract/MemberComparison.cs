@@ -427,10 +427,15 @@ internal static class MemberComparison
         bool isSequence = typeof(IEnumerable).IsAssignableFrom(type);
         if (!CSharpTypeName.IsCompilerGenerated(type))
         {
-            string replaceArgument = isSequence
-                ? "use an element type of yours instead of the compiler-generated one; "
+            Type[] arguments = type.GetGenericArguments();
+            bool isAnArgument = arguments.Any(CSharpTypeName.IsCompilerGenerated);
+            string where = isAnArgument ? "among" : "inside";
+            string replaceArgument =
+                !isAnArgument ? "use a type of yours in place of the compiler-generated one; "
+                : isSequence && arguments.Length == 1
+                    ? "use an element type of yours instead of the compiler-generated one; "
                 : "use a type of yours as its generic argument instead; ";
-            return "The type has a compiler-generated type among its generic arguments and cannot be named in typeof. "
+            return $"The type has a compiler-generated type {where} its generic arguments and cannot be named in typeof. "
                 + "Ways out: "
                 + firstWayOut
                 + replaceArgument
