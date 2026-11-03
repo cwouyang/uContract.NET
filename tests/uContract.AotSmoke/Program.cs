@@ -694,6 +694,7 @@ public static class Program
     private const string NestedTypeName = "uContract.AotSmoke.CustomerInfo";
     private const string LineTypeName = "uContract.AotSmoke.LineElement";
     private const string PreservedLineTypeName = "uContract.AotSmoke.PreservedLine";
+    private const string ElementsEntry = "(the elements; assignable patterns do not apply to them)";
 
     private static readonly string[] s_frozenCodes = ["a", "b"];
     private static readonly string[] s_otherFrozenCodes = ["a", "c"];
@@ -2331,16 +2332,15 @@ public static class Program
             Expect.Ok
         );
 
-        // Mutation: none (two iterators of one yield method). Visibility: nothing preserves the iterator; T is
-        // IEnumerable<int>.
+        // Mutation: one more element (two iterators of one yield method, CountTo(3) against CountTo(2)). Visibility:
+        // nothing preserves the iterator; T is IEnumerable<int>. The violation names the elements only: no member of
+        // the iterator was listed, so the message does not say that members were listed from its runtime type.
         yield return new Check(
             137,
             "EnsureAssignable<IEnumerable<int>> yield iterators of different elements",
             TopLevelIteratorsDiffer,
-            Expect.Throws<PostconditionViolationException>(
-                "Members were listed from the runtime type uContract.AotSmoke.Program+<CountTo>"
-            ),
-            Expect.Ok
+            Expect.Value(ElementsEntry),
+            Expect.Value("none")
         );
 
         // Mutation: none. Visibility: nothing preserves the iterator; List<int> shows its members (see check 3). The
@@ -2426,12 +2426,27 @@ public static class Program
             Expect.Ok
         );
 
-        // Mutation: another last element. Visibility: as check 142.
+        // Mutation: another last element. Visibility: as check 142. The violation names the elements only, as for
+        // check 137.
         yield return new Check(
             143,
             "EnsureAssignable<IReadOnlyList<int>> collection expressions of different elements",
             TopLevelCollectionExpressionsDiffer,
-            Expect.Throws<PostconditionViolationException>("(the elements; assignable patterns do not apply to them)"),
+            Expect.Value(ElementsEntry),
+            Expect.Value("none")
+        );
+
+        // Mutation: none. Visibility: nothing preserves the enumerator of a yield method that returns only
+        // IEnumerator<int>; T is IEnumerator<int>. It is compared by its fields, which it does not show, and the fix
+        // names no typeof, which C# cannot write for it.
+        yield return new Check(
+            144,
+            "EnsureAssignable<IEnumerator<int>> yield enumerators",
+            TopLevelEnumerators,
+            Expect.Throws<InvalidOperationException>(
+                "The type is compiler-generated and cannot be named in typeof.",
+                "return IEnumerable<T> from the yield method that builds it"
+            ),
             Expect.Ok
         );
     }
@@ -2458,11 +2473,23 @@ public static class Program
         return NoResult(() => Contract.EnsureAssignable(actual, expected));
     }
 
-    private static object? TopLevelCollectionExpressionsDiffer()
+    private static string TopLevelCollectionExpressionsDiffer()
     {
         IReadOnlyList<int> actual = [1, 2, 3];
         IReadOnlyList<int> expected = [1, 2, 4];
-        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+        return ViolationEntriesOf(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? TopLevelEnumerators() =>
+        NoResult(static () => Contract.EnsureAssignable(CountUpTo(2), CountUpTo(2)));
+
+    // A yield method that returns only an enumerator.
+    private static IEnumerator<int> CountUpTo(int last)
+    {
+        for (int number = 1; number <= last; number++)
+        {
+            yield return number;
+        }
     }
 
     private static IEnumerable<int> CountTo(int last)
@@ -2500,8 +2527,8 @@ public static class Program
     private static object? TopLevelIteratorsEqual() =>
         NoResult(static () => Contract.EnsureAssignable(CountTo(2), CountTo(2)));
 
-    private static object? TopLevelIteratorsDiffer() =>
-        NoResult(static () => Contract.EnsureAssignable(CountTo(3), CountTo(2)));
+    private static string TopLevelIteratorsDiffer() =>
+        ViolationEntriesOf(static () => Contract.EnsureAssignable(CountTo(3), CountTo(2)));
 
     private static object? IteratorAgainstListEqual()
     {
