@@ -1174,22 +1174,30 @@ public static class Contract
     ///     constructor it declares is visible (a nested type or an event it declares does not count), which is how
     ///     Native AOT shows a type that nothing preserves (a framework collection included, when nothing in the
     ///     application preserves it). Comparing it by the members of <typeparamref name="T" />, by those it inherits
-    ///     or by its elements would miss what it adds. A yield iterator of yours that is a sequence (from a method
-    ///     that returns <see cref="System.Collections.IEnumerable" /> or <see cref="IEnumerable{T}" />) is not
-    ///     affected, by this rule or by the rule for no visible members: at every level it is compared by its
-    ///     elements, as before, and enumerating it needs no metadata. One from a method that returns only
+    ///     or by its elements would miss what it adds. A compiler-generated sequence of yours (a yield iterator from
+    ///     a method that returns <see cref="System.Collections.IEnumerable" /> or <see cref="IEnumerable{T}" />, or
+    ///     the class of a collection expression, see the remarks) is not affected, by this rule or by the rule for
+    ///     no visible members: at every level it is compared by its elements, and enumerating it needs no
+    ///     metadata. One from a method that returns only
     ///     <see cref="System.Collections.IEnumerator" /> or <see cref="IEnumerator{T}" /> is an enumerator, not a
     ///     sequence: it is compared by its fields, and under Native AOT, when nothing preserves it, the rule for
-    ///     no visible members makes the method throw, with a <c>typeof</c> that cannot be written for a
-    ///     compiler-generated class. A sequence that is not a collection is
+    ///     no visible members makes the method throw; the message names no <c>typeof</c>, which cannot be written
+    ///     for a compiler-generated class, and suggests returning <see cref="IEnumerable{T}" /> from the yield
+    ///     method instead. A sequence that is not a collection is
     ///     reported as such first (see below). The message names the runtime type and <typeparamref name="T" />
     ///     (for two values of different runtime types, the runtime type of <paramref name="actual" /> or of
     ///     <paramref name="expected" />), and gives the fix with the runtime type in C# syntax:
     ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a method that runs, or,
     ///     when both values are of that type, pass them as that type. The messages for a nested value give the same fix for the type they
-    ///     name. The named type must be accessible where the attribute is written: a compiler-generated type (an
-    ///     anonymous type, a closure) cannot be written in <c>typeof</c> at all, and a private nested type only
-    ///     inside its declaring type. A type that adds no state and
+    ///     name. The named type must be accessible where the attribute is written: a private nested type can be
+    ///     written only inside its declaring type. A compiler-generated type (marked
+    ///     <see cref="CompilerGeneratedAttribute" />, nested in such a type, or with a <c>&lt;</c> in its name: an
+    ///     anonymous type, a yield enumerator), or a type with one as a generic argument, cannot be written in
+    ///     <c>typeof</c> at all: for it the messages name no <c>typeof</c>, say that the type is compiler-generated,
+    ///     and offer what can be written instead (a materialised value or a value of a type of yours, the top-level
+    ///     member that leads to it as assignable when there is one, <c>DBC_POST=off</c>). The same holds for the
+    ///     message for a property
+    ///     without a get method, which names the declaring type of the property. A type that adds no state and
     ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
     ///     top level the rule for a class with no visible members above applies instead (see the remarks).
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method:
@@ -1262,12 +1270,21 @@ public static class Contract
     ///     yours that implements <see cref="System.Collections.IEnumerable" /> itself) it is compared by its
     ///     members alone, as any other class, and it is not enumerated. Elements that such a class produces from
     ///     the captured state of a delegate are therefore not compared: a delegate is compared by its methods. A
-    ///     <c>yield</c> iterator of yours (a class marked <see cref="CompilerGeneratedAttribute" /> that implements
+    ///     compiler-generated sequence of yours is compared by its elements alone, at every level, also against a
+    ///     sequence of another runtime type (a <c>List&lt;T&gt;</c>, an array): its fields are the state of an
+    ///     iteration or the storage of the elements. It is a class the compiler generated (marked
+    ///     <see cref="CompilerGeneratedAttribute" />, or with a <c>&lt;</c> in its name, which C# cannot write)
+    ///     that implements <see cref="System.Collections.IEnumerable" /> or
     ///     <see cref="System.Collections.IEnumerator" />, reached as an <see cref="System.Collections.IEnumerable" />:
-    ///     the result of a <c>yield</c> method that returns <see cref="System.Collections.IEnumerable" /> or
-    ///     <see cref="IEnumerable{T}" />) is compared by its elements alone, at every level: its fields are the
-    ///     state of the iteration. "Yours" means any assembly that is not part of .NET, a NuGet package
-    ///     included. Enumerating it runs its body: an infinite iterator does not return, and an exception from
+    ///     a <c>yield</c> iterator, the result of a <c>yield</c> method that returns
+    ///     <see cref="System.Collections.IEnumerable" /> or <see cref="IEnumerable{T}" />; or the class that a
+    ///     collection expression held as <see cref="IReadOnlyList{T}" />, <see cref="IReadOnlyCollection{T}" /> or
+    ///     <see cref="IEnumerable{T}" /> is built as (<c>&lt;&gt;z__ReadOnlyArray&lt;T&gt;</c>, which the .NET 8
+    ///     SDK emits without <see cref="CompilerGeneratedAttribute" />, also for a single element; measured). The
+    ///     empty collection expression held as <see cref="IReadOnlyList{T}" /> is an empty array (measured). A
+    ///     violation of such a sequence at the top level does not say that members were listed from its runtime
+    ///     type: none were. "Yours" means any assembly that is not part of
+    ///     .NET, a NuGet package included. Enumerating it runs its body: an infinite iterator does not return, and an exception from
     ///     its body leaves the method as it is, not wrapped, except an <see cref="InvalidOperationException" />
     ///     while two sequences of different runtime types are enumerated, which makes them unequal. A
     ///     <c>yield</c> method that returns only an
@@ -1318,7 +1335,7 @@ public static class Contract
     ///     preserves), also when the members it inherits are visible; two sequences that would be compared by their
     ///     elements are compared so too, not by their elements, when the runtime type of either, or one of its base
     ///     classes, is not a framework class and shows no declared member. A
-    ///     framework class reached as a nested value, and a yield iterator of yours, are compared as before. A type whose
+    ///     framework class reached as a nested value, and a compiler-generated sequence of yours, are compared as before. A type whose
     ///     <c>Equals</c> ignores state (for example entity equality by ID) therefore hides a change in such a
     ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
     ///     When the type compared at the top level (<typeparamref name="T" />, or the runtime type of the values
@@ -1406,7 +1423,8 @@ public static class Contract
     ///     elements are compared, and a difference is a violation that names both runtime types and
     ///     <typeparamref name="T" />; with equal elements, the properties an interface <typeparamref name="T" />
     ///     declares are then compared, read through it, and the patterns apply to them. When the runtime type is not
-    ///     <typeparamref name="T" />, a violation message names the runtime type the members were listed from.
+    ///     <typeparamref name="T" />, a violation message names the runtime type the members were listed from,
+    ///     except for a compiler-generated sequence, compared by its elements, of which no member was listed.
     ///     The getters of the public properties of a reference type's runtime type, and of the properties of an
     ///     interface <typeparamref name="T" />, then run (a property of an interface <typeparamref name="T" />
     ///     that the runtime type implements publicly is read twice), and a getter that throws ends the call with

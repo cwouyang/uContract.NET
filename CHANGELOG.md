@@ -334,7 +334,8 @@ AOT](README.md#trimming-and-native-aot) in the README.
   only the runtime type has needs a pattern that names it. When `T` is a framework class that the
   runtime type derives from, the private fields of the base classes are compared up to and including
   `T`. A violation names the runtime type when it is not `T` ("Members were listed from the runtime
-  type X, not from T (Y)."). So a call with `T` = `object`, an interface or a base class compares
+  type X, not from T (Y)."), except for a compiler-generated sequence compared by its elements, of
+  which no member is listed. So a call with `T` = `object`, an interface or a base class compares
   what it skipped and can start to fail, and `EnsureAssignable(this, Contract.Old(() => this))`
   written in a base class compares the subclass's state too when it runs on a subclass instance; the
   documentation examples pass the concrete type and keep working under the JIT. A sequence (other
@@ -352,14 +353,19 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `InvalidOperationException` at `XmlResolver` unless a pattern excuses it. A class of yours that
   implements `IEnumerable` itself is compared by its members only and is not enumerated, also as a
   nested value, where 2.0.0 compared its elements; elements that it produces from the captured state
-  of a delegate are not compared. A `yield` iterator from a method that returns `IEnumerable` or
-  `IEnumerable<T>`, of any assembly that is not part of .NET (a NuGet package included), is compared
-  by its elements: an infinite one does not return, and an exception from its body leaves the call
+  of a delegate are not compared. A compiler-generated sequence of any assembly that is not part of
+  .NET (a NuGet package included) is compared by its elements, at every level and also against a
+  `List<T>` or an array: a `yield` iterator from a method that returns `IEnumerable` or
+  `IEnumerable<T>`, and a collection expression held as `IReadOnlyList<T>`, `IReadOnlyCollection<T>`
+  or `IEnumerable<T>` (built by the .NET 8 SDK as `<>z__ReadOnlyArray<T>`). An infinite iterator does
+  not return, and an exception from its body leaves the call
   unwrapped, except an `InvalidOperationException` while two sequences of different runtime types
   are enumerated, which makes them unequal. One from a method that returns only `IEnumerator` or `IEnumerator<T>` is compared by its
   fields. At the top level a sequence that is not a collection (a LINQ query,
   `GetConsumingEnumerable()`, an `XmlDocument`) is not enumerated: passed as a `T` other than its own
-  type, it throws `InvalidOperationException`; pass `ToList()`, or the value as its own type. Two
+  type, it throws `InvalidOperationException`; pass `ToList()`, or the value as its own type. The
+  message names the three interfaces that make a collection: `ICollection`, `ICollection<T>` and
+  `IReadOnlyCollection<T>`. Two
   sequences of different runtime types are compared by their elements only when neither declares
   members on a class of yours; otherwise they are unequal. Under Native AOT, a runtime type other
   than `T` that nothing preserves shows no declared member to reflection, and the call throws
@@ -368,18 +374,23 @@ AOT](README.md#trimming-and-native-aot) in the README.
   instance, and a framework collection such as a `List<int>` passed as `object` when nothing in the
   application preserves it. A boxed value type throws only when its `Equals` reports the values
   unequal; a primitive, an enum, an inline array, a value-type sequence that keeps the declared `T`
-  and a `yield` iterator are not affected. A subclass
+  and a compiler-generated sequence are not affected. A subclass
   that adds no state and that nothing preserves throws too. The fix is the one the message names,
   with the type in C# syntax: `[DynamicDependency(DynamicallyAccessedMemberTypes.All,
   typeof(Shop.ExpressOrder))]` on a method that runs, or pass the values as their own type;
   `[DynamicallyAccessedMembers]` on a base class of yours does not help. A `yield` method that
-  returns only an enumerator throws under Native AOT, when nothing preserves it, with a `typeof` that
-  cannot be written. Below the
+  returns only an enumerator throws under Native AOT, when nothing preserves it; the message names
+  no `typeof`, which cannot be written for it, and suggests returning `IEnumerable<T>` from the
+  method. For any type that C# cannot name in `typeof` (an anonymous type, a type with one as a
+  generic argument) the messages name no `typeof` and offer what can be written instead: a
+  materialised value or a value of a type of yours, the member as assignable, or `DBC_POST=off`.
+  Below the
   top level, a class of yours that nothing preserves and that only inherits visible members is
   compared by its `Equals` and ends in "cannot compare" when `Equals` reports the values unequal,
   where it was compared by its inherited members. The nested "cannot compare" messages now write the
-  type inside `typeof` in C# syntax, where they said "typeof(X))] where X is that type"; the message
-  for a property without a getter still says so. Not detected under Native AOT: a runtime type of
+  type inside `typeof` in C# syntax, where they said "typeof(X))] where X is that type", and so does
+  the message for a property without a getter, which names the declaring type of the property. Not
+  detected under Native AOT: a runtime type of
   which something preserves some members (a constructor kept by a dependency-injection
   registration) is compared by what stays visible, which can be the members of `T` alone; and
   preservation is per generic definition, so an instantiation that nothing preserves shows its
