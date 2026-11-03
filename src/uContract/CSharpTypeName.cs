@@ -47,25 +47,33 @@ internal static class CSharpTypeName
     }
 
     // A type the compiler generated, or nested in one: its metadata name starts with "<>" (an anonymous type, a
-    // closure, the class of a collection expression), or it is marked [CompilerGenerated] and has a '<' in its name
-    // (the enumerator of a yield method, <Method>d__N).
+    // closure, the class of a collection expression), or it is marked [CompilerGenerated] with a name C# cannot
+    // write (the enumerator of a yield method, <Method>d__N; a VB iterator, VB$StateMachine_…).
     internal static bool IsCompilerGenerated(Type type)
     {
         for (Type? declaring = type; declaring is not null; declaring = declaring.DeclaringType)
         {
-            if (
-                declaring.Name.StartsWith("<>", StringComparison.Ordinal)
-                || (
-                    declaring.Name.Contains('<', StringComparison.Ordinal)
-                    && declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                )
-            )
+            if (HasCompilerPrefix(declaring) || IsMarkedWithUnwritableName(declaring))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    // The metadata name starts with "<>", a prefix only the C# compiler gives.
+    internal static bool HasCompilerPrefix(Type type)
+    {
+        return type.Name.StartsWith("<>", StringComparison.Ordinal);
+    }
+
+    // Marked [CompilerGenerated], with a '<' (C#) or a '$' (VB) in the metadata name, which C# cannot write. A
+    // [CompilerGenerated] class with a name C# can write is a source generator's, a class of yours.
+    internal static bool IsMarkedWithUnwritableName(Type type)
+    {
+        return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+            && (type.Name.Contains('<', StringComparison.Ordinal) || type.Name.Contains('$', StringComparison.Ordinal));
     }
 
     // The generic arguments of a nested type include those of its declaring types, first; each type in the chain

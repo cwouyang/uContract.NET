@@ -1,5 +1,7 @@
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using uContract.Exceptions;
 
@@ -468,6 +470,27 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
     }
 
+    // A VB iterator is a [CompilerGenerated] class named VB$StateMachine_…: '$' cannot be written in C# either. C#
+    // cannot declare such a name, so the class is emitted.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberIsAVisualBasicStateMachine_NamesNoTypeofInTheFix()
+    {
+        Type stateMachine = EmitGeneratedClass("VB$StateMachine_1_Numbers");
+        object actual = Activator.CreateInstance(stateMachine)!;
+        object expected = Activator.CreateInstance(stateMachine)!;
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [stateMachine],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompareCompilerGenerated(stateMachine, typeof(object), CompilerGeneratedWaysOut),
+            cannotCompare.Message
+        );
+    }
+
     // A C# 11 file class has the metadata name <File>F…__Name, which C# cannot write, but inside its file it is
     // named by its own name: the fix names it so.
     [Fact]
@@ -872,6 +895,23 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         void IEnumerator.Reset() { }
 
         void IDisposable.Dispose() { }
+    }
+
+    // A public class marked [CompilerGenerated], with one public field and a default constructor, in an assembly
+    // emitted for the test.
+    private static Type EmitGeneratedClass(string name)
+    {
+        string assemblyName = $"Emitted{Guid.NewGuid():N}";
+        TypeBuilder builder = AssemblyBuilder
+            .DefineDynamicAssembly(new AssemblyName(assemblyName), AssemblyBuilderAccess.Run)
+            .DefineDynamicModule(assemblyName)
+            .DefineType(name, TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class);
+        builder.SetCustomAttribute(
+            new CustomAttributeBuilder(typeof(CompilerGeneratedAttribute).GetConstructor(Type.EmptyTypes)!, [])
+        );
+        builder.DefineField("State", typeof(int), FieldAttributes.Public);
+        builder.DefineDefaultConstructor(MethodAttributes.Public);
+        return builder.CreateType();
     }
 
     // A yield method that returns only an enumerator.
