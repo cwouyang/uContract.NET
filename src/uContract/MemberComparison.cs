@@ -288,15 +288,20 @@ internal static class MemberComparison
         };
     }
 
-    // A class the compiler generated for a sequence: a yield iterator (marked [CompilerGenerated], implements
-    // IEnumerator), or a class whose metadata name starts with "<>" that implements IEnumerable (the class of a
-    // collection expression, <>z__ReadOnlyArray<T> or <>z__ReadOnlyList<T>, which the .NET 8 SDK emits without
-    // [CompilerGenerated], measured). A [CompilerGenerated] class that implements only IEnumerable (a source
-    // generator's) and a file class (<File>F…__Name) are classes of yours.
+    // A class the compiler generated for a sequence: a yield iterator (marked [CompilerGenerated], with a '<' or a
+    // '$' in its name, which C# cannot write: <Method>d__N, VB$StateMachine_…; implements IEnumerator), or a class
+    // whose metadata name starts with "<>" that implements IEnumerable (the class of a collection expression,
+    // <>z__ReadOnlyArray<T> or <>z__ReadOnlyList<T>, which the .NET 8 SDK emits without [CompilerGenerated],
+    // measured). A [CompilerGenerated] class with a name C# can write (a source generator's, even one that is its
+    // own enumerator) and a file class (<File>F…__Name) are classes of yours.
     private static bool IsCompilerGeneratedSequence(Type type)
     {
         return (
                 type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                && (
+                    type.Name.Contains('<', StringComparison.Ordinal)
+                    || type.Name.Contains('$', StringComparison.Ordinal)
+                )
                 && typeof(IEnumerator).IsAssignableFrom(type)
             ) || (type.Name.StartsWith("<>", StringComparison.Ordinal) && typeof(IEnumerable).IsAssignableFrom(type));
     }

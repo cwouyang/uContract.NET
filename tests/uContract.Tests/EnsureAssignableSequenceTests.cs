@@ -779,6 +779,47 @@ public class EnsureAssignableSequenceTests
 
     // ---- A class of yours that only looks generated ----
 
+    // A [CompilerGenerated] class with a name C# can write that is its own enumerator (a source generator's cursor)
+    // is a class of yours, not a yield iterator: its state is compared.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAGeneratedCursorOfYoursAndItsTagChanged_ReportsTheTag()
+    {
+        TaggedCursor actual = new(1, 2) { Tag = "b" };
+        TaggedCursor expected = new(1, 2) { Tag = "a" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Tag", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheTagOfAGeneratedCursorOfYoursChanged_ReportsTheTag()
+    {
+        object actual = new TaggedCursor(1, 2) { Tag = "b" };
+        object expected = new TaggedCursor(1, 2) { Tag = "a" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Tag" + ListedFrom(typeof(TaggedCursor), typeof(object)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheTagOfANestedGeneratedCursorOfYoursChanged_ReportsTheTopLevelMember()
+    {
+        Holder<TaggedCursor> actual = new() { Value = new TaggedCursor(1, 2) { Tag = "b" } };
+        Holder<TaggedCursor> expected = new() { Value = new TaggedCursor(1, 2) { Tag = "a" } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
     // A source generator marks its classes [CompilerGenerated]; one that implements only IEnumerable is a class of
     // yours, compared by its members, and its state is not hidden behind its elements.
     [Fact]
@@ -1170,6 +1211,44 @@ public class EnsureAssignableSequenceTests
         {
             return GetEnumerator();
         }
+    }
+
+    // Marked as a source generator marks its classes, with a name C# can write; it is its own enumerator, over a
+    // private array, and has state of its own.
+    [System.Runtime.CompilerServices.CompilerGenerated]
+    private sealed class TaggedCursor(params int[] items) : IEnumerable<int>, IEnumerator<int>
+    {
+        private readonly int[] _items = items;
+        private int _index = -1;
+
+        public string Tag = "";
+
+        int IEnumerator<int>.Current => _items[_index];
+
+        object IEnumerator.Current => _items[_index];
+
+        public IEnumerator<int> GetEnumerator()
+        {
+            _index = -1;
+            return this;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        public bool MoveNext()
+        {
+            return ++_index < _items.Length;
+        }
+
+        public void Reset()
+        {
+            _index = -1;
+        }
+
+        public void Dispose() { }
     }
 
     // Marked as a source generator marks its classes; implements only IEnumerable<int>, over a private list, and has

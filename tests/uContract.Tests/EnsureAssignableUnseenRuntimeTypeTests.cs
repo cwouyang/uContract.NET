@@ -432,14 +432,15 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         Assert.Null(exception);
     }
 
-    // Under Native AOT a yield iterator that nothing preserves lists no field to reflection, which the older "no
-    // members visible" rule reads as hidden members. Under the JIT a real iterator lists its state fields, so a
-    // hand-written iterator that declares no field stands in for it.
+    // A real yield iterator (<CountTo>d__N) is compared by its elements without dynamic code. Under Native AOT one
+    // that nothing preserves also lists no field to reflection, which the older "no members visible" rule would read
+    // as hidden members; that is AotSmoke check 133. (A hand-written [CompilerGenerated] stand-in with a name C# can
+    // write is a class of yours since spec amendment 8.)
     [Fact]
-    public void EnsureAssignable_WhenTheRuntimeTypeIsAYieldIteratorThatListsNoMemberAndItsElementsAreEqual_DoesNotThrow()
+    public void EnsureAssignable_WhenDynamicCodeIsNotSupportedAndTheRuntimeTypeIsAYieldIteratorOfEqualElements_DoesNotThrow()
     {
-        IEnumerable<int> actual = new IteratorWithoutFields();
-        IEnumerable<int> expected = new IteratorWithoutFields();
+        IEnumerable<int> actual = CountTo(2);
+        IEnumerable<int> expected = CountTo(2);
 
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
@@ -880,37 +881,6 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         {
             yield return number;
         }
-    }
-
-    // Marked as the compiler marks a yield iterator, and declares no field and no public property: its elements
-    // come from a fresh enumerator of a fixed array.
-    [CompilerGenerated]
-    private sealed class IteratorWithoutFields : IEnumerable<int>, IEnumerator<int>
-    {
-        private static readonly int[] Elements = [1, 2];
-
-        int IEnumerator<int>.Current => throw new NotSupportedException();
-
-        object IEnumerator.Current => throw new NotSupportedException();
-
-        public IEnumerator<int> GetEnumerator()
-        {
-            return ((IEnumerable<int>)Elements).GetEnumerator();
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
-
-        bool IEnumerator.MoveNext()
-        {
-            return false;
-        }
-
-        void IEnumerator.Reset() { }
-
-        void IDisposable.Dispose() { }
     }
 
     private sealed class Tray
