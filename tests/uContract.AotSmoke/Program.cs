@@ -669,6 +669,20 @@ internal sealed class ReadOnlyNumbersHolder
     public IReadOnlyList<int> Items { get; set; } = [];
 }
 
+// Passed as T. Marked as a source generator marks its classes, implements only IEnumerable<int> over a private list,
+// and has state of its own.
+[CompilerGenerated]
+internal sealed class GeneratedTaggedBag : IEnumerable<int>
+{
+    private readonly List<int> _items = [1, 2];
+
+    public string Tag = "";
+
+    public IEnumerator<int> GetEnumerator() => _items.GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -2449,7 +2463,37 @@ public static class Program
             ),
             Expect.Ok
         );
+
+        // Mutation: Tag. Visibility: T (GeneratedTaggedBag). A [CompilerGenerated] class that implements only
+        // IEnumerable (as a source generator emits) is a class of yours, compared by its members.
+        yield return new Check(
+            145,
+            "EnsureAssignable<GeneratedTaggedBag> tag changed",
+            GeneratedTaggedBagChanged,
+            Expect.Value("Tag"),
+            Expect.Value("none")
+        );
+
+        // Mutation: Extra. Visibility: T (FileBag). A file class (metadata name <Program>F…__FileBag) is a class of
+        // yours, compared by its members and not enumerated (its enumerator throws).
+        yield return new Check(
+            146,
+            "EnsureAssignable<FileBag> extra changed",
+            FileBagChanged,
+            Expect.Value("Extra"),
+            Expect.Value("none")
+        );
     }
+
+    private static string GeneratedTaggedBagChanged() =>
+        ViolationEntriesOf(static () =>
+            Contract.EnsureAssignable(new GeneratedTaggedBag { Tag = "b" }, new GeneratedTaggedBag { Tag = "a" })
+        );
+
+    private static string FileBagChanged() =>
+        ViolationEntriesOf(static () =>
+            Contract.EnsureAssignable(new FileBag { Extra = 2 }, new FileBag { Extra = 1 })
+        );
 
     private static object? NestedCollectionExpressionUnchanged()
     {
@@ -3289,4 +3333,15 @@ public static class Program
                 new PreservedOuter { Inner = new PreservedInner { Value = "a" } }
             )
         );
+}
+
+// Passed as T. A C# 11 file class of this program that implements IEnumerable<int> itself and has state of its own;
+// its enumerator throws, so a comparison that enumerates it fails.
+file sealed class FileBag : IEnumerable<int>
+{
+    public int Extra;
+
+    public IEnumerator<int> GetEnumerator() => throw new NotSupportedException("A FileBag is not enumerated.");
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 }
