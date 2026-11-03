@@ -633,6 +633,58 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
     }
 
+    // Two file classes of this file can be named together inside it, so the fix keeps its typeof.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberHoldsFileClassesOfOneFile_KeepsTheTypeofFix()
+    {
+        object actual = Tuple.Create(new FileTicket { Seat = 1 }, new FileMarker());
+        object expected = Tuple.Create(new FileTicket { Seat = 1 }, new FileMarker());
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {actual.GetType()}, the runtime type of the values (T is {typeof(object)}): "
+                + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
+                + "its members cannot be listed. Preserve it with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + "typeof(System.Tuple<uContract.Tests.FileTicket, uContract.Tests.FileMarker>))] on a method that runs "
+                + "inside the file that declares FileTicket, or pass the values as that type; otherwise set "
+                + "DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    // A file class can be named only inside its own file, so a type that holds file classes of two files (FileTicket
+    // here, FileStamp in TestHelpers.cs) cannot be named in any one file.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberHoldsFileClassesOfTwoFiles_NamesNoTypeofInTheFix()
+    {
+        object actual = FileClassOfTestHelpers.PairedWithAStamp(new FileTicket { Seat = 1 });
+        object expected = FileClassOfTestHelpers.PairedWithAStamp(new FileTicket { Seat = 1 });
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompareCompilerGenerated(
+                actual.GetType(),
+                typeof(object),
+                "The type has file classes of more than one file in its generic arguments, and C# names a file class "
+                    + "only inside the file that declares it, so no one file can name the type in typeof. Ways out: "
+                    + "use types that are not file classes, or file classes of one file, as its generic arguments; or "
+                    + "set DBC_POST=off (disables all postcondition checks)."
+            ),
+            cannotCompare.Message
+        );
+    }
+
     // Preserving the internal type of a query cannot be written; materialising it can.
     [Fact]
     public void EnsureAssignable_WhenTIsObjectAndTheValuesAreQueriesThatShowNoDeclaredMember_ThrowsNotACollection()

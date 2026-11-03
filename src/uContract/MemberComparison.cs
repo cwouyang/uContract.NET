@@ -424,9 +424,19 @@ internal static class MemberComparison
     // value of a type of yours, except an enumerator (from a yield method that returns only IEnumerator or
     // IEnumerator<T>), whose method can return a sequence instead. A type of yours or of .NET with a
     // compiler-generated generic argument (List<anonymous type>) keeps its type and takes another argument: for a
-    // sequence, an element type of yours.
+    // sequence, an element type of yours. A type with file classes of more than one file in its generic arguments
+    // and no compiler-generated type takes other generic arguments.
     internal static string WaysOutForAnUnnamedType(Type type, string firstWayOut = "")
     {
+        if (!CSharpTypeName.HoldsCompilerGeneratedType(type))
+        {
+            return "The type has file classes of more than one file in its generic arguments, and C# names a file "
+                + "class only inside the file that declares it, so no one file can name the type in typeof. Ways out: "
+                + firstWayOut
+                + "use types that are not file classes, or file classes of one file, as its generic arguments; or set "
+                + "DBC_POST=off (disables all postcondition checks).";
+        }
+
         bool isSequence = typeof(IEnumerable).IsAssignableFrom(type);
         if (!CSharpTypeName.IsCompilerGenerated(type))
         {

@@ -13,7 +13,7 @@ namespace uContract;
 internal static class CSharpTypeName
 {
     private static readonly Regex FileClassName = new(
-        "^<[^<>]+>F[0-9A-F]+__(?<name>.+)$",
+        "^(?<file><[^<>]+>F[0-9A-F]+)__(?<name>.+)$",
         RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
         TimeSpan.FromSeconds(1)
     );
@@ -33,17 +33,61 @@ internal static class CSharpTypeName
         return (type.IsGenericParameter ? type.Name : Of(type, type.GetGenericArguments())) + ranks;
     }
 
-    // False for a type that C# cannot name in typeof: one the compiler generated (see IsCompilerGenerated), or one
-    // with such a type among its generic arguments or as its element type. A [CompilerGenerated] class with a name
-    // C# can write (a source generator's) and a file class (written by its own name inside its file) can be named.
+    // False for a type that C# cannot name in typeof: one the compiler generated (see IsCompilerGenerated), one
+    // with such a type among its generic arguments or as its element type, or one whose generic arguments hold file
+    // classes of more than one file. A [CompilerGenerated] class with a name C# can write (a source generator's) and
+    // a file class (written by its own name inside its file) can be named.
     internal static bool CanBeWritten(Type type)
+    {
+        return !HoldsCompilerGeneratedType(type) && !HoldsFileClassesOfSeveralFiles(type);
+    }
+
+    // The type, its element type or a type among its generic arguments, at any depth, is compiler-generated.
+    internal static bool HoldsCompilerGeneratedType(Type type)
     {
         while (type.HasElementType)
         {
             type = type.GetElementType()!;
         }
 
-        return !IsCompilerGenerated(type) && (!type.IsGenericType || type.GetGenericArguments().All(CanBeWritten));
+        return IsCompilerGenerated(type)
+            || (type.IsGenericType && type.GetGenericArguments().Any(HoldsCompilerGeneratedType));
+    }
+
+    // File classes of more than one file are in the type (told apart by the <File>F{checksum} prefix of their
+    // metadata names): C# names a file class only inside its own file, so no one file can name them all.
+    private static bool HoldsFileClassesOfSeveralFiles(Type type)
+    {
+        return FileClassesIn(type).Select(FilePrefix).Distinct(StringComparer.Ordinal).Skip(1).Any();
+    }
+
+    private static IEnumerable<Type> FileClassesIn(Type type)
+    {
+        while (type.HasElementType)
+        {
+            type = type.GetElementType()!;
+        }
+
+        for (Type? declaring = type; declaring is not null; declaring = declaring.DeclaringType)
+        {
+            if (FileClassName.IsMatch(declaring.Name))
+            {
+                yield return declaring;
+            }
+        }
+
+        if (type.IsGenericType)
+        {
+            foreach (Type fileClass in type.GetGenericArguments().SelectMany(FileClassesIn))
+            {
+                yield return fileClass;
+            }
+        }
+    }
+
+    private static string FilePrefix(Type fileClass)
+    {
+        return FileClassName.Match(fileClass.Name).Groups["file"].Value;
     }
 
     // A type the compiler generated, or nested in one: its metadata name starts with "<>" (an anonymous type, a

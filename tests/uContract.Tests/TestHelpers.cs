@@ -159,3 +159,21 @@ public static class SmallStack
         failure?.Throw();
     }
 }
+
+/// <summary>
+///     Pairs a value with a file class of this file, so that a test in another file can build a type whose generic
+///     arguments hold file classes of two files.
+/// </summary>
+public static class FileClassOfTestHelpers
+{
+    public static object PairedWithAStamp<TFirst>(TFirst first)
+    {
+        return Tuple.Create(first, new FileStamp());
+    }
+}
+
+// A C# 11 file class of this file.
+file sealed class FileStamp
+{
+    public int Mark { get; set; }
+}
