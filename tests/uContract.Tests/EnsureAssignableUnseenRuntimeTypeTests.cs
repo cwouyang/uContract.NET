@@ -492,9 +492,9 @@ public class EnsureAssignableUnseenRuntimeTypeTests
     }
 
     // A C# 11 file class has the metadata name <File>F…__Name, which C# cannot write, but inside its file it is
-    // named by its own name: the fix names it so.
+    // named by its own name: the fix names it so, and says where it can be written.
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberIsAFileClass_NamesItBySourceNameInTheFix()
+    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberIsAFileClass_NamesItBySourceNameInsideItsFile()
     {
         object actual = new FileTicket { Seat = 1 };
         object expected = new FileTicket { Seat = 1 };
@@ -506,8 +506,69 @@ public class EnsureAssignableUnseenRuntimeTypeTests
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Equal(
-            CannotCompare(actual.GetType(), typeof(object), "uContract.Tests.FileTicket"),
+            $"EnsureAssignable cannot compare {actual.GetType()}, the runtime type of the values (T is {typeof(object)}): "
+                + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
+                + "its members cannot be listed. Preserve it with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.FileTicket))] on a "
+                + "method that runs inside the file that declares FileTicket, or pass the values as that type; "
+                + "otherwise set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedFileClassShowsNoDeclaredMemberAndItsEqualsReportsItUnequal_SaysWhereTheFixCanBeWritten()
+    {
+        Crate actual = new() { Content = new FileTicket { Seat = 2 } };
+        Crate expected = new() { Content = new FileTicket { Seat = 1 } };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.Content.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains(
+            "typeof(uContract.Tests.FileTicket))] on a method that runs inside the file that declares FileTicket; ",
+            cannotCompare.Message,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnArrayComparedAsAWholeHoldsFileClassValuesThatShowNoDeclaredMember_SaysWhereTheFixCanBeWritten()
+    {
+        object[] actual = [new FileTicket { Seat = 2 }];
+        object[] expected = [new FileTicket { Seat = 1 }];
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual[0].GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains(
+            "typeof(uContract.Tests.FileTicket))] on a method that runs inside the file that declares FileTicket; ",
+            cannotCompare.Message,
+            StringComparison.Ordinal
+        );
+    }
+
+    // A file class without a field or a property has no members visible without dynamic code.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAFileClassListsNoMember_SaysWhereTheFixCanBeWritten()
+    {
+        object actual = new FileMarker();
+        object expected = new FileMarker();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains(
+            "typeof(uContract.Tests.FileMarker))] on a method that runs inside the file that declares FileMarker, or "
+                + "pass the values as that type; ",
+            cannotCompare.Message,
+            StringComparison.Ordinal
         );
     }
 
@@ -954,3 +1015,6 @@ file sealed class FileTicket
 {
     public int Seat { get; set; }
 }
+
+// A C# 11 file class of yours without a field or a property.
+file sealed class FileMarker;

@@ -1692,6 +1692,24 @@ public class EnsureAssignableTests
         );
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenAFileClassHasAWriteOnlyProperty_SaysWhereTheFixCanBeWritten()
+    {
+        FileWriteOnly first = new() { X = "a" };
+        FileWriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains(
+            "typeof(uContract.Tests.FileWriteOnly))] on a method that runs inside the file that declares "
+                + "FileWriteOnly. Otherwise ",
+            exception.Message,
+            StringComparison.Ordinal
+        );
+    }
+
     // A source generator marks its classes [CompilerGenerated] but gives them names C# can write in typeof.
     [Fact]
     public void EnsureAssignable_WhenAGeneratedTypeWithAWritableNameHasAWriteOnlyProperty_KeepsTheTypeofFix()
@@ -2913,3 +2931,16 @@ public class EnsureCaeTests
 }
 
 // EnsureNotNull has no CAE overload — see the note near the CAE section in Contract.cs.
+
+// A C# 11 file class of yours with a write-only property.
+file sealed class FileWriteOnly
+{
+    private string _x = "";
+
+    public string X
+    {
+        set => _x = value;
+    }
+
+    public int XLength => _x.Length;
+}

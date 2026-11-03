@@ -1954,7 +1954,7 @@ public static class Contract
             cannotSee
                 + "If the type has members, "
                 + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
-                + $"typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs, or pass the values as that type; "
+                + $"typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(comparedType)}, or pass the values as that type; "
                 + "otherwise set DBC_POST=off (disables all postcondition checks)."
         );
     }
@@ -2005,7 +2005,7 @@ public static class Contract
             cannotList
                 + "Preserve it with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(runtimeType)}))] on a method "
-                + $"that runs{passAsIt}; otherwise set DBC_POST=off (disables all postcondition checks)."
+                + $"that runs{CSharpTypeName.WhereItCanBeWritten(runtimeType)}{passAsIt}; otherwise set DBC_POST=off (disables all postcondition checks)."
         );
     }
 

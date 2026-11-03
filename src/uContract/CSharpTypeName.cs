@@ -99,6 +99,34 @@ internal static class CSharpTypeName
         return $"{prefix}{name[..tick]}<{string.Join(", ", own)}>";
     }
 
+    // Where the typeof of type can be written: a file class only inside the file that declares it. Empty for a type
+    // with no file class in it, so its message keeps its text.
+    internal static string WhereItCanBeWritten(Type type)
+    {
+        Type? fileClass = FirstFileClass(type);
+        return fileClass is null ? "" : $" inside the file that declares {SourceName(fileClass.Name)}";
+    }
+
+    private static Type? FirstFileClass(Type type)
+    {
+        while (type.HasElementType)
+        {
+            type = type.GetElementType()!;
+        }
+
+        for (Type? declaring = type; declaring is not null; declaring = declaring.DeclaringType)
+        {
+            if (FileClassName.IsMatch(declaring.Name))
+            {
+                return declaring;
+            }
+        }
+
+        return type.IsGenericType
+            ? type.GetGenericArguments().Select(FirstFileClass).FirstOrDefault(found => found is not null)
+            : null;
+    }
+
     // A file class is emitted as <File>F{checksum}__Name; inside its file C# names it Name.
     private static string SourceName(string metadataName)
     {

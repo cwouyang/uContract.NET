@@ -139,7 +139,7 @@ internal sealed class MemberAccessor
                 cannotRead
                     + "If trimming removed it, preserve the type's members, for example with "
                     + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, "
-                    + $"typeof({CSharpTypeName.Of(declaringType)}))] on a method that runs. "
+                    + $"typeof({CSharpTypeName.Of(declaringType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(declaringType)}. "
                     + "Otherwise list the top-level member that leads to it as assignable, "
                     + "or set DBC_POST=off (disables all postcondition checks)."
             );
