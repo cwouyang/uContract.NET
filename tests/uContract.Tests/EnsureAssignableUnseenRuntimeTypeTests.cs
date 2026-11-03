@@ -514,6 +514,80 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         Assert.Null(exception);
     }
 
+    // ---- A collection expression ----
+
+    // C# 12 builds a collection expression held as IReadOnlyList<T> as a class marked [CompilerGenerated] that
+    // nothing preserves; it is compared by its elements, which enumerating needs no metadata for.
+    [Fact]
+    public void EnsureAssignable_WhenAnAggregateHoldsItsLinesAsACollectionExpressionThatShowsNoDeclaredMemberAndNothingChanged_DoesNotThrow()
+    {
+        Order order = new();
+        order.AddLine(new Line("tea", 1));
+        order.AddLine(new Line("cake", 2));
+        Order old = Contract.Old(() => order);
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [order.Lines.GetType()],
+            () => Contract.EnsureAssignable(order, old)
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnAggregateHoldsItsLinesAsACollectionExpressionThatShowsNoDeclaredMemberAndALineChanged_ReportsTheLines()
+    {
+        Order order = new();
+        order.AddLine(new Line("tea", 1));
+        Order old = Contract.Old(() => order);
+        order.ChangeQuantity(0, 3);
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [order.Lines.GetType()],
+            () => Contract.EnsureAssignable(order, old)
+        );
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n  - Lines\n  - <Lines>k__BackingField",
+            violation.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAReadOnlyListInterfaceAndTwoCollectionExpressionsThatShowNoDeclaredMemberHoldEqualElements_DoesNotThrow()
+    {
+        IReadOnlyList<int> actual = [1, 2, 3];
+        IReadOnlyList<int> expected = [1, 2, 3];
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
+    private sealed record Line(string Product, int Quantity);
+
+    // A DDD-style aggregate that replaces its lines with a new collection expression on each change.
+    private sealed class Order
+    {
+        public IReadOnlyList<Line> Lines { get; private set; } = [];
+
+        public void AddLine(Line line)
+        {
+            Lines = [.. Lines, line];
+        }
+
+        public void ChangeQuantity(int index, int quantity)
+        {
+            Line[] lines = [.. Lines];
+            lines[index] = lines[index] with { Quantity = quantity };
+            Lines = [.. lines];
+        }
+    }
+
     private sealed class Rack
     {
         public List<int> Numbers { get; set; } = [];

@@ -662,6 +662,13 @@ internal sealed class NumbersHolder
     public IEnumerable<int> Items { get; set; } = [];
 }
 
+// Passed as T; Items holds a collection expression, a class the compiler builds in this program, which nothing
+// preserves.
+internal sealed class ReadOnlyNumbersHolder
+{
+    public IReadOnlyList<int> Items { get; set; } = [];
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -2387,6 +2394,75 @@ public static class Program
             Expect.Throws<InvalidOperationException>("is a sequence that is not a collection", "ToList()"),
             Expect.Ok
         );
+
+        // ---- A collection expression, a class the compiler builds (issue #40). ----
+
+        // Mutation: none (a snapshot taken with Old). Visibility: T (ReadOnlyNumbersHolder); nothing preserves the
+        // class of the collection expression, which is enumerated, not read by its members.
+        yield return new Check(
+            140,
+            "Nested collection expression unchanged",
+            NestedCollectionExpressionUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: one more element. Visibility: as check 140.
+        yield return new Check(
+            141,
+            "Nested collection expression changed",
+            NestedCollectionExpressionChanged,
+            Expect.Throws<PostconditionViolationException>("Items"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves the class of the collection expression; T is
+        // IReadOnlyList<int>.
+        yield return new Check(
+            142,
+            "EnsureAssignable<IReadOnlyList<int>> collection expressions of equal elements",
+            TopLevelCollectionExpressionsEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another last element. Visibility: as check 142.
+        yield return new Check(
+            143,
+            "EnsureAssignable<IReadOnlyList<int>> collection expressions of different elements",
+            TopLevelCollectionExpressionsDiffer,
+            Expect.Throws<PostconditionViolationException>("(the elements; assignable patterns do not apply to them)"),
+            Expect.Ok
+        );
+    }
+
+    private static object? NestedCollectionExpressionUnchanged()
+    {
+        ReadOnlyNumbersHolder holder = new() { Items = [1, 2, 3] };
+        ReadOnlyNumbersHolder old = Contract.Old(() => holder);
+        return NoResult(() => Contract.EnsureAssignable(holder, old));
+    }
+
+    private static object? NestedCollectionExpressionChanged()
+    {
+        ReadOnlyNumbersHolder holder = new() { Items = [1, 2, 3] };
+        ReadOnlyNumbersHolder old = Contract.Old(() => holder);
+        holder.Items = [.. holder.Items, 4];
+        return NoResult(() => Contract.EnsureAssignable(holder, old));
+    }
+
+    private static object? TopLevelCollectionExpressionsEqual()
+    {
+        IReadOnlyList<int> actual = [1, 2, 3];
+        IReadOnlyList<int> expected = [1, 2, 3];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? TopLevelCollectionExpressionsDiffer()
+    {
+        IReadOnlyList<int> actual = [1, 2, 3];
+        IReadOnlyList<int> expected = [1, 2, 4];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
     }
 
     private static IEnumerable<int> CountTo(int last)

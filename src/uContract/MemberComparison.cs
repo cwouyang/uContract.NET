@@ -287,8 +287,8 @@ internal static class MemberComparison
 
     private static bool IsCompilerGeneratedIterator(Type type)
     {
-        return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-            && typeof(IEnumerator).IsAssignableFrom(type);
+        return (type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) || type.Name.Contains('<'))
+            && (typeof(IEnumerator).IsAssignableFrom(type) || typeof(IEnumerable).IsAssignableFrom(type));
     }
 
     // A collection holds its elements: it implements ICollection, ICollection<T> (the grouping GroupBy returns)

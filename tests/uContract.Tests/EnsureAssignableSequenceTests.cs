@@ -780,6 +780,113 @@ public class EnsureAssignableSequenceTests
         );
     }
 
+    // ---- A collection expression ----
+
+    // C# 12 builds a collection expression held as IReadOnlyList<T> as a class marked [CompilerGenerated]; it is
+    // compared by its elements, as a yield iterator is, also against a sequence of another runtime type.
+    [Fact]
+    public void EnsureAssignable_WhenANestedCollectionExpressionAndAListHoldEqualElements_DoesNotThrow()
+    {
+        Holder<IReadOnlyList<int>> actual = new() { Value = [1, 2, 3] };
+        Holder<IReadOnlyList<int>> expected = new() { Value = ListOf(1, 2, 3) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedCollectionExpressionAndAListDifferInOneElement_ReportsTheMember()
+    {
+        Holder<IReadOnlyList<int>> actual = new() { Value = [1, 2, 3] };
+        Holder<IReadOnlyList<int>> expected = new() { Value = ListOf(1, 2, 4) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedCollectionExpressionGainedAnElement_ReportsTheMember()
+    {
+        IReadOnlyList<int> items = [1, 2, 3];
+        Holder<IReadOnlyList<int>> actual = new() { Value = [.. items, 4] };
+        Holder<IReadOnlyList<int>> expected = new() { Value = items };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    // On the .NET 8 SDK a single-element collection expression is built as the same class as a longer one.
+    [Fact]
+    public void EnsureAssignable_WhenANestedSingleElementCollectionExpressionAndAListHoldTheSameElement_DoesNotThrow()
+    {
+        Holder<IReadOnlyList<int>> actual = new() { Value = [5] };
+        Holder<IReadOnlyList<int>> expected = new() { Value = ListOf(5) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // The empty collection expression is Array.Empty<T>(), an array.
+    [Fact]
+    public void EnsureAssignable_WhenANestedEmptyCollectionExpressionAndAnEmptyListAreCompared_DoesNotThrow()
+    {
+        Holder<IReadOnlyList<int>> actual = new() { Value = [] };
+        Holder<IReadOnlyList<int>> expected = new() { Value = ListOf() };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndTwoCollectionExpressionsHoldEqualElements_DoesNotThrow()
+    {
+        IEnumerable<int> actual = [1, 2, 3];
+        IEnumerable<int> expected = [1, 2, 3];
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAReadOnlyListInterfaceAndTwoCollectionExpressionsDifferInOneElement_ReportsTheElements()
+    {
+        IReadOnlyList<int> actual = [1, 2, 3];
+        IReadOnlyList<int> expected = [1, 2, 4];
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            Violation + ElementsEntry + ListedFrom(actual.GetType(), typeof(IReadOnlyList<int>)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndACollectionExpressionAndAListDifferInOneElement_ReportsTheSequences()
+    {
+        IReadOnlyList<int> items = [1, 2, 3];
+        object actual = items;
+        object expected = ListOf(1, 2, 4);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DifferentSequences(items.GetType(), typeof(List<int>), typeof(object)), exception.Description);
+    }
+
     // ---- Cycles ----
 
     [Fact]
