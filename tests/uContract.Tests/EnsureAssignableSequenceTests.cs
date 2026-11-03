@@ -777,6 +777,99 @@ public class EnsureAssignableSequenceTests
         Assert.Equal(Violation + ElementsEntry, exception.Description);
     }
 
+    // ---- The iterator of a local function that captures a variable ----
+
+    // The compiler nests such an iterator (<<Upto>g__Impl|0>d) in the display class that holds the captured
+    // variables (<>c__DisplayClass…); the iterator itself carries no [CompilerGenerated], the display class does
+    // (measured on SDK 8.0.204). It is compared by its elements, as any yield iterator is.
+    [Fact]
+    public void EnsureAssignable_WhenANestedCapturingLocalIteratorAndAListHoldEqualElements_DoesNotThrow()
+    {
+        Holder<IEnumerable<int>> actual = new() { Value = LocalIterators.Upto(3) };
+        Holder<IEnumerable<int>> expected = new() { Value = ListOf(1, 2, 3) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedCapturingLocalIteratorAndAListDifferInOneElement_ReportsTheMember()
+    {
+        Holder<IEnumerable<int>> actual = new() { Value = LocalIterators.Upto(3) };
+        Holder<IEnumerable<int>> expected = new() { Value = ListOf(1, 2, 4) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndACapturingLocalIteratorAndAListHoldEqualElements_DoesNotThrow()
+    {
+        IEnumerable<int> actual = LocalIterators.Upto(3);
+        IEnumerable<int> expected = ListOf(1, 2, 3);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndACapturingLocalIteratorAndAListDifferInOneElement_ReportsTheElements()
+    {
+        IEnumerable<int> actual = LocalIterators.Upto(3);
+        IEnumerable<int> expected = ListOf(1, 2, 4);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            DifferentSequences(actual.GetType(), typeof(List<int>), typeof(IEnumerable<int>)),
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndACapturingLocalIteratorAndAListHoldEqualElements_DoesNotThrow()
+    {
+        object actual = LocalIterators.Upto(3);
+        object expected = ListOf(1, 2, 3);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndACapturingLocalIteratorAndAListDifferInOneElement_ReportsTheElements()
+    {
+        object actual = LocalIterators.Upto(3);
+        object expected = ListOf(1, 2, 4);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(DifferentSequences(actual.GetType(), typeof(List<int>), typeof(object)), exception.Description);
+    }
+
+    // The captured state is a delegate: two iterators that scale by different lambdas to the same elements are
+    // equal, because only their elements are compared.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnEnumerableInterfaceAndTwoLocalIteratorsCaptureDifferentDelegatesButYieldEqualElements_DoesNotThrow()
+    {
+        IEnumerable<int> actual = LocalIterators.Scaled([1, 2], number => number * 2);
+        IEnumerable<int> expected = LocalIterators.Scaled([1, 2], number => number + number);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- A class of yours that only looks generated ----
 
     // A [CompilerGenerated] class with a name C# can write that is its own enumerator (a source generator's cursor)
@@ -1179,6 +1272,38 @@ public class EnsureAssignableSequenceTests
             foreach (int number in numbers)
             {
                 yield return number;
+            }
+        }
+    }
+
+    // Iterators of local functions that capture a variable of the method that returns them.
+    private static class LocalIterators
+    {
+        public static IEnumerable<int> Upto(int last)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(last);
+            return Impl();
+
+            IEnumerable<int> Impl()
+            {
+                for (int number = 1; number <= last; number++)
+                {
+                    yield return number;
+                }
+            }
+        }
+
+        public static IEnumerable<int> Scaled(int[] numbers, Func<int, int> scale)
+        {
+            ArgumentNullException.ThrowIfNull(scale);
+            return Impl();
+
+            IEnumerable<int> Impl()
+            {
+                foreach (int number in numbers)
+                {
+                    yield return scale(number);
+                }
             }
         }
     }

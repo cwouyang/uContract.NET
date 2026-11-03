@@ -479,6 +479,22 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         Assert.Null(exception);
     }
 
+    // The iterator of a local function that captures a variable is nested in a [CompilerGenerated] display class
+    // and is not marked itself; it is compared by its elements too, so its members are not needed.
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeIsACapturingLocalIteratorThatShowsNoDeclaredMemberAndItsElementsAreEqual_DoesNotThrow()
+    {
+        IEnumerable<int> actual = CountToByLocalFunction(2);
+        IEnumerable<int> expected = CountToByLocalFunction(2);
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [CountToByLocalFunction(0).GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
     // A real yield iterator (<CountTo>d__N) is compared by its elements without dynamic code. Under Native AOT one
     // that nothing preserves also lists no field to reflection, which the older "no members visible" rule would read
     // as hidden members; that is AotSmoke check 133. (A hand-written [CompilerGenerated] stand-in with a name C# can
@@ -981,6 +997,21 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         for (int number = 1; number <= last; number++)
         {
             yield return number;
+        }
+    }
+
+    // The iterator of a local function that captures last.
+    private static IEnumerable<int> CountToByLocalFunction(int last)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(last);
+        return Impl();
+
+        IEnumerable<int> Impl()
+        {
+            for (int number = 1; number <= last; number++)
+            {
+                yield return number;
+            }
         }
     }
 
