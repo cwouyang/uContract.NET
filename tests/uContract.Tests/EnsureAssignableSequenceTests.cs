@@ -960,9 +960,9 @@ public class EnsureAssignableSequenceTests
     private static string NotACollection(Type runtimeType, Type declaredType)
     {
         return $"EnsureAssignable cannot compare {runtimeType} as T ({declaredType}): it is a sequence that is not a "
-            + "collection (it implements neither ICollection nor IReadOnlyCollection<T>), and enumerating it could run "
-            + "a query, consume its source or block. Pass a materialised collection (for example ToList()), or pass "
-            + "the value as its own type as T.";
+            + "collection (it implements none of ICollection, ICollection<T> and IReadOnlyCollection<T>), and "
+            + "enumerating it could run a query, consume its source or block. Pass a materialised collection (for "
+            + "example ToList()), or pass the value as its own type as T.";
     }
 
     private static string DifferentRuntimeTypes(Type actualType, Type expectedType, Type declaredType)
