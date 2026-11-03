@@ -120,11 +120,26 @@ internal sealed class MemberAccessor
     {
         if (_property is not null && _getter is null)
         {
+            Type declaringType = _property.DeclaringType!;
+            string cannotRead =
+                $"EnsureAssignable cannot read property {declaringType}.{_property.Name}: "
+                + "no get method is visible through the compared type. ";
+            if (!CSharpTypeName.CanBeWritten(declaringType))
+            {
+                throw new InvalidOperationException(
+                    cannotRead
+                        + MemberComparison.WaysOutForAnUnnamedType(
+                            declaringType,
+                            "list the top-level member that leads to it as assignable; "
+                        )
+                );
+            }
+
             throw new InvalidOperationException(
-                $"EnsureAssignable cannot read property {_property.DeclaringType}.{_property.Name}: "
-                    + "no get method is visible through the compared type. "
+                cannotRead
                     + "If trimming removed it, preserve the type's members, for example with "
-                    + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type. "
+                    + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                    + $"typeof({CSharpTypeName.Of(declaringType)}))] on a method that runs. "
                     + "Otherwise list the top-level member that leads to it as assignable, "
                     + "or set DBC_POST=off (disables all postcondition checks)."
             );

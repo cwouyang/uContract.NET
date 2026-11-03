@@ -1648,6 +1648,47 @@ public class EnsureAssignableTests
         Assert.Contains("DBC_POST=off (disables all postcondition checks)", exception.Message);
     }
 
+    // The fix names the declaring type of the property in C# syntax, so the attribute can be copied as it is.
+    [Fact]
+    public void EnsureAssignable_WhenPropertyIsWriteOnly_NamesItsDeclaringTypeInTheFix()
+    {
+        WriteOnly first = new() { X = "a" };
+        WriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Equal(
+            $"EnsureAssignable cannot read property {typeof(WriteOnly)}.X: no get method is visible through the "
+                + "compared type. If trimming removed it, preserve the type's members, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + "typeof(uContract.Tests.EnsureAssignableTests.WriteOnly))] on a method that runs. Otherwise list the "
+                + "top-level member that leads to it as assignable, or set DBC_POST=off (disables all postcondition "
+                + "checks).",
+            exception.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenACompilerGeneratedTypeHasAWriteOnlyProperty_NamesNoTypeofInTheFix()
+    {
+        GeneratedWriteOnly first = new() { X = "a" };
+        GeneratedWriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Equal(
+            $"EnsureAssignable cannot read property {typeof(GeneratedWriteOnly)}.X: no get method is visible through "
+                + "the compared type. The type is compiler-generated and cannot be named in typeof. Ways out: list the "
+                + "top-level member that leads to it as assignable; use a materialised value (for example ToList()) or "
+                + "a value of a type of yours instead; or set DBC_POST=off (disables all postcondition checks).",
+            exception.Message
+        );
+    }
+
     [Fact]
     public void EnsureAssignable_WhenNestedTypeHasWriteOnlyProperty_ThrowsInvalidOperationException()
     {
@@ -2205,6 +2246,20 @@ public class EnsureAssignableTests
     }
 
     private sealed class WriteOnly
+    {
+        private string _x = "";
+
+        public string X
+        {
+            set => _x = value;
+        }
+
+        public int XLength => _x.Length;
+    }
+
+    // Marked as the compiler marks a class it generates, which C# cannot name in typeof.
+    [System.Runtime.CompilerServices.CompilerGenerated]
+    private sealed class GeneratedWriteOnly
     {
         private string _x = "";
 
