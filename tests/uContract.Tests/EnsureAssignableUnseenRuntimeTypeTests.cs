@@ -510,6 +510,44 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         Assert.Null(exception);
     }
 
+    // An iterator as Native AOT shows one that nothing preserves: named <Numbers>d__0, marked [CompilerGenerated],
+    // and listing no field and no public property (its state is in private fields of its base class). Only its
+    // elements can decide: by its members it has none to list.
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeIsAYieldIteratorThatListsNoMemberAndShowsNoDeclaredMemberAndItsElementsAreEqual_DoesNotThrow()
+    {
+        Type iterator = EmitFieldlessIterator();
+        IEnumerable<int> actual = NumbersCursorBase.Create(iterator, 1, 2);
+        IEnumerable<int> expected = NumbersCursorBase.Create(iterator, 1, 2);
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [iterator],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheRuntimeTypeIsAYieldIteratorThatListsNoMemberAndShowsNoDeclaredMemberAndItsElementsDiffer_ReportsTheElements()
+    {
+        Type iterator = EmitFieldlessIterator();
+        IEnumerable<int> actual = NumbersCursorBase.Create(iterator, 1, 2);
+        IEnumerable<int> expected = NumbersCursorBase.Create(iterator, 1, 3);
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [iterator],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(
+            "Fields were modified that are not marked as assignable:\n"
+                + "  - (the elements; assignable patterns do not apply to them)",
+            violation.Description
+        );
+    }
+
     // A [CompilerGenerated] class with a name C# can write (as a source generator emits) can be named in typeof, so
     // the fix keeps it. (The enumerator of a real yield method, named <Method>d__N, is checked by AotSmoke 144.)
     [Fact]
@@ -1108,6 +1146,26 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         return builder.CreateType();
     }
 
+    // A sealed [CompilerGenerated] class named as the enumerator of a yield method, <Numbers>d__0, that declares
+    // nothing but a constructor: all it holds and does comes from NumbersCursorBase.
+    private static Type EmitFieldlessIterator()
+    {
+        string assemblyName = $"Emitted{Guid.NewGuid():N}";
+        TypeBuilder builder = AssemblyBuilder
+            .DefineDynamicAssembly(new AssemblyName(assemblyName), AssemblyBuilderAccess.Run)
+            .DefineDynamicModule(assemblyName)
+            .DefineType(
+                "<Numbers>d__0",
+                TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class,
+                typeof(NumbersCursorBase)
+            );
+        builder.SetCustomAttribute(
+            new CustomAttributeBuilder(typeof(CompilerGeneratedAttribute).GetConstructor(Type.EmptyTypes)!, [])
+        );
+        builder.DefineDefaultConstructor(MethodAttributes.Public);
+        return builder.CreateType();
+    }
+
     // A yield method that returns only an enumerator.
     private static IEnumerator<int> CountUpTo(int last)
     {
@@ -1151,3 +1209,50 @@ file sealed class FileTicket
 
 // A C# 11 file class of yours without a field or a property.
 file sealed class FileMarker;
+
+/// <summary>
+///     The base of an emitted iterator class: its own enumerator over numbers it keeps in private fields, with no
+///     public property, so that the emitted class lists no member of its own.
+/// </summary>
+public abstract class NumbersCursorBase : IEnumerable<int>, IEnumerator<int>
+{
+    private int[] _numbers = [];
+    private int _index = -1;
+
+    int IEnumerator<int>.Current => _numbers[_index];
+
+    object IEnumerator.Current => _numbers[_index];
+
+    public static IEnumerable<int> Create(Type cursorType, params int[] numbers)
+    {
+        NumbersCursorBase cursor = (NumbersCursorBase)Activator.CreateInstance(cursorType)!;
+        cursor._numbers = numbers;
+        return cursor;
+    }
+
+    IEnumerator<int> IEnumerable<int>.GetEnumerator()
+    {
+        _index = -1;
+        return this;
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return ((IEnumerable<int>)this).GetEnumerator();
+    }
+
+    bool IEnumerator.MoveNext()
+    {
+        return ++_index < _numbers.Length;
+    }
+
+    void IEnumerator.Reset()
+    {
+        _index = -1;
+    }
+
+    void IDisposable.Dispose()
+    {
+        GC.SuppressFinalize(this);
+    }
+}
