@@ -1648,6 +1648,90 @@ public class EnsureAssignableTests
         Assert.Contains("DBC_POST=off (disables all postcondition checks)", exception.Message);
     }
 
+    // The fix names the declaring type of the property in C# syntax, so the attribute can be copied as it is.
+    [Fact]
+    public void EnsureAssignable_WhenPropertyIsWriteOnly_NamesItsDeclaringTypeInTheFix()
+    {
+        WriteOnly first = new() { X = "a" };
+        WriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Equal(
+            $"EnsureAssignable cannot read property {typeof(WriteOnly)}.X: no get method is visible through the "
+                + "compared type. If trimming removed it, preserve the type's members, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + "typeof(uContract.Tests.EnsureAssignableTests.WriteOnly))] on a method that runs. Otherwise list the "
+                + "top-level member that leads to it as assignable, or set DBC_POST=off (disables all postcondition "
+                + "checks).",
+            exception.Message
+        );
+    }
+
+    // A generic class of yours with an anonymous type as its argument cannot be named in typeof.
+    [Fact]
+    public void EnsureAssignable_WhenAWriteOnlyPropertyIsDeclaredOnAGenericClassOfAnAnonymousType_NamesNoTypeofInTheFix()
+    {
+        var tag = new { Code = 1 };
+        object first = GenericWriteOnlyOf(tag);
+        object second = GenericWriteOnlyOf(tag);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.EndsWith(
+            ".X: no get method is visible through the compared type. The type has a compiler-generated type among "
+                + "its generic arguments and cannot be named in typeof. Ways out: list the top-level member that leads "
+                + "to it as assignable; use a type of yours as its generic argument instead; or set DBC_POST=off "
+                + "(disables all postcondition checks).",
+            exception.Message,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAFileClassHasAWriteOnlyProperty_SaysWhereTheFixCanBeWritten()
+    {
+        FileWriteOnly first = new() { X = "a" };
+        FileWriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Contains(
+            "typeof(uContract.Tests.FileWriteOnly))] on a method that runs inside the file that declares "
+                + "FileWriteOnly. Otherwise ",
+            exception.Message,
+            StringComparison.Ordinal
+        );
+    }
+
+    // A source generator marks its classes [CompilerGenerated] but gives them names C# can write in typeof.
+    [Fact]
+    public void EnsureAssignable_WhenAGeneratedTypeWithAWritableNameHasAWriteOnlyProperty_KeepsTheTypeofFix()
+    {
+        GeneratedWriteOnly first = new() { X = "a" };
+        GeneratedWriteOnly second = new() { X = "a" };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.Equal(
+            $"EnsureAssignable cannot read property {typeof(GeneratedWriteOnly)}.X: no get method is visible through the "
+                + "compared type. If trimming removed it, preserve the type's members, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + "typeof(uContract.Tests.EnsureAssignableTests.GeneratedWriteOnly))] on a method that runs. Otherwise "
+                + "list the top-level member that leads to it as assignable, or set DBC_POST=off (disables all "
+                + "postcondition checks).",
+            exception.Message
+        );
+    }
+
     [Fact]
     public void EnsureAssignable_WhenNestedTypeHasWriteOnlyProperty_ThrowsInvalidOperationException()
     {
@@ -1952,13 +2036,15 @@ public class EnsureAssignableTests
         Assert.Null(exception);
     }
 
-    // The declared type decides, and object has no members.
+    // The runtime type decides, so two strings passed as object are compared as a whole.
     [Fact]
-    public void EnsureAssignable_WhenStringsAreComparedAsObject_DoesNotThrow()
+    public void EnsureAssignable_WhenStringsAreComparedAsObject_ReportsTheStringAsComparedAsAWhole()
     {
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable<object>("a", "b"));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable<object>("a", "b")
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(string)), exception.Description);
     }
 
     [Fact]
@@ -2214,6 +2300,39 @@ public class EnsureAssignableTests
         public int XLength => _x.Length;
     }
 
+    private static GenericWriteOnly<TTag> GenericWriteOnlyOf<TTag>(TTag tag)
+    {
+        return new GenericWriteOnly<TTag> { Tag = tag, X = "a" };
+    }
+
+    private sealed class GenericWriteOnly<TTag>
+    {
+        private string _x = "";
+
+        public TTag? Tag { get; set; }
+
+        public string X
+        {
+            set => _x = value;
+        }
+
+        public int XLength => _x.Length;
+    }
+
+    // Marked as a source generator marks a class it generates; its name can be written in typeof.
+    [System.Runtime.CompilerServices.CompilerGenerated]
+    private sealed class GeneratedWriteOnly
+    {
+        private string _x = "";
+
+        public string X
+        {
+            set => _x = value;
+        }
+
+        public int XLength => _x.Length;
+    }
+
     private sealed class HoldsWriteOnly
     {
         public WriteOnly Child { get; set; } = new();
@@ -2414,7 +2533,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
                 + "Ways out: list 'Lines' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableWithoutDynamicCodeTests.NoVisibleMembers))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );
@@ -2611,7 +2730,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
                 + "Ways out: if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableWithoutDynamicCodeTests.NoVisibleMembers))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );
@@ -2635,7 +2754,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
                 + "Ways out: list 'Lines' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableWithoutDynamicCodeTests.NoVisibleMembers))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );
@@ -2655,7 +2774,7 @@ public sealed class EnsureAssignableWithoutDynamicCodeTests
                 + "no properties or fields are visible to reflection under Native AOT. "
                 + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
                 + "Ways out: if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableWithoutDynamicCodeTests.NoVisibleMembers))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );
@@ -2812,3 +2931,16 @@ public class EnsureCaeTests
 }
 
 // EnsureNotNull has no CAE overload — see the note near the CAE section in Contract.cs.
+
+// A C# 11 file class of yours with a write-only property.
+file sealed class FileWriteOnly
+{
+    private string _x = "";
+
+    public string X
+    {
+        set => _x = value;
+    }
+
+    public int XLength => _x.Length;
+}

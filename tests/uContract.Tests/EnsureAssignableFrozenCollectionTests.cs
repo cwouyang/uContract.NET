@@ -738,48 +738,50 @@ public class EnsureAssignableFrozenCollectionTests
         Assert.Equal(NotEqual(typeof(FrozenSet<Node>)), exception.Description);
     }
 
-    // An interface as T compares only the properties it declares itself, and IReadOnlySet<T> declares no property itself.
+    // The runtime type decides: two frozen sets of one runtime type are compared as a whole, whatever T is, and
+    // the message names the public type.
     [Fact]
-    public void EnsureAssignable_WhenTIsAnInterfaceAndTwoFrozenSetsDifferInOneElement_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsAnInterfaceAndTwoFrozenSetsDifferInOneElement_ReportsThePublicTypeAsComparedAsAWhole()
     {
         FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
         FrozenSet<string> expected = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actual, expected);
         Assert.Equal(expected.Count, actual.Count);
 
-        Exception? exception = Record.Exception(() =>
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable<IReadOnlySet<string>>(actual, expected)
         );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsAnInterfaceAndTwoFrozenSetsDifferInCount_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsAnInterfaceAndTwoFrozenSetsDifferInCount_ReportsThePublicTypeAsComparedAsAWhole()
     {
         FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
         FrozenSet<string> expected = Letters.Take(2).ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actual, expected);
         Assert.NotEqual(expected.Count, actual.Count);
 
-        Exception? exception = Record.Exception(() =>
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable<IReadOnlySet<string>>(actual, expected)
         );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
     }
 
-    // The declared type decides, and object has no members.
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndTwoFrozenSetsDifferInOneElement_DoesNotThrow()
+    public void EnsureAssignable_WhenTIsObjectAndTwoFrozenSetsDifferInOneElement_ReportsThePublicTypeAsComparedAsAWhole()
     {
         FrozenSet<string> actual = Letters.ToFrozenSet(StringComparer.Ordinal);
         FrozenSet<string> expected = LettersWithAnotherLast.ToFrozenSet(StringComparer.Ordinal);
         Assert.NotSame(actual, expected);
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable<object>(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable<object>(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(NotEqual(typeof(FrozenSet<string>)), exception.Description);
     }
 
     private static string NotEqual(Type type) =>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -34,6 +35,9 @@ public static class Contract
     // EnsureImmutableCollection reads the other full names that it compares from the types of the framework, once
     // (see ImmutableCollectionFullNames).
     private const string ReadOnlySetFullName = "System.Collections.ObjectModel.ReadOnlySet`1";
+
+    // The violation entry for the elements of a top-level sequence, which no pattern excuses.
+    private const string ElementsEntry = "(the elements; assignable patterns do not apply to them)";
 
     private static readonly ContractConfiguration Config = new();
     private static readonly AsyncLocal<bool> Entered = new();
@@ -1087,10 +1091,14 @@ public static class Contract
     ///     <see cref="Array" />, the two values are
     ///     compared as a whole and no member of it is compared; for a nullable value type the fields of the
     ///     underlying type, and for an array type the members of the element type, may not be preserved.
-    ///     <see cref="object" /> compares nothing beyond null; a base class that is not compared as a whole
-    ///     (<see cref="Delegate" />, <see cref="MulticastDelegate" />, a <c>FrozenSet&lt;T&gt;</c>, a
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and <see cref="Array" /> are) compares the members it
-    ///     declares or inherits, and an interface only the properties it declares itself.
+    ///     For any other type (<see cref="object" />, an interface, a base class, or the type of the values
+    ///     itself) the two values are compared by their runtime type, as a member of that type is, and for an
+    ///     interface also by the properties it declares (see the remarks; when a value is of a value type that
+    ///     is an <see cref="System.Collections.IEnumerable" />, such as <c>ImmutableArray&lt;T&gt;</c>, the
+    ///     members visible through this type are compared instead, unless the two values are sequences of
+    ///     different runtime types). The members of a runtime type other
+    ///     than this type are not preserved: under Native AOT such a runtime type that nothing preserves can make
+    ///     the method throw (see the exceptions).
     ///     Whatever it is, <see cref="object" /> included, nothing is compared and the method throws
     ///     <see cref="InvalidOperationException" /> when one instance is passed as <paramref name="actual" />
     ///     and as <paramref name="expected" /> and its runtime type is a type that <see cref="Old{T}" />
@@ -1141,7 +1149,10 @@ public static class Contract
     ///     ...). <see cref="Old{T}" /> returns such an instance itself, not a copy, so there is no earlier state to
     ///     compare with; the message names the shared base type, or says that the instance is a COM object. This
     ///     holds for every <typeparamref name="T" />, <see cref="object" /> included, and no member is compared.
-    ///     Also thrown under Native AOT when <typeparamref name="T" /> has no properties or fields visible to reflection and
+    ///     Also thrown under Native AOT when the type compared at the top level (<typeparamref name="T" />, or the
+    ///     runtime type of the values when that is compared: see the remarks) has no properties or fields visible
+    ///     to reflection, where the private fields declared on a class <typeparamref name="T" /> that the runtime
+    ///     type derives from count as visible, and
     ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
     ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to
     ///     be compared has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c>
@@ -1154,6 +1165,50 @@ public static class Contract
     ///     element.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
     ///     from this rule (no members visible) only, not from the rule for one shared instance above.
+    ///     Also thrown under Native AOT when at the top level the runtime type of the values is not
+    ///     <typeparamref name="T" />, they are not compared as a whole, and that runtime type shows no declared
+    ///     member to reflection: for a class also when the two values are equal; for a value type only when its
+    ///     <c>Equals</c> reports them unequal (a primitive, an enum and an inline array are then a violation, as
+    ///     before), except two sequences of different runtime types, which ask no <c>Equals</c>: there a value
+    ///     type throws as a class does, also when the two values are equal. No field, property, method or
+    ///     constructor it declares is visible (a nested type or an event it declares does not count), which is how
+    ///     Native AOT shows a type that nothing preserves (a framework collection included, when nothing in the
+    ///     application preserves it). Comparing it by the members of <typeparamref name="T" />, by those it inherits
+    ///     or by its elements would miss what it adds. A compiler-generated sequence of yours (a yield iterator from
+    ///     a method that returns <see cref="System.Collections.IEnumerable" /> or <see cref="IEnumerable{T}" />, or
+    ///     the class of a collection expression, see the remarks) is not affected, by this rule or by the rule for
+    ///     no visible members: at every level it is compared by its elements, and enumerating it needs no
+    ///     metadata. One from a method that returns only
+    ///     <see cref="System.Collections.IEnumerator" /> or <see cref="IEnumerator{T}" /> is an enumerator, not a
+    ///     sequence: it is compared by its fields, and under Native AOT, when nothing preserves it, the rule for
+    ///     no visible members makes the method throw; the message names no <c>typeof</c>, which cannot be written
+    ///     for a compiler-generated class, and suggests returning <see cref="IEnumerable{T}" /> from the yield
+    ///     method instead. A sequence that is not a collection is
+    ///     reported as such first (see below). The message names the runtime type and <typeparamref name="T" />
+    ///     (for two values of different runtime types, the runtime type of <paramref name="actual" /> or of
+    ///     <paramref name="expected" />), and gives the fix with the runtime type in C# syntax:
+    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]</c> on a method that runs, or,
+    ///     when both values are of that type, pass them as that type. The messages for a nested value give the same fix for the type they
+    ///     name. The named type must be accessible where the attribute is written: a private nested type can be
+    ///     written only inside its declaring type. A compiler-generated type (a metadata name that starts with
+    ///     <c>&lt;&gt;</c>, such as an anonymous type, or a class marked <see cref="CompilerGeneratedAttribute" /> with
+    ///     a <c>&lt;</c> or a <c>$</c> in its name, such as a yield enumerator or a VB iterator, or a type nested in
+    ///     one), or a type with one among or inside its generic arguments, cannot be written in <c>typeof</c> at all:
+    ///     for it the messages name no <c>typeof</c>, say why (the type is compiler-generated, or has a
+    ///     compiler-generated type among or inside its generic arguments), and offer what can be written instead: a
+    ///     value of a type of yours (for a yield enumerator, returning <see cref="IEnumerable{T}" /> from its
+    ///     method), an element type of yours (a <c>List&lt;T&gt;</c> of anonymous values), a type of yours as the
+    ///     generic argument, or a type of yours in place of the compiler-generated one deeper inside; the top-level
+    ///     member that leads to it as assignable when there is one; or <c>DBC_POST=off</c>. A class marked
+    ///     <see cref="CompilerGeneratedAttribute" /> with a name C# can write (a source generator's) keeps the
+    ///     <c>typeof</c> fix, and a C# 11 <c>file</c> class is named by its own name, and the message says that the
+    ///     method must be inside the file that declares the class. A type whose generic arguments hold
+    ///     <c>file</c> classes of more than one file cannot be written in any one file: its message names no
+    ///     <c>typeof</c>, says so, and offers other generic arguments or <c>DBC_POST=off</c>. The same
+    ///     holds for the message for a property
+    ///     without a get method, which names the declaring type of the property. A type that adds no state and
+    ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
+    ///     top level the rule for a class with no visible members above applies instead (see the remarks).
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method:
     ///     a write-only property, or one whose getter was removed by trimming.
     ///     This applies to properties of <typeparamref name="T" />, of nested members, of collection elements and
@@ -1163,7 +1218,12 @@ public static class Contract
     ///     is not reported by this rule: it is read with the getter that exists, that of its declaring type or of
     ///     the nearest declaration of the same virtual property that has one, and is compared once, in every
     ///     build. That getter runs, and a getter that throws ends the call in
-    ///     <see cref="System.Reflection.TargetInvocationException" />, as for any getter.
+    ///     <see cref="System.Reflection.TargetInvocationException" />, as for any getter. At the top level, a
+    ///     framework property without a getter that <typeparamref name="T" /> does not declare or inherit is not
+    ///     read, so it does not end the call (see the remarks).
+    ///     Also thrown, in any build, when a value at the top level is a sequence built on a framework class that is
+    ///     not a collection (see the remarks) and its runtime type is not <typeparamref name="T" />; it is not
+    ///     enumerated.
     /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare the public instance properties (indexers excluded)
@@ -1175,12 +1235,12 @@ public static class Contract
     ///     public key tokens of the .NET 8 shared frameworks (the runtime libraries, ASP.NET Core,
     ///     <c>Microsoft.Extensions.*</c>, WPF and Windows Forms); a library that is signed otherwise or not signed
     ///     is walked. The fields of a framework class that are not private (<c>List&lt;T&gt;._size</c>) are
-    ///     compared, as every inherited field that is not private is; its private fields are not. Static fields are not
-    ///     compared. An auto-property declared on a base class that is not public is compared as its backing
+    ///     compared, as every inherited field that is not private is, except in a sequence (see below); its private
+    ///     fields are not. Static fields are not compared. An auto-property declared on a base class that is not public is compared as its backing
     ///     field (<c>&lt;Note&gt;k__BackingField</c>); the backing field of an auto-property that is compared as
     ///     a property (a public one, also with a protected setter, and one read with the getter that exists, see
-    ///     the exceptions) is left out, so that property is compared once. A nested collection class of yours is
-    ///     still compared by its elements. A change of such a field, for example raising a domain event that a
+    ///     the exceptions) is left out, so that property is compared once. A collection class of yours is compared
+    ///     as a sequence (see below). A change of such a field, for example raising a domain event that a
     ///     base aggregate class keeps in a private list, is a violation unless the member is listed as
     ///     assignable.
     ///     Native AOT: the private fields declared on a base class are not preserved, so they are not compared,
@@ -1189,13 +1249,90 @@ public static class Contract
     ///     (or <c>All</c>); the objects those fields hold are compared by their members, so preserve their types
     ///     too, or two unequal instances of such a type end in "cannot compare". The rule "no members visible"
     ///     is decided on the members before the private fields of base classes are added, so a type whose only
-    ///     state is such fields still counts as having no members visible (see the exceptions). In a trimmed
+    ///     state is such fields still counts as having no members visible (see the exceptions); at the top level,
+    ///     the private fields declared on a class <typeparamref name="T" /> (a framework class or not) that the
+    ///     runtime type derives from count as visible, because the annotation on <typeparamref name="T" />
+    ///     preserves them; the private fields of the base classes of <typeparamref name="T" /> and of the classes
+    ///     between the runtime type and <typeparamref name="T" /> do not. A runtime type other than
+    ///     <typeparamref name="T" /> whose own members were not preserved shows no declared member to reflection,
+    ///     and is not compared by those fields of <typeparamref name="T" /> alone: the method throws (see the
+    ///     exceptions). A runtime type of which something preserves some members (a constructor kept by a
+    ///     dependency-injection registration) does not show that: it is compared by the members that are
+    ///     visible, which can be those of <typeparamref name="T" /> alone, and that is not detected. Native AOT
+    ///     preserves per generic definition, so an instantiation that nothing preserves shows its members when
+    ///     another instantiation of its definition is preserved. In a trimmed
     ///     application without Native AOT these fields may not be preserved either; they are then not compared,
     ///     and that is not detected.
     ///     The walk goes deeper into nested objects and collection elements without recursion, so cycles and
     ///     deep graphs are safe.
+    ///     A sequence (a class that is an <see cref="System.Collections.IEnumerable" />, other than a string, an
+    ///     array, a frozen collection and a shared type, which keep their own rules) is compared by the class chain
+    ///     of its runtime type, at the top level and wherever a member, element, key or value holds it. When the
+    ///     chain holds a framework class below <see cref="object" /> (<c>List&lt;T&gt;</c>,
+    ///     <c>Collection&lt;T&gt;</c>, <c>Dictionary&lt;TKey, TValue&gt;</c>), it is compared by its elements and
+    ///     by the members of its runtime type that are declared on a class that is not a framework class; at the
+    ///     top level also by the public properties declared on its framework classes (a <c>Comparer</c>, the
+    ///     <c>Key</c> of a grouping), except one named <c>Capacity</c> and one without a getter that
+    ///     <typeparamref name="T" /> does not declare or inherit. The non-public fields of the framework
+    ///     (<c>_items</c>, <c>_version</c>) are not compared, so two lists of equal content and different capacity
+    ///     or add and remove history are equal. Otherwise (a class of
+    ///     yours that implements <see cref="System.Collections.IEnumerable" /> itself) it is compared by its
+    ///     members alone, as any other class, and it is not enumerated. Elements that such a class produces from
+    ///     the captured state of a delegate are therefore not compared: a delegate is compared by its methods. A
+    ///     compiler-generated sequence of yours is compared by its elements alone, at every level, also against a
+    ///     sequence of another runtime type (a <c>List&lt;T&gt;</c>, an array): its fields are the state of an
+    ///     iteration or the storage of the elements. It is either a class that implements
+    ///     <see cref="System.Collections.IEnumerator" /> and is compiler-generated: it, or a type in its declaring
+    ///     chain, is marked
+    ///     <see cref="CompilerGeneratedAttribute" /> with a <c>&lt;</c> or a <c>$</c> in its name (which C# cannot
+    ///     write: <c>&lt;Method&gt;d__N</c>, <c>VB$StateMachine_…</c>) or has a metadata name that starts with
+    ///     <c>&lt;&gt;</c> (the iterator of a local function that captures a variable,
+    ///     <c>&lt;&lt;Method&gt;g__Local|0&gt;d</c>, is not marked itself and is nested in its marked display class
+    ///     <c>&lt;&gt;c__DisplayClass…</c>, measured),
+    ///     reached as an <see cref="System.Collections.IEnumerable" />: a <c>yield</c> iterator, the result of a
+    ///     <c>yield</c> method that returns <see cref="System.Collections.IEnumerable" /> or
+    ///     <see cref="IEnumerable{T}" />; or a class whose metadata name starts with <c>&lt;&gt;</c> that implements
+    ///     <see cref="System.Collections.IEnumerable" />: the class that a collection expression held as
+    ///     <see cref="IReadOnlyList{T}" />, <see cref="IReadOnlyCollection{T}" /> or <see cref="IEnumerable{T}" /> is
+    ///     built as (<c>&lt;&gt;z__ReadOnlyArray&lt;T&gt;</c>, also for a single element, and
+    ///     <c>&lt;&gt;z__ReadOnlyList&lt;T&gt;</c> for a spread of a yield iterator; the .NET 8 SDK emits
+    ///     both without <see cref="CompilerGeneratedAttribute" />, measured). A class marked
+    ///     <see cref="CompilerGeneratedAttribute" /> with a name C# can write (a source generator's, also one that
+    ///     implements only <see cref="System.Collections.IEnumerable" /> or one that is its own enumerator) and a C#
+    ///     11 <c>file</c> class are classes of yours, compared by their members. The
+    ///     empty collection expression held as <see cref="IReadOnlyList{T}" /> is an empty array (measured). A
+    ///     violation of such a sequence at the top level does not say that members were listed from its runtime
+    ///     type: none were. "Yours" means any assembly that is not part of
+    ///     .NET, a NuGet package included. Enumerating it runs its body: an infinite iterator does not return, and an exception from
+    ///     its body leaves the method as it is, not wrapped, except an <see cref="InvalidOperationException" />
+    ///     while two sequences of different runtime types are enumerated, which makes them unequal. A
+    ///     <c>yield</c> method that returns only an
+    ///     enumerator gives a class that is not a sequence, compared by its fields (see the exceptions).
+    ///     The non-public fields of the framework classes of a sequence that is compared by its elements are not
+    ///     compared, at any level (a sequence that is not a collection, passed as its own type, is compared by
+    ///     all its members: see below), so a
+    ///     comparer kept only in such a field (that of a <c>Hashtable</c>) and the event handlers that a framework
+    ///     class keeps (the subscribers of an <c>ObservableCollection&lt;T&gt;</c>) are not compared either.
+    ///     (<c>Lookup&lt;TKey, TElement&gt;</c> is not a collection: at the top level it is compared by all its
+    ///     members as its own type, its comparer included, and throws under another type; nested, it is compared
+    ///     by its elements.) Below the top level the public properties of a framework sequence are not read
+    ///     either, so the <c>Key</c> of a nested grouping is not compared.
+    ///     At the top level, a sequence built on a framework class that is not a collection (it implements none of
+    ///     <see cref="System.Collections.ICollection" />, <see cref="ICollection{T}" /> and
+    ///     <see cref="IReadOnlyCollection{T}" />: a LINQ query such as <c>source.Select(...)</c>,
+    ///     <c>GetConsumingEnumerable()</c>, an <c>XmlDocument</c>) is never enumerated: enumerating it could run a
+    ///     query, consume its source or block. When its runtime type is not <typeparamref name="T" />, the method
+    ///     throws <see cref="InvalidOperationException" /> and asks for a materialised collection (for example
+    ///     <c>ToList()</c>) or for the value's own type as <typeparamref name="T" />; passed as its own type, it is
+    ///     compared by all its members, as any other class: the private fields of <typeparamref name="T" />
+    ///     included (an <c>ImmutableQueue&lt;T&gt;</c> by its private fields), and those of its base classes up to the
+    ///     first framework class, so a class of yours derived from <c>XmlDocument</c> does not compare the private
+    ///     fields of <c>XmlDocument</c>. A nested one is enumerated as any other sequence.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
-    ///     runtime types are unequal, except two sequences, which are compared element by element. Two arrays, of
+    ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
+    ///     chains hold a framework class, and neither declares a member on a class that is not a framework class;
+    ///     an array and a value-type sequence such as <c>ImmutableArray&lt;T&gt;</c> qualify), which are compared
+    ///     element by element. Two arrays, of
     ///     one runtime type or of two, are equal only when they also have the same rank, and the same length and
     ///     lower bound in every dimension; this does not apply to an array and a sequence that is not an array, nor
     ///     to the two values passed to the method as a <typeparamref name="T" /> that is compared by its members,
@@ -1211,11 +1348,22 @@ public static class Contract
     ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c> are compared element by element, in enumeration order.
     ///     Under Native AOT, a nested class whose members were not preserved is compared by its own
     ///     <c>Equals</c>: equal when it returns true. When it returns false, the method throws
-    ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. A type whose
+    ///     <see cref="InvalidOperationException" /> rather than report that nothing changed. Such a class is one
+    ///     with no visible members, or one that is not a framework class and shows no declared member (no field,
+    ///     property, method or constructor it declares is visible: Native AOT keeps none of a type that nothing
+    ///     preserves), also when the members it inherits are visible; two sequences that would be compared by their
+    ///     elements are compared so too, not by their elements, when the runtime type of either, or one of its base
+    ///     classes, is not a framework class and shows no declared member. A
+    ///     framework class reached as a nested value, and a compiler-generated sequence of yours, are compared as before. A type whose
     ///     <c>Equals</c> ignores state (for example entity equality by ID) therefore hides a change in such a
     ///     member; preserve the type with <c>[DynamicDependency]</c> to compare it member by member.
-    ///     When <typeparamref name="T" /> itself has no visible members, the method throws and does not ask
-    ///     <c>Equals</c>, unless <paramref name="actual" /> or <paramref name="expected" /> is null or
+    ///     When the type compared at the top level (<typeparamref name="T" />, or the runtime type of the values
+    ///     when that is compared) has no visible members, the method throws; for a runtime type
+    ///     other than <typeparamref name="T" />, which the annotation on <typeparamref name="T" /> does not
+    ///     preserve, the message names both types, and the method also throws when that runtime type shows no
+    ///     declared member (see the exceptions). It throws without asking <c>Equals</c> (except for a value of a
+    ///     value type other than <typeparamref name="T" />, whose <c>Equals</c> decides first, unless the two values
+    ///     are sequences of different runtime types), unless <paramref name="actual" /> or <paramref name="expected" /> is null or
     ///     <typeparamref name="T" /> is compared as a whole. When one instance passed as <paramref name="actual" />
     ///     and as <paramref name="expected" /> is of a type that <see cref="Old{T}" /> shares, and its state can
     ///     change, the method throws the message of that case instead, in every build.
@@ -1239,43 +1387,81 @@ public static class Contract
     ///     did not happen, or misses one: take the snapshot outside such a check.
     ///     When <typeparamref name="T" /> is a <see cref="string" />, a delegate type, a nullable value type, a
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or
-    ///     <see cref="Array" />, the two
-    ///     values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
+    ///     <see cref="Array" />, and also when <typeparamref name="T" /> is any other type (<see cref="object" />,
+    ///     an interface, a base class) and the two values are of one runtime type that is a string, a delegate
+    ///     type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type,
+    ///     the two values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
     ///     delegate by its methods (not its targets, so the same method on another object is equal;
     ///     <see cref="Delegate" /> and <see cref="MulticastDelegate" /> count as delegate types, and two delegates of
     ///     different runtime types are unequal), a nullable value type with <c>Equals</c> first and then by the fields
     ///     of the underlying type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
     ///     element by element, in enumeration order, two arrays element by element, each element as a member or
     ///     element is, under the rule for two arrays above (two arrays of pointers or of function pointers are
-    ///     compared by address). The patterns do not apply.
+    ///     compared by address). The patterns do not apply and are not examined. A message names a frozen
+    ///     collection by its public type, <c>FrozenSet&lt;T&gt;</c> or <c>FrozenDictionary&lt;TKey, TValue&gt;</c>,
+    ///     not by its internal runtime type.
     ///     A nullable value type can therefore be compared less strictly than the same type without <c>?</c>
     ///     (<c>DateTime.Equals</c> ignores <c>Kind</c>), and a field of it
     ///     cannot be listed as assignable. To compare it by its members, test both values for null first and pass the
     ///     unwrapped values, for example with <c>if (a is { } x &amp;&amp; b is { } y)</c>; do not read <c>.Value</c>
     ///     before that test: it throws when there is no value.
-    ///     For every other <typeparamref name="T" /> the members visible through it are compared:
-    ///     <see cref="object" /> has none, so nothing is compared beyond null; a base class that is not
-    ///     compared as a whole (<see cref="Delegate" />, <see cref="MulticastDelegate" />, a
-    ///     <c>FrozenSet&lt;T&gt;</c>, a <c>FrozenDictionary&lt;TKey, TValue&gt;</c> and <see cref="Array" />
-    ///     are) compares the
-    ///     members it declares or inherits, and an interface only the properties it declares itself; in
-    ///     neither case what the runtime type adds, even if the values are strings. Two different instances
-    ///     of a type that <see cref="Old{T}" /> shares (two <c>Stream</c>s) are still compared member by member,
-    ///     and so is a type that is shared, and fixed (a <c>Regex</c>), also for one instance on both sides; in
-    ///     both cases unless <typeparamref name="T" /> is a string, a delegate type, a <c>FrozenSet&lt;T&gt;</c> or a
-    ///     <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or <see cref="Array" />, which are
-    ///     compared as a whole. The getters of the public properties of <typeparamref name="T" /> then run, also
-    ///     for one instance on both sides, and a getter that throws ends the call with
+    ///     Two frozen collections of one public type are compared as a whole also when the framework built them
+    ///     as different internal classes. Two boxed pointers (<see cref="System.Reflection.Pointer" />) passed as
+    ///     <see cref="object" /> or an interface are compared as a member of that type is: by address only, so
+    ///     two boxes of one address as different pointer types (<c>int*</c> and <c>long*</c>) are equal. With
+    ///     <typeparamref name="T" /> = <see cref="System.Reflection.Pointer" /> their members (the address and the
+    ///     pointer type) are compared, as for any other class.
+    ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
+    ///     delegate, a boxed pointer, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
+    ///     (two <c>Stream</c>s, two <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever
+    ///     <typeparamref name="T" /> is and whatever their state: no member is read and the patterns do not apply.
+    ///     This holds also for a shared type that is an <see cref="System.Collections.IEnumerable" /> (a
+    ///     <c>ConditionalWeakTable&lt;TKey, TValue&gt;</c>): the shared rule wins over the rule for sequences below.
+    ///     Check such a state with <see cref="Ensure(string, Func{bool})" />.
+    ///     Two values of different runtime types, either of which is compared as a whole or shared, are a
+    ///     violation that names both runtime types and <typeparamref name="T" />, except two sequences
+    ///     (<see cref="System.Collections.IEnumerable" /> other than a string), which are compared as below.
+    ///     For every other <typeparamref name="T" /> the two values are compared by the members of their runtime
+    ///     type (as <typeparamref name="T" /> = that type would compare them; a value of a value type other than
+    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; a primitive, an enum and an
+    ///     inline array by <c>Equals</c> alone, and one without a field is then a violation; its <c>Equals</c>
+    ///     override runs, and an exception it throws ends the call), and the patterns apply to those members.
+    ///     When <typeparamref name="T" /> is a framework class other than <see cref="object" /> that the runtime
+    ///     type derives from, the private fields of the base classes are compared up to and including
+    ///     <typeparamref name="T" />. When <typeparamref name="T" /> is an
+    ///     interface, the properties it declares are compared too, read through it (an explicitly implemented one
+    ///     included, also beside a public property of the same name), after the members of the runtime type; one
+    ///     of them is not reported when a member of its name was reported already. The patterns apply to them by
+    ///     their names. A sequence whose class chain holds a framework class is compared, as above, by the members
+    ///     declared on a class that is not a framework class and the public properties declared on its framework
+    ///     classes other than <c>Capacity</c> (the patterns apply to them, and to the properties of an interface
+    ///     <typeparamref name="T" />) and by its elements, which no
+    ///     pattern excuses: a difference in them is reported as the entry
+    ///     <c>(the elements; assignable patterns do not apply to them)</c>. Two values of different runtime types
+    ///     are a violation, except two sequences that are compared by their elements alone (see above): their
+    ///     elements are compared, and a difference is a violation that names both runtime types and
+    ///     <typeparamref name="T" />; with equal elements, the properties an interface <typeparamref name="T" />
+    ///     declares are then compared, read through it, and the patterns apply to them. When the runtime type is not
+    ///     <typeparamref name="T" />, a violation message names the runtime type the members were listed from,
+    ///     except for a compiler-generated sequence, compared by its elements, of which no member was listed.
+    ///     The getters of the public properties of a reference type's runtime type, and of the properties of an
+    ///     interface <typeparamref name="T" />, then run (a property of an interface <typeparamref name="T" />
+    ///     that the runtime type implements publicly is read twice), and a getter that throws ends the call with
     ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
-    ///     <see cref="Exception.InnerException" />. Two different <c>Stream</c>s that keep the <c>ReadTimeout</c>
-    ///     getter of <c>Stream</c>, which throws, end the call so (measured for two <c>MemoryStream</c>s); a
-    ///     stream that cannot seek can throw at <c>Length</c> first. So can one instance of a class derived from
-    ///     <c>Type</c> or <c>MemberInfo</c> on both sides (measured for a class derived from <c>TypeDelegator</c>
-    ///     and one derived from <c>MemberInfo</c>); for that case see <see cref="Old{T}" />. For two streams, list
-    ///     the properties that throw as assignable (for two <c>MemoryStream</c>s, <c>Timeout$</c>), or check the
-    ///     state with <see cref="Ensure(string, Func{bool})" />. With <typeparamref name="T" /> = <c>Stream</c>
-    ///     and that pattern, the properties of the stream (<c>Length</c>, <c>Position</c>, ...) are compared, not
-    ///     its content: two <c>MemoryStream</c>s of the same length and different content pass (measured).
+    ///     <see cref="Exception.InnerException" />, also where comparing by the members of
+    ///     <typeparamref name="T" /> alone passed.
+    ///     When either runtime type is a value type that is an <see cref="System.Collections.IEnumerable" />
+    ///     (<c>ImmutableArray&lt;T&gt;</c>, <c>ArraySegment&lt;T&gt;</c>) and the other is not a sequence of
+    ///     another runtime type, and when one instance of a type that is shared, and fixed
+    ///     (a <c>Regex</c>), is on both sides, the members visible through <typeparamref name="T" /> are
+    ///     compared instead: <see cref="object" /> has none, so nothing is compared beyond null; a base class
+    ///     compares the members it declares or inherits, and an interface only the properties it declares itself;
+    ///     in neither case what the runtime type adds. The getters of the public properties of
+    ///     <typeparamref name="T" /> then run, and a getter that throws ends the call with
+    ///     <see cref="System.Reflection.TargetInvocationException" />, which holds the getter's exception as
+    ///     <see cref="Exception.InnerException" />. One instance of a class derived from <c>Type</c> or
+    ///     <c>MemberInfo</c> on both sides can end the call so (measured for a class derived from
+    ///     <c>TypeDelegator</c> and one derived from <c>MemberInfo</c>); for that case see <see cref="Old{T}" />.
     ///     One instance passed as <paramref name="actual" /> and as <paramref name="expected" />, of a type that
     ///     is shared, and its state can change, is not compared: <c>EnsureAssignable(this, Old(() => this))</c>
     ///     in a class derived from <c>Stream</c>, <c>Task</c> or <c>Component</c> compares the object with
@@ -1302,7 +1488,7 @@ public static class Contract
     /// </code>
     /// </example>
     [RequiresUnreferencedCode(
-        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of the top-level type are preserved; the types of nested objects and collection elements are not. For a nullable value type, the fields of the underlying type may not be preserved."
+        "EnsureAssignable uses reflection to enumerate and compare fields and properties. The public properties and the public and non-public fields of T are preserved; those of a runtime type other than T, which the top level compares, and the types of nested objects and collection elements are not. Under Native AOT a runtime type other than T that nothing preserves can make the call throw; preserve it with DynamicDependency. For a nullable value type, the fields of the underlying type may not be preserved."
     )]
     public static void EnsureAssignable<[DynamicallyAccessedMembers(MemberComparison.ComparedMembers)] T>(
         T actual,
@@ -1341,7 +1527,9 @@ public static class Contract
 
         // Step 5: Execute with guard. A string, a delegate type, a nullable value type, a FrozenSet<T> or a
         // FrozenDictionary<TKey, TValue>, and an array type or System.Array are compared as one pair, without
-        // the patterns and without the member metadata of T; any other T is compared member by member.
+        // the patterns and without the member metadata of T; for any other T the runtime type of the two values
+        // decides first (compared as a whole, by reference, or a violation for different runtime types), and
+        // what it leaves is compared member by member.
         try
         {
             Entered.Value = true;
@@ -1352,15 +1540,15 @@ public static class Contract
                 return;
             }
 
-            List<string> differences = _FindDifferences(actual, expected, assignableFieldPatterns);
-
-            if (differences.Count > 0)
+            if (
+                _CompareByRuntimeType(typeof(T), actual!, expected!)
+                || _CompareSequencesOfDifferentRuntimeTypes(typeof(T), actual!, expected!, assignableFieldPatterns)
+            )
             {
-                string message =
-                    "Fields were modified that are not marked as assignable:\n"
-                    + string.Join("\n", differences.Select(d => $"  - {d}"));
-                throw new PostconditionViolationException(message);
+                return;
             }
+
+            _CompareByMembers(typeof(T), actual!, expected!, assignableFieldPatterns);
         }
         finally
         {
@@ -1405,9 +1593,9 @@ public static class Contract
     }
 
     // A string, a delegate type, a nullable value type, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, and
-    // an array type or System.Array are compared as one pair, as a member of that type is. The declared type
-    // decides, and its member metadata is not read: two arrays passed as object, as an interface or inside a
-    // collection class are compared by the members of that type.
+    // an array type or System.Array are compared as one pair, as a member of that type is. Asked of T first and
+    // then, at the top level, of the runtime type of the two values (see _CompareByRuntimeType); the member
+    // metadata of the type is not read.
     private static bool _IsComparedAsWhole(Type type)
     {
         return type == typeof(string)
@@ -1415,6 +1603,321 @@ public static class Contract
             || Nullable.GetUnderlyingType(type) is not null
             || SharedTypes.IsFrozenSetOrDictionary(type)
             || MemberComparison.IsArrayTypeOrSystemArray(type);
+    }
+
+    // Returns true when the runtime type of the two values settled the comparison: a value that is compared as a
+    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array) or by reference
+    // (a shared type) is compared so whatever T is, and the patterns are not read. Two values of different
+    // runtime types where either is such a value are a violation, except two sequences, which are left to
+    // _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the address and
+    // the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
+    private static bool _CompareByRuntimeType(Type declaredType, object actual, object expected)
+    {
+        if (declaredType == typeof(System.Reflection.Pointer))
+        {
+            return false;
+        }
+
+        Type actualType = actual.GetType();
+        Type expectedType = expected.GetType();
+        if (!_IsDecidedByRuntimeType(actualType) && !_IsDecidedByRuntimeType(expectedType))
+        {
+            return false;
+        }
+
+        // Two frozen collections of one public type are compared as a whole, also when the framework built them
+        // as different internal classes.
+        Type publicActualType = SharedTypes.PublicFrozenType(actualType);
+        if (publicActualType != actualType && publicActualType == SharedTypes.PublicFrozenType(expectedType))
+        {
+            _CompareAsWhole(publicActualType, actual, expected);
+            return true;
+        }
+
+        if (actualType != expectedType)
+        {
+            if (actual is IEnumerable and not string && expected is IEnumerable and not string)
+            {
+                return false;
+            }
+
+            throw _DifferentRuntimeTypes(actualType, expectedType, declaredType);
+        }
+
+        // A boxed pointer is shared, but compared by address, as a member of it is (see MemberComparison.Start).
+        if (_IsComparedAsWhole(actualType) || actual is System.Reflection.Pointer)
+        {
+            _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), actual, expected);
+            return true;
+        }
+
+        // One instance on both sides keeps the path it had before the runtime type decided: step 4 reported it
+        // when its state can change, and otherwise it is compared by the members of T.
+        if (ReferenceEquals(actual, expected))
+        {
+            return false;
+        }
+
+        throw new PostconditionViolationException(
+            $"actual and expected are different instances of {actualType}, which is compared by reference: "
+                + "its state is not compared, and assignable patterns do not apply. To check its state, use "
+                + "Contract.Ensure."
+        );
+    }
+
+    // Returns true when the two values are sequences of different runtime types: they are compared by their
+    // elements when neither runtime type declares members on a class of yours (see
+    // MemberComparison.GetSequenceRule), and are otherwise a violation. When T is an interface, the properties
+    // it declares are compared after equal elements, read through it, and the patterns apply to them; the
+    // patterns are not read otherwise.
+    private static bool _CompareSequencesOfDifferentRuntimeTypes(
+        Type declaredType,
+        object actual,
+        object expected,
+        string[] assignableFieldPatterns
+    )
+    {
+        Type actualType = actual.GetType();
+        Type expectedType = expected.GetType();
+        if (
+            actualType == expectedType
+            || !(actual is IEnumerable and not string && expected is IEnumerable and not string)
+        )
+        {
+            return false;
+        }
+
+        _ThrowIfNotACollection(actualType, declaredType);
+        _ThrowIfNotACollection(expectedType, declaredType);
+        _ThrowIfShowsNoDeclaredMember(actualType, declaredType, "actual");
+        _ThrowIfShowsNoDeclaredMember(expectedType, declaredType, "expected");
+        if (
+            !MemberComparison.IsComparedByElementsOnly(actualType)
+            || !MemberComparison.IsComparedByElementsOnly(expectedType)
+        )
+        {
+            throw _DifferentRuntimeTypes(actualType, expectedType, declaredType);
+        }
+
+        ComparisonContext context = new();
+        if (MemberComparison.AreEqual(actual, expected, context))
+        {
+            _CompareInterfaceProperties(declaredType, actual, expected, assignableFieldPatterns);
+            return true;
+        }
+
+        if (context.Hidden is not null)
+        {
+            throw MemberComparison.CannotCompareBelowWhole(actualType, context.Hidden);
+        }
+
+        throw new PostconditionViolationException(
+            "actual and expected are not equal. They are sequences of different runtime types (actual is "
+                + $"{SharedTypes.PublicFrozenType(actualType)}, expected is {SharedTypes.PublicFrozenType(expectedType)}, "
+                + $"and T is {declaredType}), compared by their elements, so assignable patterns do not apply."
+        );
+    }
+
+    // At the top level, a sequence built on a framework class that is not a collection (a LINQ query, a
+    // consuming enumerable) is not enumerated under a T other than its own type: enumerating it could run a query,
+    // consume its source or block. Passed as its own type, it is compared by its members.
+    private static void _ThrowIfNotACollection(Type runtimeType, Type declaredType)
+    {
+        if (runtimeType == declaredType || !MemberComparison.IsNonCollectionSequence(runtimeType))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"EnsureAssignable cannot compare {runtimeType} as T ({declaredType}): it is a sequence that is not a "
+                + "collection (it implements none of ICollection, ICollection<T> and IReadOnlyCollection<T>), and "
+                + "enumerating it could run a query, consume its source or block. Pass a materialised collection (for "
+                + "example ToList()), or pass the value as its own type as T."
+        );
+    }
+
+    // The properties an interface T declares, read through it, as for any interface T.
+    private static void _CompareInterfaceProperties(
+        Type declaredType,
+        object actual,
+        object expected,
+        string[] assignableFieldPatterns
+    )
+    {
+        if (!declaredType.IsInterface)
+        {
+            return;
+        }
+
+        List<string> differences = _FindDifferences(
+            declaredType,
+            [.. MemberComparison.GetOrCacheMetadata(declaredType).Members],
+            actual,
+            expected,
+            assignableFieldPatterns,
+            byElements: false
+        );
+        if (differences.Count > 0)
+        {
+            throw _FieldsWereModified(differences, declaredType, declaredType);
+        }
+    }
+
+    private static bool _IsDecidedByRuntimeType(Type runtimeType)
+    {
+        return _IsComparedAsWhole(runtimeType) || SharedTypes.IsShared(runtimeType);
+    }
+
+    // The top level compared member by member, by the members of the type _TopLevelType picks.
+    private static void _CompareByMembers(
+        Type declaredType,
+        object actual,
+        object expected,
+        string[] assignableFieldPatterns
+    )
+    {
+        Type comparedType = _TopLevelType(declaredType, actual, expected);
+
+        // A sequence that is not a collection, passed as its own type, is compared by all its members, as any
+        // other class, and is not enumerated. Under another T it is reported first: the way out is to
+        // materialise it, which the rule below cannot offer for an internal type (a LINQ query).
+        bool byElements =
+            _IsComparedByElementsAndOwnMembers(comparedType, actual)
+            && !(comparedType == declaredType && MemberComparison.IsNonCollectionSequence(comparedType));
+        if (byElements)
+        {
+            _ThrowIfNotACollection(comparedType, declaredType);
+        }
+
+        // A value of a value type other than T is compared as a member is: its Equals decides first, and only then
+        // is the rule asked (see _TopLevelMembers). Two sequences of different runtime types ask no Equals, so
+        // they keep the rule for a value type too (see _CompareSequencesOfDifferentRuntimeTypes).
+        if (!comparedType.IsValueType)
+        {
+            _ThrowIfShowsNoDeclaredMember(comparedType, declaredType);
+        }
+
+        List<MemberAccessor> members = _TopLevelMembers(comparedType, declaredType, actual, expected, byElements);
+        if (byElements)
+        {
+            _RemoveMembersASequenceIsNotComparedBy(members, comparedType, declaredType);
+        }
+
+        List<string> differences = _FindDifferences(
+            comparedType,
+            members,
+            actual,
+            expected,
+            assignableFieldPatterns,
+            byElements
+        );
+
+        if (differences.Count > 0)
+        {
+            // A compiler-generated sequence compared by its elements lists no member of its runtime type.
+            Type listedFrom =
+                byElements && MemberComparison.GetSequenceRule(comparedType).IsCompilerGenerated
+                    ? declaredType
+                    : comparedType;
+            throw _FieldsWereModified(differences, listedFrom, declaredType);
+        }
+    }
+
+    // A sequence built on a framework class is compared by its elements and by its members, without the
+    // framework's non-public fields and its Capacity, which the elements stand in for: its public properties
+    // (a comparer, the key of a grouping) stay. A compiler-generated sequence of yours (a yield iterator, a
+    // collection expression) is compared by its elements alone (the properties of an interface T stay).
+    private static void _RemoveMembersASequenceIsNotComparedBy(
+        List<MemberAccessor> members,
+        Type comparedType,
+        Type declaredType
+    )
+    {
+        if (MemberComparison.GetSequenceRule(comparedType).IsCompilerGenerated)
+        {
+            members.RemoveAll(m => !m.DeclaringType.IsInterface);
+            return;
+        }
+
+        // A framework property without a getter is not read, unless it is a property of T itself.
+        members.RemoveAll(m =>
+            MemberComparison.IsFrameworkClass(m.DeclaringType)
+            && (
+                m.IsNonPublicField
+                || string.Equals(m.RawName, "Capacity", StringComparison.Ordinal)
+                || (m.IsWriteOnlyProperty && !m.DeclaringType.IsAssignableFrom(declaredType))
+            )
+        );
+    }
+
+    // A sequence of comparedType, the runtime type of the two values, whose class chain holds a framework class
+    // below System.Object. A shared type keeps its own rules.
+    private static bool _IsComparedByElementsAndOwnMembers(Type comparedType, object actual)
+    {
+        return comparedType == actual.GetType()
+            && !comparedType.IsValueType
+            && actual is IEnumerable and not string
+            && !SharedTypes.IsShared(comparedType)
+            && MemberComparison.GetSequenceRule(comparedType).IsComparedByElements;
+    }
+
+    // A violation entry is named as today; when the members were listed from a runtime type other than T,
+    // the message says so.
+    private static PostconditionViolationException _FieldsWereModified(
+        List<string> differences,
+        Type comparedType,
+        Type declaredType
+    )
+    {
+        string message =
+            "Fields were modified that are not marked as assignable:\n"
+            + string.Join("\n", differences.Select(d => $"  - {d}"));
+        if (comparedType != declaredType)
+        {
+            message += $"\nMembers were listed from the runtime type {comparedType}, not from T ({declaredType}).";
+        }
+
+        return new PostconditionViolationException(message);
+    }
+
+    // The type whose members the top level is compared by: the runtime type of the two values. The declared
+    // type stays when a runtime type is one that is compared as a whole or a sequence, or is shared.
+    private static Type _TopLevelType(Type declaredType, object actual, object expected)
+    {
+        Type actualType = actual.GetType();
+        Type expectedType = expected.GetType();
+        if (_KeepsTheDeclaredType(actualType) || _KeepsTheDeclaredType(expectedType))
+        {
+            return declaredType;
+        }
+
+        if (actualType != expectedType)
+        {
+            throw _DifferentRuntimeTypes(actualType, expectedType, declaredType);
+        }
+
+        return actualType;
+    }
+
+    // A frozen collection is named by its public type, not by its internal runtime type.
+    private static PostconditionViolationException _DifferentRuntimeTypes(
+        Type actualType,
+        Type expectedType,
+        Type declaredType
+    )
+    {
+        return new PostconditionViolationException(
+            $"actual and expected are of different runtime types: actual is {SharedTypes.PublicFrozenType(actualType)}, "
+                + $"expected is {SharedTypes.PublicFrozenType(expectedType)}, and T is {declaredType}. "
+                + "No member was compared, so assignable patterns do not apply."
+        );
+    }
+
+    private static bool _KeepsTheDeclaredType(Type runtimeType)
+    {
+        return _IsComparedAsWhole(runtimeType)
+            || (runtimeType.IsValueType && typeof(IEnumerable).IsAssignableFrom(runtimeType))
+            || SharedTypes.IsShared(runtimeType);
     }
 
     private static void _CompareAsWhole(Type type, object? actual, object? expected)
@@ -1436,43 +1939,185 @@ public static class Contract
         );
     }
 
-    private static List<string> _FindDifferences<[DynamicallyAccessedMembers(MemberComparison.ComparedMembers)] T>(
-        T actual,
-        T expected,
-        string[] assignableFieldPatterns
-    )
+    // [DynamicallyAccessedMembers] preserves the members of T, not of a runtime type other than T, so the
+    // remedy differs.
+    private static InvalidOperationException _NoMembersVisible(Type comparedType, Type declaredType)
     {
-        Type type = typeof(T);
-        TypeMetadata metadata = MemberComparison.GetOrCacheMetadata(type);
-
-        if (MemberComparison.MembersAreHidden(type, metadata))
+        if (comparedType == declaredType)
         {
-            throw new InvalidOperationException(
-                $"EnsureAssignable cannot compare {type}: no properties or fields are visible to reflection "
+            return new InvalidOperationException(
+                $"EnsureAssignable cannot compare {comparedType}: no properties or fields are visible to reflection "
                     + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
                     + "is missing its [DynamicallyAccessedMembers] annotation; otherwise set DBC_POST=off "
                     + "(disables all postcondition checks)."
             );
         }
 
+        string cannotSee =
+            $"EnsureAssignable cannot compare {comparedType}, the runtime type of the values (T is {declaredType}): "
+            + "no properties or fields are visible to reflection under Native AOT. ";
+        if (!CSharpTypeName.CanBeWritten(comparedType))
+        {
+            return new InvalidOperationException(cannotSee + MemberComparison.WaysOutForAnUnnamedType(comparedType));
+        }
+
+        return new InvalidOperationException(
+            cannotSee
+                + "If the type has members, "
+                + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + $"typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(comparedType)}, or pass the values as that type; "
+                + "otherwise set DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // Under Native AOT a runtime type other than T that nothing preserves shows no declared member, and comparing
+    // it by what does show (the members of T, those it inherits, its elements) would miss what it adds. A value
+    // compared as a whole lists no member of it, and a compiler-generated sequence of yours is compared by its elements alone,
+    // which enumerating needs no metadata for. side names the parameter whose runtime type this is when the two
+    // values are of different runtime types; null when they are of one.
+    private static void _ThrowIfShowsNoDeclaredMember(Type runtimeType, Type declaredType, string? side = null)
+    {
+        if (
+            runtimeType != declaredType
+            && !_IsComparedAsWhole(runtimeType)
+            && MemberComparison.ShowsNoDeclaredMember(runtimeType)
+            && !MemberComparison.GetSequenceRule(runtimeType).IsCompilerGenerated
+        )
+        {
+            throw _ShowsNoDeclaredMember(runtimeType, declaredType, side);
+        }
+    }
+
+    // A primitive, an enum and an inline array, as a value of a type other than T, are decided by Equals alone.
+    private static bool _IsDecidedByEqualsAlone(Type type)
+    {
+        return type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false);
+    }
+
+    // The values can be passed as the runtime type only when both are of it.
+    private static InvalidOperationException _ShowsNoDeclaredMember(
+        Type runtimeType,
+        Type declaredType,
+        string? side = null
+    )
+    {
+        string whose = side ?? "the values";
+        string passAsIt = side is null ? ", or pass the values as that type" : "";
+        string cannotList =
+            $"EnsureAssignable cannot compare {runtimeType}, the runtime type of {whose} (T is {declaredType}): "
+            + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
+            + "its members cannot be listed. ";
+        if (!CSharpTypeName.CanBeWritten(runtimeType))
+        {
+            return new InvalidOperationException(cannotList + MemberComparison.WaysOutForAnUnnamedType(runtimeType));
+        }
+
+        return new InvalidOperationException(
+            cannotList
+                + "Preserve it with "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(runtimeType)}))] on a method "
+                + $"that runs{CSharpTypeName.WhereItCanBeWritten(runtimeType)}{passAsIt}; otherwise set DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // The members the top level is compared by: those of comparedType, and, when T is an interface other than
+    // comparedType, the properties the interface declares. A compiler-generated sequence of yours compared by its elements
+    // keeps none of its own members (see _RemoveMembersASequenceIsNotComparedBy), so its members being hidden
+    // under Native AOT, as they are when nothing preserves it, leaves nothing uncompared.
+    private static List<MemberAccessor> _TopLevelMembers(
+        Type comparedType,
+        Type declaredType,
+        object actual,
+        object expected,
+        bool byElements
+    )
+    {
+        List<MemberAccessor> members = [];
+
+        // A boxed value of a value type other than T is compared as a member of that type is: its Equals
+        // decides first, and only when it says "unequal" are its fields compared. A primitive, an enum and an
+        // inline array are decided by Equals alone, and a value without a field is then unequal.
+        bool asAMember = comparedType.IsValueType && comparedType != declaredType;
+        if (!asAMember || !Equals(actual, expected))
+        {
+            if (asAMember && _IsDecidedByEqualsAlone(comparedType))
+            {
+                throw new PostconditionViolationException(
+                    $"actual and expected are not equal. They are compared as {comparedType} by its Equals alone, "
+                        + $"which reports them unequal; T is {declaredType}."
+                );
+            }
+
+            // Its Equals said "unequal", and its fields cannot be listed when it shows no declared member.
+            if (asAMember && MemberComparison.ShowsNoDeclaredMember(comparedType))
+            {
+                throw _ShowsNoDeclaredMember(comparedType, declaredType);
+            }
+
+            TypeMetadata metadata = MemberComparison.GetTopLevelMetadata(comparedType, declaredType);
+            if (
+                MemberComparison.MembersAreHidden(comparedType, metadata)
+                && !(byElements && MemberComparison.GetSequenceRule(comparedType).IsCompilerGenerated)
+            )
+            {
+                throw _NoMembersVisible(comparedType, declaredType);
+            }
+
+            members.AddRange(asAMember ? metadata.Members.Where(m => m.IsField) : metadata.Members);
+            if (asAMember && members.Count == 0)
+            {
+                throw new PostconditionViolationException(
+                    $"actual and expected are not equal. They are compared as {comparedType}, which has no fields, "
+                        + $"and its Equals reports them unequal; T is {declaredType}."
+                );
+            }
+        }
+
+        // An explicitly implemented property is not a public property of the runtime type, and the Equals of a
+        // value type may ignore a property: the properties an interface T declares are read through it, after
+        // the members of comparedType (see _FindDifferences for how one name is reported once).
+        if (declaredType.IsInterface && comparedType != declaredType)
+        {
+            members.AddRange(MemberComparison.GetOrCacheMetadata(declaredType).Members);
+        }
+
+        return members;
+    }
+
+    private static List<string> _FindDifferences(
+        Type type,
+        List<MemberAccessor> members,
+        object actual,
+        object expected,
+        string[] assignableFieldPatterns,
+        bool byElements
+    )
+    {
         List<string> differences = [];
         ComparisonContext context = new();
 
         // The top-level pair is in progress for the whole call, so a member leading back to it is not a
-        // difference. (A value-type T is boxed here afresh, so that pair is never reached again.) Two arrays
+        // difference. (A value-type T is boxed for this call, so that pair is never reached again.) Two arrays
         // are the top-level pair here only when T is neither an array type nor System.Array (object, an
         // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
-        context.EnterTopLevel(new ReferencePair(actual!, expected!));
+        context.EnterTopLevel(new ReferencePair(actual, expected));
 
-        foreach (MemberAccessor member in metadata.Members)
+        // A property of an interface T is compared even when a member of comparedType has its name: its getter
+        // may be another implementation (an explicit one). It is not reported when a member of that name was
+        // reported already: one implementation reports once.
+        HashSet<string> reportedNames = new(StringComparer.Ordinal);
+        foreach (MemberAccessor member in members)
         {
-            if (MemberComparison.IsAssignable(member, assignableFieldPatterns))
+            if (
+                MemberComparison.IsAssignable(member, assignableFieldPatterns)
+                || (member.DeclaringType.IsInterface && reportedNames.Contains(member.RawName))
+            )
             {
                 continue;
             }
 
-            object? actualValue = member.GetValue(actual!);
-            object? expectedValue = member.GetValue(expected!);
+            object? actualValue = member.GetValue(actual);
+            object? expectedValue = member.GetValue(expected);
 
             if (!MemberComparison.AreEqual(actualValue, expectedValue, context))
             {
@@ -1482,7 +2127,20 @@ public static class Contract
                 }
 
                 differences.Add(member.Name);
+                reportedNames.Add(member.RawName);
             }
+        }
+
+        // The elements are compared after the members, in the same context, and no pattern excuses them; their
+        // entry cannot be read as a member name.
+        if (byElements && !MemberComparison.ElementsAreEqual((IEnumerable)actual, (IEnumerable)expected, context))
+        {
+            if (context.Hidden is not null)
+            {
+                throw MemberComparison.CannotCompareBelowWhole(type, context.Hidden);
+            }
+
+            differences.Add(ElementsEntry);
         }
 
         return differences;

@@ -290,7 +290,7 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
                 + "matched against top-level member names, so use the plain member name; "
                 + "it also excuses the other members of that name); "
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableNameCollisionWithoutDynamicCodeTests.Opaque))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );
@@ -313,7 +313,7 @@ public class EnsureAssignableNameCollisionWithoutDynamicCodeTests
                 + "Ways out: list 'Inner' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableNameCollisionWithoutDynamicCodeTests.Opaque))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );

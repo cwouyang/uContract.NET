@@ -556,6 +556,162 @@ internal sealed class CodedCollection : Collection<int>
     public int Code;
 }
 
+// ---- Runtime types other than T (issue #40). Nothing preserves a fixture unless its comment says so. ----
+
+internal sealed class UnseenTicket
+{
+    public int Seat { get; set; }
+}
+
+// Preserved with DynamicDependency(All, typeof(SeenTicket)) by its checks.
+internal sealed class SeenTicket
+{
+    public int Seat { get; set; }
+}
+
+// The T of the checks below; its own members are preserved by the annotation on T.
+internal class TicketBase
+{
+    public int Number { get; set; }
+}
+
+internal sealed class UnseenDerivedTicket : TicketBase
+{
+    public string Holder { get; set; } = "";
+}
+
+// Preserved with DynamicDependency(All, typeof(SeenDerivedTicket)) by its check.
+internal sealed class SeenDerivedTicket : TicketBase
+{
+    public string Holder { get; set; } = "";
+}
+
+internal sealed class UnseenStatelessTicket : TicketBase;
+
+// Preserved with DynamicDependency(All, typeof(SeenStatelessTicket)) by its check.
+internal sealed class SeenStatelessTicket : TicketBase;
+
+internal sealed class GenericTicket<TValue> : TicketBase
+{
+    public TValue? Value { get; set; }
+}
+
+// Preserved as the closed KeptGenericTicket<int> with DynamicDependency(All) by its check.
+internal sealed class KeptGenericTicket<TValue> : TicketBase
+{
+    public TValue? Value { get; set; }
+}
+
+internal sealed class UnseenDrawingRandom(int seed) : Random(seed)
+{
+    public int Draws { get; set; }
+}
+
+internal sealed class UnseenPlainRandom(int seed) : Random(seed);
+
+// Preserved with DynamicDependency(All, typeof(SeenPlainRandom)) by its check.
+internal sealed class SeenPlainRandom(int seed) : Random(seed);
+
+// Passed as T by one check, which preserves its members for every check; held by object in the others.
+internal sealed class TicketPassedAsT
+{
+    public int Seat { get; set; }
+}
+
+// Preserved with DynamicDependency(All, typeof(VisibleParent)) by its check; the class derived from it is not, so
+// it shows only the members it inherits.
+internal class VisibleParent
+{
+    public int Level { get; set; }
+}
+
+internal sealed class InheritingChild : VisibleParent;
+
+internal sealed class ParentHolder
+{
+    public VisibleParent Part { get; set; } = new();
+}
+
+// Nothing preserves UnseenOrder; its check preserves the nested enum alone, with
+// DynamicDependency(PublicFields, typeof(UnseenOrder.State)).
+internal sealed class UnseenOrder : TicketBase
+{
+    public enum State
+    {
+        Open,
+        Closed,
+    }
+
+    public State Status { get; set; }
+}
+
+// Nothing preserves UnseenOuter.Inner.
+internal sealed class UnseenOuter
+{
+    public int Level { get; set; }
+
+    internal sealed class Inner
+    {
+        public int Depth { get; set; }
+    }
+}
+
+// Passed as T; Items holds a yield iterator of this program, which nothing preserves.
+internal sealed class NumbersHolder
+{
+    public IEnumerable<int> Items { get; set; } = [];
+}
+
+// Passed as T; Items holds a collection expression, a class the compiler builds in this program, which nothing
+// preserves.
+internal sealed class ReadOnlyNumbersHolder
+{
+    public IReadOnlyList<int> Items { get; set; } = [];
+}
+
+// Passed as T. Marked as a source generator marks its classes, with a name C# can write; it is its own enumerator,
+// over a private array, and has state of its own.
+[CompilerGenerated]
+internal sealed class GeneratedTaggedCursor : IEnumerable<int>, IEnumerator<int>
+{
+    private readonly int[] _items = [1, 2];
+    private int _index = -1;
+
+    public string Tag = "";
+
+    int IEnumerator<int>.Current => _items[_index];
+
+    object System.Collections.IEnumerator.Current => _items[_index];
+
+    public IEnumerator<int> GetEnumerator()
+    {
+        _index = -1;
+        return this;
+    }
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public bool MoveNext() => ++_index < _items.Length;
+
+    public void Reset() => _index = -1;
+
+    public void Dispose() { }
+}
+
+// Passed as T. Marked as a source generator marks its classes, implements only IEnumerable<int> over a private list,
+// and has state of its own.
+[CompilerGenerated]
+internal sealed class GeneratedTaggedBag : IEnumerable<int>
+{
+    private readonly List<int> _items = [1, 2];
+
+    public string Tag = "";
+
+    public IEnumerator<int> GetEnumerator() => _items.GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -581,6 +737,7 @@ public static class Program
     private const string NestedTypeName = "uContract.AotSmoke.CustomerInfo";
     private const string LineTypeName = "uContract.AotSmoke.LineElement";
     private const string PreservedLineTypeName = "uContract.AotSmoke.PreservedLine";
+    private const string ElementsEntry = "(the elements; assignable patterns do not apply to them)";
 
     private static readonly string[] s_frozenCodes = ["a", "b"];
     private static readonly string[] s_otherFrozenCodes = ["a", "c"];
@@ -1872,12 +2029,13 @@ public static class Program
         // derived type's own field. Visibility: DynamicDependency(NonPublicFields) on CodedCollection and on
         // Collection<int>, so the private field of Collection<int> is visible to reflection (the second part of
         // the result names it); the walk stops at Collection<int>, a framework class by its public key token,
-        // so that field is not an entry.
+        // so that field is not an entry. A sequence built on a framework class is compared by its elements too,
+        // which are reported in an entry of their own.
         yield return new Check(
             100,
             "Base-class walk stops at a framework class",
             FrameworkBaseClassWalkStops,
-            Expect.Value("Code|frameworkPrivateFields=items"),
+            Expect.Value("Code|(the elements; assignable patterns do not apply to them)|frameworkPrivateFields=items"),
             Expect.Value("none|frameworkPrivateFields=items")
         );
 
@@ -1952,7 +2110,836 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // ---- A runtime type other than T that shows no declared member is not compared (issue #40). ----
+
+        // Mutation: none. Visibility: nothing preserves UnseenTicket, so its members cannot be listed.
+        yield return new Check(
+            109,
+            "EnsureAssignable<object> unpreserved class unchanged",
+            UnseenTicketAsObject,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenTicket",
+                "(T is System.Object)",
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.UnseenTicket))]"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Seat. Visibility: DynamicDependency(All, typeof(SeenTicket)) on the method that runs.
+        yield return new Check(
+            110,
+            "EnsureAssignable<object> preserved class changed",
+            SeenTicketAsObjectChanged,
+            Expect.Throws<PostconditionViolationException>("Seat"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: as check 110.
+        yield return new Check(
+            111,
+            "EnsureAssignable<object> preserved class unchanged",
+            SeenTicketAsObjectUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (TicketBase) only; the derived type's Holder is not preserved.
+        yield return new Check(
+            112,
+            "EnsureAssignable<TicketBase> unpreserved derived type unchanged",
+            UnseenDerivedTicketUnchanged,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenDerivedTicket",
+                "(T is uContract.AotSmoke.TicketBase)"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Holder, declared on the derived type. Visibility: as check 112. It must not pass silently.
+        yield return new Check(
+            113,
+            "EnsureAssignable<TicketBase> unpreserved derived type, derived member changed",
+            UnseenDerivedTicketChanged,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.UnseenDerivedTicket"),
+            Expect.Ok
+        );
+
+        // Mutation: Holder. Visibility: DynamicDependency(All, typeof(SeenDerivedTicket)) on the method that runs.
+        yield return new Check(
+            114,
+            "EnsureAssignable<TicketBase> preserved derived type, derived member changed",
+            SeenDerivedTicketChanged,
+            Expect.Throws<PostconditionViolationException>("Holder"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (Random) only; the subclass's Draws is not preserved.
+        yield return new Check(
+            115,
+            "EnsureAssignable<Random> unpreserved subclass that adds a field",
+            UnseenDrawingRandomUnchanged,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenDrawingRandom",
+                "(T is System.Random)"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: none. Known false positive: the subclass adds nothing, but nothing preserves it.
+        yield return new Check(
+            116,
+            "EnsureAssignable<Random> unpreserved subclass that adds nothing",
+            UnseenPlainRandomUnchanged,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.UnseenPlainRandom"),
+            Expect.Ok
+        );
+
+        // Mutation: another seed. Visibility: DynamicDependency(All, typeof(SeenPlainRandom)) on the method that
+        // runs, and T (Random) preserves its own private field.
+        yield return new Check(
+            117,
+            "EnsureAssignable<Random> preserved subclass, another seed",
+            SeenPlainRandomOtherSeed,
+            Expect.Throws<PostconditionViolationException>("_impl"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Known false positive: a stateless subclass that nothing preserves, passed as its base.
+        yield return new Check(
+            118,
+            "EnsureAssignable<TicketBase> unpreserved stateless subclass",
+            UnseenStatelessTicketUnchanged,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.UnseenStatelessTicket"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: DynamicDependency(All, typeof(SeenStatelessTicket)) on the method that runs.
+        yield return new Check(
+            119,
+            "EnsureAssignable<TicketBase> preserved stateless subclass",
+            SeenStatelessTicketUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (TicketBase) only; nothing preserves GenericTicket<int>.
+        yield return new Check(
+            120,
+            "EnsureAssignable<TicketBase> unpreserved generic subclass",
+            GenericTicketUnchanged,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.GenericTicket`1[System.Int32]",
+                "typeof(uContract.AotSmoke.GenericTicket<System.Int32>))]"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves Queue<int> for reflection; a framework collection is no
+        // exception. (Not List<int>: check 3 makes List<> visible to every check, so List<int> shows its members
+        // here and is compared.)
+        yield return new Check(
+            121,
+            "EnsureAssignable<object> Queue<int> unchanged",
+            IntQueueAsObject,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare System.Collections.Generic.Queue`1[System.Int32]",
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(System.Collections.Generic.Queue<System.Int32>))]"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Seat. Visibility: T (TicketPassedAsT), which preserves its members for every check.
+        yield return new Check(
+            122,
+            "EnsureAssignable<TicketPassedAsT> changed",
+            TicketPassedAsTChanged,
+            Expect.Throws<PostconditionViolationException>("Seat"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: as check 122, though the values are held by object here.
+        yield return new Check(
+            123,
+            "EnsureAssignable<object> type passed elsewhere as T, unchanged",
+            TicketPassedAsTAsObjectUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: Seat. Visibility: as check 123.
+        yield return new Check(
+            124,
+            "EnsureAssignable<object> type passed elsewhere as T, changed",
+            TicketPassedAsTAsObjectChanged,
+            Expect.Throws<PostconditionViolationException>("Seat"),
+            Expect.Ok
+        );
+
+        // Mutation: none (two different instances). Visibility: DynamicDependency(All, typeof(VisibleParent)) on
+        // the method that runs; InheritingChild shows only the members it inherits.
+        yield return new Check(
+            125,
+            "Nested unpreserved class that only inherits visible members",
+            NestedInheritingChild,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.InheritingChild",
+                "reached through 'ParentHolder.Part'",
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.InheritingChild))] on a method that runs"
+            ),
+            Expect.Ok
+        );
+
+        // ---- A value of a framework value type other than T: its Equals decides first (issue #40). ----
+
+        // Mutation: none. Visibility: nothing preserves DateTime for reflection here; Equals says equal.
+        yield return new Check(
+            126,
+            "EnsureAssignable<object> equal boxed DateTime",
+            EqualDateTimesAsObject,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none (a snapshot taken with Old). Visibility: as check 126, for decimal.
+        yield return new Check(
+            127,
+            "EnsureAssignable<IComparable> unchanged decimal",
+            UnchangedDecimalAsComparable,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another tick. Visibility: as check 126; Equals says unequal, so the fields decide.
+        yield return new Check(
+            128,
+            "EnsureAssignable<object> unequal boxed DateTime",
+            UnequalDateTimesAsObject,
+            Expect.Throws<PostconditionViolationException>(),
+            Expect.Ok
+        );
+
+        // Mutation: another price. Visibility: as check 127; measured: decimal shows no declared member here, so
+        // once its Equals says unequal its fields cannot be listed.
+        yield return new Check(
+            129,
+            "EnsureAssignable<IComparable> changed decimal",
+            ChangedDecimalAsComparable,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare System.Decimal",
+                "(T is System.IComparable)",
+                "typeof(System.Decimal))]"
+            ),
+            Expect.Ok
+        );
+
+        // ---- What counts as a declared member, iterators, and the C# name of a nested type (issue #40). ----
+
+        // Mutation: none. Visibility: T (TicketBase), and DynamicDependency(All) on the nested enum UnseenOrder.State
+        // only; a nested type is not a member of UnseenOrder, so UnseenOrder still shows none.
+        yield return new Check(
+            130,
+            "EnsureAssignable<TicketBase> unpreserved class whose nested type is preserved",
+            UnseenOrderWithPreservedState,
+            Expect.Throws<InvalidOperationException>("cannot compare uContract.AotSmoke.UnseenOrder"),
+            Expect.Ok
+        );
+
+        // Mutation: none (two iterators of one yield method). Visibility: T (NumbersHolder); nothing preserves the
+        // iterator, which is enumerated, not read by its members.
+        yield return new Check(
+            131,
+            "Nested yield iterators of equal elements",
+            NestedIteratorsEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another last element. Visibility: as check 131.
+        yield return new Check(
+            132,
+            "Nested yield iterators of different elements",
+            NestedIteratorsDiffer,
+            Expect.Throws<PostconditionViolationException>("Items"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves the iterator, which lists no member; T is IEnumerable<int>.
+        // An iterator is compared by its elements, so neither the rule for a runtime type that shows no declared
+        // member nor the older "no members visible" rule reports it.
+        yield return new Check(
+            133,
+            "EnsureAssignable<IEnumerable<int>> yield iterators of equal elements",
+            TopLevelIteratorsEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: one more element (two iterators of one yield method, CountTo(3) against CountTo(2)). Visibility:
+        // nothing preserves the iterator; T is IEnumerable<int>. The violation names the elements only: no member of
+        // the iterator was listed, so the message does not say that members were listed from its runtime type.
+        yield return new Check(
+            137,
+            "EnsureAssignable<IEnumerable<int>> yield iterators of different elements",
+            TopLevelIteratorsDiffer,
+            Expect.Value(ElementsEntry),
+            Expect.Value("none")
+        );
+
+        // Mutation: none. Visibility: nothing preserves the iterator; List<int> shows its members (see check 3). The
+        // two values are of different runtime types, compared by their elements.
+        yield return new Check(
+            138,
+            "EnsureAssignable<IEnumerable<int>> yield iterator against List<int> of equal elements",
+            IteratorAgainstListEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another last element. Visibility: as check 138.
+        yield return new Check(
+            139,
+            "EnsureAssignable<IEnumerable<int>> yield iterator against List<int> of different elements",
+            IteratorAgainstListDiffer,
+            Expect.Throws<PostconditionViolationException>("They are sequences of different runtime types"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves UnseenOuter.Inner; the fix names it in C# syntax.
+        yield return new Check(
+            134,
+            "EnsureAssignable<object> unpreserved nested class",
+            UnseenInnerAsObject,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenOuter+Inner",
+                "typeof(uContract.AotSmoke.UnseenOuter.Inner))]"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Value. Visibility: DynamicDependency(All, typeof(KeptGenericTicket<int>)) on the method that runs. (A
+        // generic definition of its own: preserving one GenericTicket<> would make GenericTicket<int> of check 120
+        // show its members too, measured.)
+        yield return new Check(
+            135,
+            "EnsureAssignable<TicketBase> preserved closed generic subclass changed",
+            PreservedGenericTicketChanged,
+            Expect.Throws<PostconditionViolationException>("Value"),
+            Expect.Ok
+        );
+
+        // Mutation: none. A LINQ query held by object is a sequence that is not a collection: the message says to
+        // materialise it, not to preserve the query's internal type.
+        yield return new Check(
+            136,
+            "EnsureAssignable<object> LINQ queries",
+            LinqQueriesAsObject,
+            Expect.Throws<InvalidOperationException>("is a sequence that is not a collection", "ToList()"),
+            Expect.Ok
+        );
+
+        // ---- A collection expression, a class the compiler builds (issue #40). ----
+
+        // Mutation: none (a snapshot taken with Old). Visibility: T (ReadOnlyNumbersHolder); nothing preserves the
+        // class of the collection expression, which is enumerated, not read by its members.
+        yield return new Check(
+            140,
+            "Nested collection expression unchanged",
+            NestedCollectionExpressionUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: one more element. Visibility: as check 140.
+        yield return new Check(
+            141,
+            "Nested collection expression changed",
+            NestedCollectionExpressionChanged,
+            Expect.Throws<PostconditionViolationException>("Items"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves the class of the collection expression; T is
+        // IReadOnlyList<int>.
+        yield return new Check(
+            142,
+            "EnsureAssignable<IReadOnlyList<int>> collection expressions of equal elements",
+            TopLevelCollectionExpressionsEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another last element. Visibility: as check 142. The violation names the elements only, as for
+        // check 137.
+        yield return new Check(
+            143,
+            "EnsureAssignable<IReadOnlyList<int>> collection expressions of different elements",
+            TopLevelCollectionExpressionsDiffer,
+            Expect.Value(ElementsEntry),
+            Expect.Value("none")
+        );
+
+        // Mutation: none. Visibility: nothing preserves the enumerator of a yield method that returns only
+        // IEnumerator<int>; T is IEnumerator<int>. It is compared by its fields, which it does not show, and the fix
+        // names no typeof, which C# cannot write for it.
+        yield return new Check(
+            144,
+            "EnsureAssignable<IEnumerator<int>> yield enumerators",
+            TopLevelEnumerators,
+            Expect.Throws<InvalidOperationException>(
+                "The type is compiler-generated and cannot be named in typeof.",
+                "return IEnumerable<T> from the yield method that builds it"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Tag. Visibility: T (GeneratedTaggedBag). A [CompilerGenerated] class that implements only
+        // IEnumerable (as a source generator emits) is a class of yours, compared by its members.
+        yield return new Check(
+            145,
+            "EnsureAssignable<GeneratedTaggedBag> tag changed",
+            GeneratedTaggedBagChanged,
+            Expect.Value("Tag"),
+            Expect.Value("none")
+        );
+
+        // Mutation: Extra. Visibility: T (FileBag). A file class (metadata name <Program>F…__FileBag) is a class of
+        // yours, compared by its members and not enumerated (its enumerator throws).
+        yield return new Check(
+            146,
+            "EnsureAssignable<FileBag> extra changed",
+            FileBagChanged,
+            Expect.Value("Extra"),
+            Expect.Value("none")
+        );
+
+        // Mutation: Tag. Visibility: T (GeneratedTaggedCursor). A [CompilerGenerated] class with a name C# can write
+        // that is its own enumerator (a source generator's cursor) is a class of yours, compared by its members.
+        yield return new Check(
+            147,
+            "EnsureAssignable<GeneratedTaggedCursor> tag changed",
+            GeneratedTaggedCursorChanged,
+            Expect.Value("Tag"),
+            Expect.Value("none")
+        );
+
+        // ---- The iterator of a local function that captures a variable (spec amendment 9). ----
+        // The compiler nests it (<<UptoByLocalFunction>g__Impl|0>d) in a [CompilerGenerated] display class and does
+        // not mark it itself; nothing preserves either. It is compared by its elements, as a yield iterator is.
+
+        // Mutation: none. Visibility: T (NumbersHolder); nothing preserves the iterator; List<int> shows its members.
+        yield return new Check(
+            148,
+            "Nested capturing local iterator against List<int> of equal elements",
+            NestedCapturingIteratorAgainstListEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another last element. Visibility: as check 148.
+        yield return new Check(
+            149,
+            "Nested capturing local iterator against List<int> of different elements",
+            NestedCapturingIteratorAgainstListDiffer,
+            Expect.Throws<PostconditionViolationException>("Items"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves the iterator; T is IEnumerable<int>. The value also records how
+        // many instance fields reflection lists for the iterator.
+        yield return new Check(
+            150,
+            "EnsureAssignable<IEnumerable<int>> capturing local iterator against List<int> of equal elements",
+            CapturingIteratorAgainstListEqual,
+            Expect.Value("fields=0|none"),
+            Expect.Value("fields=0|none")
+        );
+
+        // Mutation: another last element. Visibility: as check 150; T is object.
+        yield return new Check(
+            151,
+            "EnsureAssignable<object> capturing local iterator against List<int> of different elements",
+            CapturingIteratorAgainstListDifferAsObject,
+            Expect.Throws<PostconditionViolationException>("They are sequences of different runtime types"),
+            Expect.Ok
+        );
+
+        // Mutation: none (the captured delegates differ, the elements are equal). Visibility: nothing preserves the
+        // iterator; T is IEnumerable<int>. By its members the two would differ in their captured state.
+        yield return new Check(
+            152,
+            "EnsureAssignable<IEnumerable<int>> capturing local iterators of different delegates and equal elements",
+            CapturingIteratorsOfDifferentDelegatesEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
     }
+
+    private static IEnumerable<int> UptoByLocalFunction(int last)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(last);
+        return Impl();
+
+        IEnumerable<int> Impl()
+        {
+            for (int number = 1; number <= last; number++)
+            {
+                yield return number;
+            }
+        }
+    }
+
+    private static IEnumerable<int> ScaledByLocalFunction(int[] numbers, Func<int, int> scale)
+    {
+        ArgumentNullException.ThrowIfNull(scale);
+        return Impl();
+
+        IEnumerable<int> Impl()
+        {
+            foreach (int number in numbers)
+            {
+                yield return scale(number);
+            }
+        }
+    }
+
+    private static object? NestedCapturingIteratorAgainstListEqual()
+    {
+        List<int> expected = [1, 2, 3];
+        return NoResult(() =>
+            Contract.EnsureAssignable(
+                new NumbersHolder { Items = UptoByLocalFunction(3) },
+                new NumbersHolder { Items = expected }
+            )
+        );
+    }
+
+    private static object? NestedCapturingIteratorAgainstListDiffer()
+    {
+        List<int> expected = [1, 2, 4];
+        return NoResult(() =>
+            Contract.EnsureAssignable(
+                new NumbersHolder { Items = UptoByLocalFunction(3) },
+                new NumbersHolder { Items = expected }
+            )
+        );
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2075",
+        Justification = "The fields are only counted, to record what Native AOT shows for a type nothing preserves."
+    )]
+    private static string CapturingIteratorAgainstListEqual()
+    {
+        IEnumerable<int> actual = UptoByLocalFunction(3);
+        List<int> expected = [1, 2, 3];
+        int fields = actual
+            .GetType()
+            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .Length;
+        string entries = ViolationEntriesOf(() => Contract.EnsureAssignable<IEnumerable<int>>(actual, expected));
+        return $"fields={fields}|{entries}";
+    }
+
+    private static object? CapturingIteratorAgainstListDifferAsObject()
+    {
+        object expected = new List<int> { 1, 2, 4 };
+        return NoResult(() => Contract.EnsureAssignable<object>(UptoByLocalFunction(3), expected));
+    }
+
+    private static object? CapturingIteratorsOfDifferentDelegatesEqual() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                ScaledByLocalFunction([1, 2], static number => number * 2),
+                ScaledByLocalFunction([1, 2], static number => number + number)
+            )
+        );
+
+    private static string GeneratedTaggedCursorChanged() =>
+        ViolationEntriesOf(static () =>
+            Contract.EnsureAssignable(new GeneratedTaggedCursor { Tag = "b" }, new GeneratedTaggedCursor { Tag = "a" })
+        );
+
+    private static string GeneratedTaggedBagChanged() =>
+        ViolationEntriesOf(static () =>
+            Contract.EnsureAssignable(new GeneratedTaggedBag { Tag = "b" }, new GeneratedTaggedBag { Tag = "a" })
+        );
+
+    private static string FileBagChanged() =>
+        ViolationEntriesOf(static () =>
+            Contract.EnsureAssignable(new FileBag { Extra = 2 }, new FileBag { Extra = 1 })
+        );
+
+    private static object? NestedCollectionExpressionUnchanged()
+    {
+        ReadOnlyNumbersHolder holder = new() { Items = [1, 2, 3] };
+        ReadOnlyNumbersHolder old = Contract.Old(() => holder);
+        return NoResult(() => Contract.EnsureAssignable(holder, old));
+    }
+
+    private static object? NestedCollectionExpressionChanged()
+    {
+        ReadOnlyNumbersHolder holder = new() { Items = [1, 2, 3] };
+        ReadOnlyNumbersHolder old = Contract.Old(() => holder);
+        holder.Items = [.. holder.Items, 4];
+        return NoResult(() => Contract.EnsureAssignable(holder, old));
+    }
+
+    private static object? TopLevelCollectionExpressionsEqual()
+    {
+        IReadOnlyList<int> actual = [1, 2, 3];
+        IReadOnlyList<int> expected = [1, 2, 3];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static string TopLevelCollectionExpressionsDiffer()
+    {
+        IReadOnlyList<int> actual = [1, 2, 3];
+        IReadOnlyList<int> expected = [1, 2, 4];
+        return ViolationEntriesOf(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? TopLevelEnumerators() =>
+        NoResult(static () => Contract.EnsureAssignable(CountUpTo(2), CountUpTo(2)));
+
+    // A yield method that returns only an enumerator.
+    private static IEnumerator<int> CountUpTo(int last)
+    {
+        for (int number = 1; number <= last; number++)
+        {
+            yield return number;
+        }
+    }
+
+    private static IEnumerable<int> CountTo(int last)
+    {
+        for (int number = 1; number <= last; number++)
+        {
+            yield return number;
+        }
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicFields, typeof(UnseenOrder.State))]
+    private static object? UnseenOrderWithPreservedState()
+    {
+        TicketBase actual = new UnseenOrder { Status = UnseenOrder.State.Closed };
+        TicketBase expected = new UnseenOrder { Status = UnseenOrder.State.Closed };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? NestedIteratorsEqual() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                new NumbersHolder { Items = CountTo(2) },
+                new NumbersHolder { Items = CountTo(2) }
+            )
+        );
+
+    private static object? NestedIteratorsDiffer() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                new NumbersHolder { Items = CountTo(3) },
+                new NumbersHolder { Items = CountTo(2) }
+            )
+        );
+
+    private static object? TopLevelIteratorsEqual() =>
+        NoResult(static () => Contract.EnsureAssignable(CountTo(2), CountTo(2)));
+
+    private static string TopLevelIteratorsDiffer() =>
+        ViolationEntriesOf(static () => Contract.EnsureAssignable(CountTo(3), CountTo(2)));
+
+    private static object? IteratorAgainstListEqual()
+    {
+        List<int> expected = [1, 2];
+        return NoResult(() => Contract.EnsureAssignable<IEnumerable<int>>(CountTo(2), expected));
+    }
+
+    private static object? IteratorAgainstListDiffer()
+    {
+        List<int> expected = [1, 2];
+        return NoResult(() => Contract.EnsureAssignable<IEnumerable<int>>(CountTo(3), expected));
+    }
+
+    private static object? UnseenInnerAsObject()
+    {
+        object actual = new UnseenOuter.Inner { Depth = 1 };
+        object expected = new UnseenOuter.Inner { Depth = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptGenericTicket<int>))]
+    private static object? PreservedGenericTicketChanged()
+    {
+        TicketBase actual = new KeptGenericTicket<int> { Number = 1, Value = 3 };
+        TicketBase expected = new KeptGenericTicket<int> { Number = 1, Value = 2 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? LinqQueriesAsObject()
+    {
+        object actual = s_numbers.Select(static number => number + 1);
+        object expected = s_numbers.Select(static number => number + 1);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static DateTime Noon(int ticks) => new DateTime(2026, 11, 2, 12, 0, 0, DateTimeKind.Utc).AddTicks(ticks);
+
+    private static object? EqualDateTimesAsObject()
+    {
+        object actual = Noon(0);
+        object expected = Noon(0);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnequalDateTimesAsObject()
+    {
+        object actual = Noon(1);
+        object expected = Noon(0);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnchangedDecimalAsComparable()
+    {
+        IComparable price = 12.50m;
+        IComparable? old = Contract.Old(() => price);
+        return NoResult(() => Contract.EnsureAssignable(price, old));
+    }
+
+    private static object? ChangedDecimalAsComparable()
+    {
+        IComparable price = 12.50m;
+        IComparable? old = Contract.Old(() => price);
+        price = 13.75m;
+        return NoResult(() => Contract.EnsureAssignable(price, old));
+    }
+
+    private static object? UnseenTicketAsObject()
+    {
+        object actual = new UnseenTicket { Seat = 1 };
+        object expected = new UnseenTicket { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenTicket))]
+    private static object? SeenTicketAsObjectChanged()
+    {
+        object actual = new SeenTicket { Seat = 2 };
+        object expected = new SeenTicket { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenTicket))]
+    private static object? SeenTicketAsObjectUnchanged()
+    {
+        object actual = new SeenTicket { Seat = 1 };
+        object expected = new SeenTicket { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenDerivedTicketUnchanged()
+    {
+        TicketBase actual = new UnseenDerivedTicket { Number = 1, Holder = "a" };
+        TicketBase expected = new UnseenDerivedTicket { Number = 1, Holder = "a" };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenDerivedTicketChanged()
+    {
+        TicketBase actual = new UnseenDerivedTicket { Number = 1, Holder = "b" };
+        TicketBase expected = new UnseenDerivedTicket { Number = 1, Holder = "a" };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenDerivedTicket))]
+    private static object? SeenDerivedTicketChanged()
+    {
+        TicketBase actual = new SeenDerivedTicket { Number = 1, Holder = "b" };
+        TicketBase expected = new SeenDerivedTicket { Number = 1, Holder = "a" };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenDrawingRandomUnchanged()
+    {
+        Random actual = new UnseenDrawingRandom(1) { Draws = 3 };
+        Random expected = new UnseenDrawingRandom(1) { Draws = 3 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenPlainRandomUnchanged()
+    {
+        Random actual = new UnseenPlainRandom(1);
+        Random expected = new UnseenPlainRandom(1);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenPlainRandom))]
+    private static object? SeenPlainRandomOtherSeed()
+    {
+        Random actual = new SeenPlainRandom(1);
+        Random expected = new SeenPlainRandom(2);
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenStatelessTicketUnchanged()
+    {
+        TicketBase actual = new UnseenStatelessTicket { Number = 1 };
+        TicketBase expected = new UnseenStatelessTicket { Number = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(SeenStatelessTicket))]
+    private static object? SeenStatelessTicketUnchanged()
+    {
+        TicketBase actual = new SeenStatelessTicket { Number = 1 };
+        TicketBase expected = new SeenStatelessTicket { Number = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? GenericTicketUnchanged()
+    {
+        TicketBase actual = new GenericTicket<int> { Number = 1, Value = 2 };
+        TicketBase expected = new GenericTicket<int> { Number = 1, Value = 2 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? IntQueueAsObject()
+    {
+        Queue<int> actual = new();
+        actual.Enqueue(1);
+        Queue<int> expected = new();
+        expected.Enqueue(1);
+        return NoResult(() => Contract.EnsureAssignable<object>(actual, expected));
+    }
+
+    private static object? TicketPassedAsTChanged() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(new TicketPassedAsT { Seat = 2 }, new TicketPassedAsT { Seat = 1 })
+        );
+
+    private static object? TicketPassedAsTAsObjectUnchanged()
+    {
+        object actual = new TicketPassedAsT { Seat = 1 };
+        object expected = new TicketPassedAsT { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? TicketPassedAsTAsObjectChanged()
+    {
+        object actual = new TicketPassedAsT { Seat = 2 };
+        object expected = new TicketPassedAsT { Seat = 1 };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(VisibleParent))]
+    private static object? NestedInheritingChild() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                new ParentHolder { Part = new InheritingChild { Level = 1 } },
+                new ParentHolder { Part = new InheritingChild { Level = 1 } }
+            )
+        );
 
     private static object? AutoPropertyAssignableByPropertyName() =>
         NoResult(static () =>
@@ -2522,4 +3509,15 @@ public static class Program
                 new PreservedOuter { Inner = new PreservedInner { Value = "a" } }
             )
         );
+}
+
+// Passed as T. A C# 11 file class of this program that implements IEnumerable<int> itself and has state of its own;
+// its enumerator throws, so a comparison that enumerates it fails.
+file sealed class FileBag : IEnumerable<int>
+{
+    public int Extra;
+
+    public IEnumerator<int> GetEnumerator() => throw new NotSupportedException("A FileBag is not enumerated.");
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 }

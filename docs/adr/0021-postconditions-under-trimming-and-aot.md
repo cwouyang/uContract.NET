@@ -17,6 +17,7 @@
 - **Amended**: 2026-10-26 — `EnsureAssignable<T>()` reads the two property shapes with a getter that is not visible through the compared type through the getter that exists, and compares the private fields declared on base classes that are not part of .NET, so the Known Limitation on the two property shapes no longer holds, and the one on base-class private fields no longer holds under the JIT (under Native AOT and trimming it still holds unless the base class is preserved, and for framework base classes it still holds); the "no members visible" rule is decided before those fields are added; four more trimming suppressions; smoke checks 93 to 100 (#40, [ADR-0023](0023-comparison-of-base-class-members.md)); see the eighth Amendment under Implementation Notes
 - **Amended**: 2026-10-26 — smoke checks 101 to 107 for two arrays of one primitive or enum element type, which `EnsureAssignable<T>()` now compares without boxing an element; the annotations and suppressions are unchanged (#64, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the ninth Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — an assignable pattern is also matched against the property name of a compiler-generated backing field, so `^Customer$` also skips `<Customer>k__BackingField`; smoke check 108; the annotations and suppressions are unchanged (#46, [ADR-0025](0025-fields-only-comparison-not-adopted.md)); see the tenth Amendment under Implementation Notes
+- **Amended**: 2026-11-02 — the top level of `EnsureAssignable<T>()` compares the runtime type of the two values; under Native AOT a runtime type other than `T` that shows no declared member, or has no visible members, throws "cannot compare", also for equal values; the "cannot compare" messages name the type in C# syntax; the `System.Object` exemption no longer covers `EnsureAssignable<object>` for values of another runtime type; the gap list of the Known Limitations is settled; three more `IL2070` suppressions; smoke check 100 changes and checks 109 to 139 are added (#40, [ADR-0026](0026-top-level-runtime-type-comparison.md)); see the eleventh Amendment under Implementation Notes
 
 ---
 
@@ -659,6 +660,88 @@ With `DBC_POST=off` it expects no exception. Measured on `win-x64` with the Nati
 
 Unchanged: the "no members visible" rule and its messages, the unreadable-property rule, the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`, and the other decisions of this ADR.
 
+### Amendment (2026-11-02): The top level compares the runtime type; a runtime type that shows no declared member throws (#40)
+
+The decision is unchanged. [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), item 2 and the rest of item 3, makes the top level of `EnsureAssignable<T>()` compare the two values by their runtime type, and a sequence by the class chain of its runtime type; [ADR-0026](0026-top-level-runtime-type-comparison.md) records the decision, the measurements and the limits. The annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()` do not change. The `[RequiresUnreferencedCode]` text of `EnsureAssignable<T>()` now says that the members of a runtime type other than `T` are not preserved. The library adds three `IL2070` suppressions in the existing style, each with a justification: on `MemberComparison.GetTopLevelMetadata`, on `MemberComparison.IsCollection` and on `MemberComparison.ListsNoDeclaredMember`.
+
+Under Native AOT the top level now has two more rules:
+
+- **A runtime type other than `T` with no visible members.** The "no members visible" rule is asked of the runtime type that the top level compares. Its message names both types and gives the fix with the runtime type in C# syntax:
+
+  ```text
+  EnsureAssignable cannot compare {runtime type}, the runtime type of the values (T is {T}): no properties or fields are visible to reflection under Native AOT. If the type has members, preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({C# type name}))] on a method that runs, or pass the values as that type; otherwise set DBC_POST=off (disables all postcondition checks).
+  ```
+
+  The private fields declared on a class `T` that the runtime type derives from count as visible members of the runtime type, because the annotation on `T` preserves them.
+- **A runtime type other than `T` that shows no declared member** (no field, property, method or constructor that it declares is visible; rule H3 of ADR-0026). For a class the call throws, also when the two values are equal; a value type asks `Equals` first, except in two sequences of different runtime types, which ask no `Equals`. A primitive, an enum, an inline array, a compiler-generated sequence (a `yield` iterator, a collection expression held as an interface), and a value-type sequence (`ImmutableArray<T>`) that keeps the declared `T` (ADR-0026, Details 1) are not covered. `{side}` is "the values", or "actual" or "expected" for two values of different runtime types, and then the words ", or pass the values as that type" are left out:
+
+  ```text
+  EnsureAssignable cannot compare {runtime type}, the runtime type of {side} (T is {T}): under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so its members cannot be listed. Preserve it with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({C# type name}))] on a method that runs, or pass the values as that type; otherwise set DBC_POST=off (disables all postcondition checks).
+  ```
+
+Below the top level, a class that is not a framework class and shows no declared member is handled as a class with no visible members, also when the members it inherits are visible.
+
+These statements, each quoted by its opening words, no longer hold as written:
+
+- Decision, **No members visible**: "The check runs where the members of a type would be enumerated: for `T` always". At the top level it runs for the type that is compared: `T`, or the runtime type of the values when that is compared.
+- The same: "`System.Object` is exempt. It has no members in any build, so `private readonly object _lock = new();` compares as before, and so does `EnsureAssignable<object>(a, b)`." `System.Object` is still exempt, and two instances of `object` itself still compare as before. `EnsureAssignable<object>(a, b)` for values of another runtime type now compares that type, and under Native AOT it throws when that type shows no declared member or has no visible members.
+- The message for a nested member or a collection element, and for a class below a whole value: "… preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; …". The messages now write the type in `typeof`, in C# syntax: `typeof(Shop.Order)`, `typeof(Shop.Box<System.String>.Lid)`. The message of the unreadable-property rule read "typeof(X))] where X is that type" until 2026-11-03; it now names the declaring type of the property, `typeof({C# type name}))] on a method that runs`. For a type that C# cannot write in `typeof` (an anonymous type, the enumerator of a `yield` method that returns only `IEnumerator<T>`, a type with such a generic argument), these messages and the two above name no `typeof`: after the sentence that says what cannot be done they read "The type is compiler-generated and cannot be named in typeof. Ways out: …" (or, when only a generic argument is generated, "The type has a compiler-generated type among its generic arguments and cannot be named in typeof. Ways out: …"), with the top-level member as assignable where one leads to the value, then "use a value of a type of yours instead" (for an enumerator: "return IEnumerable<T> from the yield method that builds it, or use a value of a type of yours instead"; for a sequence with a generated argument: "use an element type of yours instead of the compiler-generated one"; for another type with a generated argument: "use a type of yours as its generic argument instead"), and `DBC_POST=off`. Amendment 7 of the spec (2026-11-03) settled which types count: a metadata name that starts with `<>`, or `[CompilerGenerated]` with a `<` in the name, or nested in one; a source-generated class with a writable name keeps the `typeof` fix, and a `file` class is named by its own name. Amendment 8 adds a `$` (VB iterators) beside the `<`, makes the rule for a compiler-generated sequence use the same definition, adds "inside the file that declares {class}" after "on a method that runs" for a `file` class, and words a compiler-generated type deeper inside the generic arguments as "… inside its generic arguments …" with the way out "use a type of yours in place of the compiler-generated one". Amendment 9 names no `typeof` for a type whose generic arguments hold `file` classes of more than one file: "The type has file classes of more than one file in its generic arguments, and C# names a file class only inside the file that declares it, so no one file can name the type in typeof. Ways out: …", then "use types that are not file classes, or file classes of one file, as its generic arguments" and `DBC_POST=off`. It also counts the iterator of a local function that captures a variable (not marked itself, nested in its marked display class) as compiler-generated in the rule for a sequence.
+- Known Limitations: "**Partial metadata is not detected.**" It stands and now covers a runtime type other than `T` that something partly preserves (a constructor kept by a dependency-injection registration), and an instantiation of a generic definition that something else preserves (measured: preserving `GenericTicket<long>` made `GenericTicket<int>` show its members).
+- Known Limitations: "**Comparison gaps that exist in every build and are not changed here**": "the top level compares the declared type `T`, not the runtime type" no longer holds. "the own members of a class that is also enumerable are compared … by element only" no longer holds: a sequence whose class chain holds a framework class is compared by its elements and by the members declared on its classes that are not framework classes, and a class of yours that implements `IEnumerable` itself is compared by its members. "dictionary values, members typed as a non-enumerable interface" were compared by the full rules already on master at `70d7083` (since ADR-0022), so that part of the list was stale.
+
+**The checks.** Smoke check 100, "Base-class walk stops at a framework class", now expects `Code|(the elements; assignable patterns do not apply to them)|frameworkPrivateFields=items`: `CodedCollection` is a sequence on `Collection<int>` and is compared by its elements too. With `DBC_POST=off` it still expects `none|frameworkPrivateFields=items`. Smoke checks 109 to 152 are added (140 to 152 on 2026-11-03):
+
+| # | Check | Expected under Native AOT, postconditions enabled |
+|---|---|---|
+| 109 | `EnsureAssignable<object>` unpreserved class unchanged | `InvalidOperationException` |
+| 110 | `EnsureAssignable<object>` preserved class changed | violation `Seat` |
+| 111 | `EnsureAssignable<object>` preserved class unchanged | no exception |
+| 112 | `EnsureAssignable<TicketBase>` unpreserved derived type unchanged | `InvalidOperationException` |
+| 113 | `EnsureAssignable<TicketBase>` unpreserved derived type, derived member changed | `InvalidOperationException` |
+| 114 | `EnsureAssignable<TicketBase>` preserved derived type, derived member changed | violation `Holder` |
+| 115 | `EnsureAssignable<Random>` unpreserved subclass that adds a field | `InvalidOperationException` |
+| 116 | `EnsureAssignable<Random>` unpreserved subclass that adds nothing | `InvalidOperationException` |
+| 117 | `EnsureAssignable<Random>` preserved subclass, another seed | violation `_impl` |
+| 118 | `EnsureAssignable<TicketBase>` unpreserved stateless subclass | `InvalidOperationException` (the known false positive) |
+| 119 | `EnsureAssignable<TicketBase>` preserved stateless subclass | no exception |
+| 120 | `EnsureAssignable<TicketBase>` unpreserved generic subclass | `InvalidOperationException` naming `typeof(uContract.AotSmoke.GenericTicket<System.Int32>)` |
+| 121 | `EnsureAssignable<object>` `Queue<int>` unchanged | `InvalidOperationException` |
+| 122 | `EnsureAssignable<TicketPassedAsT>` changed | violation `Seat` |
+| 123 | `EnsureAssignable<object>` type passed elsewhere as `T`, unchanged | no exception |
+| 124 | `EnsureAssignable<object>` type passed elsewhere as `T`, changed | violation `Seat` |
+| 125 | Nested unpreserved class that only inherits visible members | `InvalidOperationException` |
+| 126 | `EnsureAssignable<object>` equal boxed `DateTime` | no exception |
+| 127 | `EnsureAssignable<IComparable>` unchanged `decimal` | no exception |
+| 128 | `EnsureAssignable<object>` unequal boxed `DateTime` | `PostconditionViolationException` |
+| 129 | `EnsureAssignable<IComparable>` changed `decimal` | `InvalidOperationException` |
+| 130 | `EnsureAssignable<TicketBase>` unpreserved class whose nested type is preserved | `InvalidOperationException` |
+| 131 | Nested `yield` iterators of equal elements | no exception |
+| 132 | Nested `yield` iterators of different elements | violation `Items` |
+| 133 | `EnsureAssignable<IEnumerable<int>>` `yield` iterators of equal elements | no exception |
+| 134 | `EnsureAssignable<object>` unpreserved nested class | `InvalidOperationException` |
+| 135 | `EnsureAssignable<TicketBase>` preserved closed generic subclass changed | violation `Value` |
+| 136 | `EnsureAssignable<object>` LINQ queries | `InvalidOperationException` ("is a sequence that is not a collection") |
+| 137 | `EnsureAssignable<IEnumerable<int>>` `yield` iterators of different elements | violation entries exactly `(the elements; assignable patterns do not apply to them)` (no "Members were listed" line) |
+| 138 | `EnsureAssignable<IEnumerable<int>>` `yield` iterator against `List<int>` of equal elements | no exception |
+| 139 | `EnsureAssignable<IEnumerable<int>>` `yield` iterator against `List<int>` of different elements | violation ("They are sequences of different runtime types") |
+| 140 | Nested collection expression unchanged | no exception |
+| 141 | Nested collection expression changed | violation `Items` |
+| 142 | `EnsureAssignable<IReadOnlyList<int>>` collection expressions of equal elements | no exception |
+| 143 | `EnsureAssignable<IReadOnlyList<int>>` collection expressions of different elements | violation entries exactly `(the elements; assignable patterns do not apply to them)` |
+| 144 | `EnsureAssignable<IEnumerator<int>>` `yield` enumerators | `InvalidOperationException` ("The type is compiler-generated and cannot be named in typeof.", "return IEnumerable<T> from the yield method that builds it") |
+| 145 | `EnsureAssignable<GeneratedTaggedBag>` tag changed (`[CompilerGenerated]`, implements only `IEnumerable<int>`) | violation entries exactly `Tag` |
+| 146 | `EnsureAssignable<FileBag>` extra changed (`file` class, enumerator throws) | violation entries exactly `Extra` |
+| 147 | `EnsureAssignable<GeneratedTaggedCursor>` tag changed (`[CompilerGenerated]` with a writable name, its own enumerator) | violation entries exactly `Tag` |
+| 148 | Nested capturing local iterator against `List<int>` of equal elements | no exception |
+| 149 | Nested capturing local iterator against `List<int>` of different elements | violation `Items` |
+| 150 | `EnsureAssignable<IEnumerable<int>>` capturing local iterator against `List<int>` of equal elements | value `fields=0\|none` (reflection lists no instance field for the iterator; no violation) |
+| 151 | `EnsureAssignable<object>` capturing local iterator against `List<int>` of different elements | violation ("They are sequences of different runtime types") |
+| 152 | `EnsureAssignable<IEnumerable<int>>` capturing local iterators of different delegates and equal elements | no exception |
+
+Each check has its own expectation with `DBC_POST=off`. Measured on `win-x64` with the Native AOT publish of the default build (`-warnaserror`, no IL warnings): 139 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`; after the checks of 2026-11-03, 144 `PASS`, no `FAIL`, both ways; after checks 145 and 146 (spec amendment 7), 146 `PASS`, no `FAIL`, both ways; after check 147 (spec amendment 8), 147 `PASS`, no `FAIL`, both ways; after checks 148 to 152 (spec amendment 9), 152 `PASS`, no `FAIL`, both ways. The variant with the hidden dictionary entry was not published, no trimmed publish was made, and the CI workflow had not run for this change when this amendment was written.
+
+Unchanged: the "no members visible" rule when the runtime type is `T`, and its message for `T`; the unreadable-property rule (its message changed on 2026-11-03, see above); the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`; and the other decisions of this ADR.
+
 ---
 
 ## References
@@ -695,3 +778,4 @@ Unchanged: the "no members visible" rule and its messages, the unreadable-proper
 | 2026-10-26 | Amended     | The two property shapes with a hidden getter are compared through the getter that exists, and the private fields of base classes that are not part of .NET are compared, so the Known Limitation on the two shapes no longer holds and the one on base-class private fields no longer holds under the JIT; the "no members visible" rule is decided before those fields are added; four more trimming suppressions; smoke checks 93 to 100 (#40); decision in ADR-0023. Decision unchanged. See Implementation Notes > eighth Amendment. |
 | 2026-10-26 | Amended     | Smoke checks 101 to 107 for two arrays of one primitive or enum element type, compared without boxing an element (#64); no annotation or suppression changed; decision in ADR-0022. Decision unchanged. See Implementation Notes > ninth Amendment. |
 | 2026-11-02 | Amended     | Assignable patterns are also matched against the property name of a compiler-generated backing field, so `^Customer$` also skips the backing field (#46); smoke check 108; no annotation or suppression changed; decision in ADR-0025. Decision unchanged. See Implementation Notes > tenth Amendment. |
+| 2026-11-02 | Amended     | The top level compares the runtime type (#40 item 2); under Native AOT a runtime type other than `T` that shows no declared member or has no visible members throws; messages name the type in C# syntax; the gap list is settled; three more `IL2070` suppressions; smoke check 100 changed, checks 109 to 139 added; decision in ADR-0026. Annotations unchanged. See Implementation Notes > eleventh Amendment. |

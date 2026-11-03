@@ -128,6 +128,30 @@ internal static class SharedTypes
     }
 
     /// <summary>
+    ///     The constructed <c>FrozenSet&lt;T&gt;</c> or <c>FrozenDictionary&lt;TKey, TValue&gt;</c> that
+    ///     <paramref name="type" /> is or derives from, or <paramref name="type" /> itself when it is neither: the
+    ///     public type a message names instead of the internal runtime type of a frozen collection.
+    /// </summary>
+    internal static Type PublicFrozenType(Type type)
+    {
+        for (Type? current = type; current is not null; current = current.BaseType)
+        {
+            if (
+                current.IsGenericType
+                && (
+                    current.GetGenericTypeDefinition() == typeof(FrozenSet<>)
+                    || current.GetGenericTypeDefinition() == typeof(FrozenDictionary<,>)
+                )
+            )
+            {
+                return current;
+            }
+        }
+
+        return type;
+    }
+
+    /// <summary>
     ///     An array of pointers or of function pointers, of any rank. It is never shared, and two of them are
     ///     compared by address. Reads the element type only, never the namespace of <paramref name="type" />.
     /// </summary>

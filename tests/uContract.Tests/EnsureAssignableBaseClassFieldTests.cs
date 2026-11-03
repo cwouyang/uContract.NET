@@ -371,15 +371,17 @@ public class EnsureAssignableBaseClassFieldTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenOnlyTheBaseStateOfANestedCollectionChanges_ComparesItByElement()
+    public void EnsureAssignable_WhenOnlyTheBaseStateOfANestedCollectionOfYoursChanges_ReportsTheMemberThatHoldsIt()
     {
         CollectionHolder actual = new() { Bag = new Bag([1, 2]) };
         CollectionHolder expected = new() { Bag = new Bag([1, 2]) };
         actual.Bag.SetNote("changed");
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(Violation + "  - Bag\n  - <Bag>k__BackingField", exception.Description);
     }
 
     // ---- Framework base classes ----
@@ -733,7 +735,7 @@ public class EnsureAssignableBaseClassFieldWithoutDynamicCodeTests
                 + "Ways out: list 'Inner' as assignable (patterns are regular expressions "
                 + "matched against top-level member names, so use the plain member name); "
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.Tests.EnsureAssignableBaseClassFieldWithoutDynamicCodeTests.OnlyBaseState))] on a method that runs; "
                 + "or set DBC_POST=off (disables all postcondition checks).",
             cannotCompare.Message
         );

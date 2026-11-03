@@ -22,7 +22,10 @@ that derives from a type that `Old<T>()` shares, replace the pair on `this` by `
 checks of the state members. `EnsureAssignable<T>()` now compares the private fields declared on a
 base class that is not part of .NET (an aggregate base class of yours or of a library), so a
 change of such state, for example a domain event raised into a private list, is a violation: list
-that member as assignable where the change is intended. Code that catches the
+that member as assignable where the change is intended. `EnsureAssignable<T>()` now compares the
+runtime type of the two values, so a call with `T` = `object`, an interface or a base class compares
+what it skipped and can start to fail; under Native AOT such a call throws "cannot compare" until the
+runtime type is preserved: add the `[DynamicDependency(...)]` that the message names. Code that catches the
 `InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or the
 `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. A `null` test
 or an `ArgumentNullException` handler around the `Old` + `EnsureAssignable` pair is no longer needed
@@ -120,7 +123,8 @@ AOT](README.md#trimming-and-native-aot) in the README.
   shares](docs/examples/API_REFERENCE.md#types-that-oldt-shares). Two instances of one other class
   declared in `System.Collections.Frozen` (two instances of a class of yours declared there) are
   compared by reference. Members whose runtime types differ are unequal, except two sequences, which
-  are compared element by element; the runtime type decides, not the declared type. Base and derived
+  are compared element by element when neither has members on a class of yours (see the entry for
+  #40 item 2 below); the runtime type decides, not the declared type. Base and derived
   instances are unequal, with the same exception. Two arrays, of one runtime type or of two, are
   equal only when they also have the same rank, and the same length and lower bound in every
   dimension (see the entry that begins "`EnsureAssignable<T>()` finds two arrays equal" below). A
@@ -196,19 +200,14 @@ AOT](README.md#trimming-and-native-aot) in the README.
   preserved: for a nullable struct that holds a reference, the comparison can then report a
   difference for an unchanged value or, with an `Old` snapshot, miss a change inside the object it
   refers to. For an array type or `System.Array` as `T`, the members of the type of the elements may
-  not be preserved either: preserve that type with `DynamicDependency`. All of this holds only when
-  `T` itself is such a type: `T` = `object` still compares nothing beyond `null`, a base class that
-  is not such a type compares the members it declares or inherits (`System.Array`, `Delegate`,
-  `MulticastDelegate`, a `FrozenSet<T>` and a `FrozenDictionary<TKey, TValue>` are base classes that
-  are compared as a whole), an interface only its own properties, also when the two values are a
-  `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>`, or two arrays (only the members visible
-  through `T` are compared), and two different instances of a shared type other than `string`, a
-  delegate, a `FrozenSet<T>` or a `FrozenDictionary<TKey, TValue>` are still compared member by
-  member (#40), as is a type that is shared, and fixed (a `Regex`), also for one instance on both
-  sides. The getters of the public properties of `T` then run, and a getter that throws ends the
-  call in `TargetInvocationException`: two `MemoryStream`s as `T` = `Stream` end so, from the
-  `ReadTimeout` getter of `Stream`, and so can one instance of a class derived from `Type` or
-  `MemberInfo` on both sides. For every `T` that is compared by its members, the private fields
+  not be preserved either: preserve that type with `DynamicDependency`. The same values are now
+  compared as a whole also when `T` is `object`, an interface or a base class and the runtime type of
+  the two values is such a type, and two different instances of a shared type are a violation by
+  reference whatever `T` is (see the entry for #40 item 2 below). One instance of a type that is
+  shared, and fixed (a `Regex`), on both sides is compared by the members of `T`: the getters of the
+  public properties of `T` then run, and a getter that throws ends the call in
+  `TargetInvocationException`, as can one instance of a class derived from `Type` or `MemberInfo` on
+  both sides. For every value that is compared by its members, the private fields
   declared on its base classes are compared too (see the entry that begins "`EnsureAssignable<T>()`
   compares the private fields" below). One instance of a shared type whose state can change, passed
   as `actual` and as `expected`, is not compared, whatever `T` is, `object` included: the method
@@ -226,9 +225,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   passed as `System.Array`. Each of these is a violation now. The rule is for two arrays: an array
   and a sequence that is not an array (a `List<T>`) are compared by what they enumerate, whatever
   the rank of the array (an array of pointers or of function pointers that has elements is the
-  exception: see Fixed). It does not apply either to two arrays passed as a `T` that is neither an
-  array type nor `System.Array` (`object`, an interface): only the members visible through `T` are
-  compared there. Two arrays of different element types that agree in rank, lengths and lower bounds
+  exception: see Fixed). It applies also to two arrays passed as a `T` that is neither an array type
+  nor `System.Array` (`object`, an interface), which are now compared by their runtime type (see the
+  entry for #40 item 2 below). Two arrays of different element types that agree in rank, lengths and lower bounds
   are compared element by element, so an `int[]` and an `object[]` of the same numbers are equal,
   and an `int[]` and a `long[]` are not. `Old<T>()` keeps the rank, the lengths and the lower bounds
   of an array that it copies, so this rule adds no violation to the `Old` + `EnsureAssignable` pair
@@ -256,9 +255,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   domain event that a base aggregate class keeps in a private `_domainEvents` list is now a
   violation. List the member as assignable when the change is intended. A public auto-property of
   a base class is still compared once, through the property. The fields of a framework base class
-  that are not private (`List<T>._size`, `Exception._message`) were compared before and still are;
-  its private fields are not compared. Static fields are not compared, and a nested collection
-  class of yours is still compared by its elements. The private fields of a base class from another
+  that are not private (`Exception._message`) were compared before and still are, except in a
+  sequence built on a framework collection (`List<T>._size`; see the entry for #40 item 2 below);
+  its private fields are not compared. Static fields are not compared. The private fields of a base class from another
   library become possible violation entries and pattern targets, and their names can change with
   that library's versions. The entries most likely to surprise are lazily cached values (for example
   a cached hash code in a value-object base class, set the first time the object is hashed inside
@@ -312,6 +311,111 @@ AOT](README.md#trimming-and-native-aot) in the README.
   written by hand behind a property (`_email`) is still matched by its own name only. Patterns
   still apply to top-level members only. Which members are compared does not change: fields-only
   comparison was evaluated and not adopted. (#46; ADR-0025)
+- **BREAKING**: `EnsureAssignable<T>()` compares the two values at the top level by their runtime
+  type, with the rules that a member pair follows (#40 item 2). In 2.0.0 the top level compared only
+  what the declared `T` shows: `T` = `object` compared nothing beyond `null`, an interface only the
+  properties that it declares, and a base class not what the runtime type adds. Now, for a `T` that is
+  not compared as a whole: a runtime type that is a `string`, a delegate type, a `FrozenSet<T>` or a
+  `FrozenDictionary<TKey, TValue>`, or an array type is compared as a whole, also when `T` is
+  `object`, an interface or a base class; two different instances of a type that `Old<T>()` shares
+  are a violation by reference, whatever their state, also when `T` is that type (two
+  `MemoryStream`s as `T` = `Stream`; in 2.0.0 their getters ran, and `ReadTimeout` threw); two values
+  of different runtime types are a violation that names both runtime types and `T`, except two
+  sequences that are compared by their elements; a boxed value type is compared with `Equals` first,
+  then by its fields; any other value is compared by the members of its runtime type, and for an
+  interface `T` also by the properties that the interface declares, read through it. One exception
+  keeps the 2.0.0 rule: when the runtime type of either value is a value type that implements
+  `IEnumerable` (`ImmutableArray<T>`, `ArraySegment<T>`, a struct of yours) and the two values are not
+  two sequences of different runtime types, the members visible through `T` are compared, so
+  `EnsureAssignable<object>` of two `ImmutableArray<int>` values still compares nothing beyond `null`;
+  pass such a value as its own type. (Against a `string`, a delegate or a shared type that is not a
+  sequence, such a value is a different-runtime-types violation.) The patterns
+  apply to those members: a pattern written against `T` still excuses its member, and a member that
+  only the runtime type has needs a pattern that names it. When `T` is a framework class that the
+  runtime type derives from, the private fields of the base classes are compared up to and including
+  `T`. A violation names the runtime type when it is not `T` ("Members were listed from the runtime
+  type X, not from T (Y)."), except for a compiler-generated sequence compared by its elements, of
+  which no member is listed. So a call with `T` = `object`, an interface or a base class compares
+  what it skipped and can start to fail, and `EnsureAssignable(this, Contract.Old(() => this))`
+  written in a base class compares the subclass's state too when it runs on a subclass instance; the
+  documentation examples pass the concrete type and keep working under the JIT. A sequence (other
+  than a `string`, an array, a frozen collection and a shared type) is compared by the class chain of
+  its runtime type, at the top level and below it. One built on a framework collection is compared
+  by its elements and by the members declared on its classes of yours; at the top level also by its
+  public framework properties other than `Capacity` (a `Comparer`, the `Key` of a grouping), and an
+  element difference is the entry `(the elements; assignable patterns do not apply to them)`. Its
+  framework's non-public fields are not compared: for `T` = `List<int>` a pattern that excused
+  `_items` no longer applies, a change of capacity alone is no longer a violation, and a comparer
+  kept only in a non-public field (`Hashtable`) and the subscribers of an `ObservableCollection<T>` are
+  no longer compared. A `Lookup<TKey, TElement>` is not a collection: passed as its own type it is
+  compared by all its members, its comparer included. At the top level a framework property without a
+  getter is not read unless `T` declares or inherits it: `T` = `XmlDocument` still ends in
+  `InvalidOperationException` at `XmlResolver` unless a pattern excuses it. A class of yours that
+  implements `IEnumerable` itself is compared by its members only and is not enumerated, also as a
+  nested value, where 2.0.0 compared its elements; elements that it produces from the captured state
+  of a delegate are not compared. A compiler-generated sequence of any assembly that is not part of
+  .NET (a NuGet package included) is compared by its elements, at every level and also against a
+  `List<T>` or an array: a `yield` iterator from a method that returns `IEnumerable` or
+  `IEnumerable<T>`, and a collection expression held as `IReadOnlyList<T>`, `IReadOnlyCollection<T>`
+  or `IEnumerable<T>` (built by the .NET 8 SDK as `<>z__ReadOnlyArray<T>`, or `<>z__ReadOnlyList<T>`
+  for a spread of a `yield` iterator). It is recognised as a class that implements `IEnumerator` and
+  is compiler-generated: it, or a type in its declaring chain, is marked `[CompilerGenerated]` with a
+  `<` or a `$` in its name or has a metadata name that starts with `<>` (so the iterator of a local function that
+  captures a variable, nested in its display class, counts too), or a class whose metadata name
+  starts with `<>` that implements `IEnumerable`; a source-generated `[CompilerGenerated]` class with a name
+  C# can write (also one that implements only `IEnumerable` or is its own enumerator) and a `file`
+  class are classes of yours, compared by their members. An infinite iterator does
+  not return, and an exception from its body leaves the call
+  unwrapped, except an `InvalidOperationException` while two sequences of different runtime types
+  are enumerated, which makes them unequal. One from a method that returns only `IEnumerator` or `IEnumerator<T>` is compared by its
+  fields. At the top level a sequence that is not a collection (a LINQ query,
+  `GetConsumingEnumerable()`, an `XmlDocument`) is not enumerated: passed as a `T` other than its own
+  type, it throws `InvalidOperationException`; pass `ToList()`, or the value as its own type. The
+  message names the three interfaces that make a collection: `ICollection`, `ICollection<T>` and
+  `IReadOnlyCollection<T>`. Two
+  sequences of different runtime types are compared by their elements only when neither declares
+  members on a class of yours; otherwise they are unequal. Under Native AOT, a runtime type other
+  than `T` that nothing preserves shows no declared member to reflection, and the call throws
+  `InvalidOperationException` ("cannot compare …"), also when the two values are equal. This covers
+  `EnsureAssignable(this, Contract.Old(() => this))` written in a base class and run on a subclass
+  instance, and a framework collection such as a `List<int>` passed as `object` when nothing in the
+  application preserves it. A boxed value type throws only when its `Equals` reports the values
+  unequal; a primitive, an enum, an inline array, a value-type sequence that keeps the declared `T`
+  and a compiler-generated sequence are not affected. A subclass
+  that adds no state and that nothing preserves throws too. The fix is the one the message names,
+  with the type in C# syntax: `[DynamicDependency(DynamicallyAccessedMemberTypes.All,
+  typeof(Shop.ExpressOrder))]` on a method that runs, or pass the values as their own type;
+  `[DynamicallyAccessedMembers]` on a base class of yours does not help. A `yield` method that
+  returns only an enumerator throws under Native AOT, when nothing preserves it; the message names
+  no `typeof`, which cannot be written for it, and suggests returning `IEnumerable<T>` from the
+  method. For any type that C# cannot name in `typeof` (an anonymous type, a VB iterator, a type with
+  one among or inside its generic arguments) the messages name no `typeof`, say why, and offer what
+  can be written instead: a value of a type of yours, an element type of yours for a `List<T>` of
+  anonymous values, a type of yours in place of one deeper inside, the member as assignable, or
+  `DBC_POST=off`. A source-generated class keeps the `typeof` fix, and a `file` class is named there
+  by its own name, with the words that the method must be inside the file that declares it. A type
+  whose generic arguments hold `file` classes of more than one file cannot be named in any one file:
+  its message names no `typeof`, says so, and offers other generic arguments or `DBC_POST=off`.
+  Below the
+  top level, a class of yours that nothing preserves and that only inherits visible members is
+  compared by its `Equals` and ends in "cannot compare" when `Equals` reports the values unequal,
+  where it was compared by its inherited members. The nested "cannot compare" messages now write the
+  type inside `typeof` in C# syntax, where they said "typeof(X))] where X is that type", and so does
+  the message for a property without a getter, which names the declaring type of the property. Not
+  detected under Native AOT: a runtime type of
+  which something preserves some members (a constructor kept by a dependency-injection
+  registration) is compared by what stays visible, which can be the members of `T` alone; and
+  preservation is per generic definition, so an instantiation that nothing preserves shows its
+  members when another instantiation of its definition is preserved. Known message limits: the
+  message for a sequence that is not a collection says that enumerating it "could run a query,
+  consume its source or block", also for a materialised one (`ImmutableQueue<T>`,
+  `StringDictionary`, `XmlNodeList`); and when two sequences of different runtime types have equal
+  elements and a property of an interface `T` differs, the violation does not say that the runtime
+  types differ. Migrating: where a call starts to fail because the runtime type adds a member that
+  may change, list that member as assignable; under Native AOT add the `DynamicDependency` that the
+  message names, on `Main` or on any method that runs; remove a pattern that excused the private
+  fields of a framework collection; materialise a query before the call; and check the state of a
+  shared type with `Contract.Ensure`. (#40; ADR-0026)
 - **BREAKING**: `EnsureImmutableCollection<T>()` returns a `null` `collection` instead of throwing
   `ArgumentNullException` when it does not check it: with postconditions off, or in a call made
   while another contract check is running. This is a second exception to "parameter validation

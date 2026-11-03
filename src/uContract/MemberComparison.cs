@@ -18,6 +18,8 @@ namespace uContract;
 internal static class MemberComparison
 {
     private static readonly TypeCache<TypeMetadata> MetadataCache = new();
+    private static readonly TypeCache<SequenceRule> SequenceRuleCache = new();
+    private static readonly TypeCache<bool> NoDeclaredMemberCache = new();
 
     // The public key tokens the assemblies of the .NET runtime and libraries are signed with: every token that
     // occurs in the .NET 8 shared frameworks (Microsoft.NETCore.App, Microsoft.AspNetCore.App and
@@ -54,14 +56,54 @@ internal static class MemberComparison
         );
     }
 
+    // The members the top level compares for a runtime type other than T. When T is a framework class (other
+    // than System.Object) that the runtime type derives from, the private fields of the base classes are
+    // listed up to and including T, which the cached members stop short of; they are listed afresh on each
+    // call. Otherwise these are the cached members of the runtime type; when T is another class that the
+    // runtime type derives from, the private fields declared on T also count as visible, in a copy of the
+    // cached metadata. In both cases [DynamicallyAccessedMembers] on T preserves those fields under Native AOT.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The runtime type is known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
+    )]
+    internal static TypeMetadata GetTopLevelMetadata(Type runtimeType, Type declaredType)
+    {
+        if (declaredType == runtimeType || declaredType == typeof(object) || !declaredType.IsClass)
+        {
+            return GetOrCacheMetadata(runtimeType);
+        }
+
+        if (!IsFrameworkClass(declaredType))
+        {
+            // The cached members already hold the private fields declared on T, but leave them out of
+            // OwnMemberCount; they are counted here, in a copy, so that the cache stays independent of T.
+            TypeMetadata cached = GetOrCacheMetadata(runtimeType);
+            return new TypeMetadata
+            {
+                Members = cached.Members,
+                OwnMemberCount =
+                    cached.OwnMemberCount
+                    + cached.Members.Skip(cached.OwnMemberCount).Count(m => m.DeclaringType == declaredType),
+            };
+        }
+
+        return CreateMetadata(
+            runtimeType,
+            runtimeType.GetProperties(BindingFlags.Public | BindingFlags.Instance),
+            privateFieldsUpTo: declaredType
+        );
+    }
+
     // The members of type, given the public instance properties reflection lists for it. Tests pass a listing
-    // of their own to reproduce what Native AOT returns.
+    // of their own to reproduce what Native AOT returns. The private fields of base classes are listed up to the
+    // first framework class or, when privateFieldsUpTo is given, up to and including that class.
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
         Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
     )]
-    internal static TypeMetadata CreateMetadata(Type type, PropertyInfo[] properties)
+    internal static TypeMetadata CreateMetadata(Type type, PropertyInfo[] properties, Type? privateFieldsUpTo = null)
     {
         FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -72,9 +114,12 @@ internal static class MemberComparison
             .ToList();
 
         // GetFields does not return the private fields declared on a base class; they are added after the
-        // members above, which alone decide the "no members visible" rule.
+        // members above, which decide the "no members visible" rule together with the private fields declared
+        // on privateFieldsUpTo: [DynamicallyAccessedMembers] on T preserves those under Native AOT.
         int ownMemberCount = members.Count;
-        members.AddRange(BaseClassPrivateFields(type, properties).Select(f => new MemberAccessor(f)));
+        List<FieldInfo> baseClassPrivateFields = BaseClassPrivateFields(type, properties, privateFieldsUpTo).ToList();
+        ownMemberCount += baseClassPrivateFields.Count(f => f.DeclaringType == privateFieldsUpTo);
+        members.AddRange(baseClassPrivateFields.Select(f => new MemberAccessor(f)));
 
         QualifyCollidingNames(members);
 
@@ -176,11 +221,19 @@ internal static class MemberComparison
         "IL2075",
         Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a private field of a base class that the trimmer hides from reflection is not compared."
     )]
-    private static IEnumerable<FieldInfo> BaseClassPrivateFields(Type type, PropertyInfo[] properties)
+    private static IEnumerable<FieldInfo> BaseClassPrivateFields(
+        Type type,
+        PropertyInfo[] properties,
+        Type? privateFieldsUpTo
+    )
     {
         for (
             Type? baseType = type.BaseType;
-            baseType is not null && !IsFrameworkClass(baseType);
+            baseType is not null
+                && (
+                    !IsFrameworkClass(baseType)
+                    || (privateFieldsUpTo is not null && privateFieldsUpTo.IsAssignableFrom(baseType))
+                );
             baseType = baseType.BaseType
         )
         {
@@ -200,9 +253,116 @@ internal static class MemberComparison
 
     // A class of the .NET runtime or libraries, told by the public key token its assembly is signed with, not
     // by its namespace: the walk up the base classes stops at it, and it and the classes above it add nothing.
-    private static bool IsFrameworkClass(Type type)
+    internal static bool IsFrameworkClass(Type type)
     {
         return IsFrameworkPublicKeyToken(type.Assembly.GetName().GetPublicKeyToken());
+    }
+
+    // How a sequence of the runtime type is compared: when its class chain holds a framework class below
+    // System.Object, by its elements and by OwnMembers, the members of its member list declared on a type that
+    // is not a framework class; otherwise, as a class of yours that implements IEnumerable itself, by its
+    // members alone. A compiler-generated sequence of yours (see IsCompilerGeneratedSequence) is compared by its
+    // elements alone: its fields are the state of an iteration or the storage of a collection expression.
+    internal static SequenceRule GetSequenceRule(Type runtimeType)
+    {
+        return SequenceRuleCache.GetOrAdd(runtimeType, CreateSequenceRule);
+    }
+
+    private static SequenceRule CreateSequenceRule(Type type)
+    {
+        bool hasFrameworkClass = HasFrameworkClassBelowObject(type);
+        if (!hasFrameworkClass && IsCompilerGeneratedSequence(type))
+        {
+            return new SequenceRule(HasFrameworkClass: false, Array.Empty<MemberAccessor>())
+            {
+                IsCompilerGenerated = true,
+            };
+        }
+
+        return new SequenceRule(
+            hasFrameworkClass,
+            GetOrCacheMetadata(type).Members.Where(m => !IsFrameworkClass(m.DeclaringType)).ToList().AsReadOnly()
+        )
+        {
+            IsCollection = IsCollection(type),
+        };
+    }
+
+    // A class the compiler generated for a sequence: a yield iterator (it implements IEnumerator and is
+    // compiler-generated as the messages define it, CSharpTypeName.IsCompilerGenerated: it, or a type in its
+    // declaring chain, has a name that starts with "<>" or is marked [CompilerGenerated] with a '<' or a '$' in its
+    // name, which C# cannot write:
+    // <Method>d__N, VB$StateMachine_…, or the unmarked <<Method>g__Local|0>d of a local function that captures a
+    // variable, nested in its marked display class <>c__DisplayClass…, measured on SDK 8.0.204), or a class
+    // whose metadata name starts with "<>" that implements IEnumerable (the class of a collection expression,
+    // <>z__ReadOnlyArray<T> or <>z__ReadOnlyList<T>, which the .NET 8 SDK emits without [CompilerGenerated],
+    // measured). A [CompilerGenerated] class with a name C# can write (a source generator's, even one that is its
+    // own enumerator) and a file class (<File>F…__Name) are classes of yours.
+    private static bool IsCompilerGeneratedSequence(Type type)
+    {
+        return (CSharpTypeName.IsCompilerGenerated(type) && typeof(IEnumerator).IsAssignableFrom(type))
+            || (CSharpTypeName.HasCompilerPrefix(type) && typeof(IEnumerable).IsAssignableFrom(type));
+    }
+
+    // A collection holds its elements: it implements ICollection, ICollection<T> (the grouping GroupBy returns)
+    // or IReadOnlyCollection<T>. Another sequence (a LINQ query, a consuming enumerable) may compute, consume or
+    // wait for its elements when enumerated.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The runtime type is known only at run time; an interface the trimmer removed is one the type is not used as, and the type is then treated as not a collection, which makes the top level throw rather than enumerate it."
+    )]
+    private static bool IsCollection(Type type)
+    {
+        return typeof(ICollection).IsAssignableFrom(type)
+            || type.GetInterfaces()
+                .Any(i =>
+                    i.IsGenericType
+                    && (
+                        i.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>)
+                        || i.GetGenericTypeDefinition() == typeof(ICollection<>)
+                    )
+                );
+    }
+
+    // A sequence built on a framework class that is not a collection (see IsCollection).
+    internal static bool IsNonCollectionSequence(Type runtimeType)
+    {
+        SequenceRule rule = GetSequenceRule(runtimeType);
+        return rule.HasFrameworkClass && !rule.IsCollection;
+    }
+
+    // A sequence that is compared by its elements alone, also against a sequence of another runtime type: its
+    // class chain holds a framework class, and it declares no member on a class of yours.
+    internal static bool IsComparedByElementsOnly(Type runtimeType)
+    {
+        SequenceRule rule = GetSequenceRule(runtimeType);
+        return rule.IsComparedByElements && rule.OwnMembers.Count == 0;
+    }
+
+    private static bool HasFrameworkClassBelowObject(Type type)
+    {
+        for (
+            Type? classType = type;
+            classType is not null && classType != typeof(object);
+            classType = classType.BaseType
+        )
+        {
+            if (IsFrameworkClass(classType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Compares the elements of two sequences, as a nested sequence is compared, in the given context. A false
+    // return with context.Hidden set means "could not compare", as for AreEqual.
+    internal static bool ElementsAreEqual(IEnumerable actual, IEnumerable expected, ComparisonContext context)
+    {
+        Walk? walk = StartSequences(actual, expected);
+        return walk is not null && Run(walk, context);
     }
 
     // True for a public key token that the assemblies of the .NET runtime and libraries are signed with.
@@ -260,6 +420,52 @@ internal static class MemberComparison
             && string.Equals(comparedBase.Name, declaredBase.Name, StringComparison.Ordinal);
     }
 
+    // The ways out for a type that C# cannot name in typeof (see CSharpTypeName.CanBeWritten), matched to why it
+    // cannot. firstWayOut is empty, or a way out that ends with "; ". A compiler-generated type is replaced by a
+    // value of a type of yours, except an enumerator (from a yield method that returns only IEnumerator or
+    // IEnumerator<T>), whose method can return a sequence instead. A type of yours or of .NET with a
+    // compiler-generated generic argument (List<anonymous type>) keeps its type and takes another argument: for a
+    // sequence, an element type of yours. A type with file classes of more than one file in its generic arguments
+    // and no compiler-generated type takes other generic arguments.
+    internal static string WaysOutForAnUnnamedType(Type type, string firstWayOut = "")
+    {
+        if (!CSharpTypeName.HoldsCompilerGeneratedType(type))
+        {
+            return "The type has file classes of more than one file in its generic arguments, and C# names a file "
+                + "class only inside the file that declares it, so no one file can name the type in typeof. Ways out: "
+                + firstWayOut
+                + "use types that are not file classes, or file classes of one file, as its generic arguments; or set "
+                + "DBC_POST=off (disables all postcondition checks).";
+        }
+
+        bool isSequence = typeof(IEnumerable).IsAssignableFrom(type);
+        if (!CSharpTypeName.IsCompilerGenerated(type))
+        {
+            Type[] arguments = type.GetGenericArguments();
+            bool isAnArgument = arguments.Any(CSharpTypeName.IsCompilerGenerated);
+            string where = isAnArgument ? "among" : "inside";
+            string replaceArgument =
+                !isAnArgument ? "use a type of yours in place of the compiler-generated one; "
+                : isSequence && arguments.Length == 1
+                    ? "use an element type of yours instead of the compiler-generated one; "
+                : "use a type of yours as its generic argument instead; ";
+            return $"The type has a compiler-generated type {where} its generic arguments and cannot be named in typeof. "
+                + "Ways out: "
+                + firstWayOut
+                + replaceArgument
+                + "or set DBC_POST=off (disables all postcondition checks).";
+        }
+
+        string replaceIt =
+            typeof(IEnumerator).IsAssignableFrom(type) && !isSequence
+                ? "return IEnumerable<T> from the yield method that builds it, or use a value of a type of yours instead; "
+                : "use a value of a type of yours instead; ";
+        return "The type is compiler-generated and cannot be named in typeof. Ways out: "
+            + firstWayOut
+            + replaceIt
+            + "or set DBC_POST=off (disables all postcondition checks).";
+    }
+
     internal static InvalidOperationException CannotCompareNested(
         Type comparedType,
         MemberAccessor topLevelMember,
@@ -271,35 +477,51 @@ internal static class MemberComparison
         // Patterns are matched against raw names and source names (see IsAssignable), so the advice names the
         // member without its qualifier, and a qualified member shares that name with another member, which it excuses too.
         string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
+        string cannotList =
+            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
+            + "no properties or fields are visible to reflection under Native AOT. "
+            + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
+        string listAsAssignable =
+            $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
+            + $"matched against top-level member names, so use the plain member name{sharedName}); ";
+        if (!CSharpTypeName.CanBeWritten(hidden.Type))
+        {
+            return new InvalidOperationException(cannotList + WaysOutForAnUnnamedType(hidden.Type, listAsAssignable));
+        }
 
         return new InvalidOperationException(
-            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-                + "no properties or fields are visible to reflection under Native AOT. "
-                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
-                + $"Ways out: list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
-                + $"matched against top-level member names, so use the plain member name{sharedName}); "
+            cannotList
+                + "Ways out: "
+                + listAsAssignable
                 + "if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }
 
     // The comparison of a nullable value type, of a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, or of an
     // array type or System.Array, as a whole met a class whose members are not visible. For a nullable value
-    // type, wholeType is the underlying type; for the others it is T itself. The path starts with the name of
+    // type, wholeType is the underlying type; for the others it is T itself, or the runtime type of the two
+    // values when that decided (a frozen collection by its public type). The path starts with the name of
     // wholeType, except below an array type or System.Array, where it starts with the parameter name: the
     // name of an array type holds brackets of its own ("X[]"), which would read as one more element.
     internal static InvalidOperationException CannotCompareBelowWhole(Type wholeType, HiddenMembers hidden)
     {
         string start = IsArrayTypeOrSystemArray(wholeType) ? "actual" : wholeType.Name;
         string path = $"{start}{hidden.PathBelowTopLevelMember}";
+        string cannotList =
+            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
+            + "no properties or fields are visible to reflection under Native AOT. "
+            + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
+        if (!CSharpTypeName.CanBeWritten(hidden.Type))
+        {
+            return new InvalidOperationException(cannotList + WaysOutForAnUnnamedType(hidden.Type));
+        }
 
         return new InvalidOperationException(
-            $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-                + "no properties or fields are visible to reflection under Native AOT. "
-                + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. "
+            cannotList
                 + "Ways out: if the type has members, preserve them, for example with "
-                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))] where X is that type; "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }
@@ -314,10 +536,49 @@ internal static class MemberComparison
 
     // Under Native AOT a type whose members were not preserved reflects as having none, which
     // would make every comparison of it pass. System.Object genuinely has none (lock objects). The rule is
-    // decided before the private fields of base classes are added, also when those fields are visible.
+    // decided on OwnMemberCount, which leaves out the private fields of base classes, also when those fields
+    // are visible, except the private fields declared on a class T at the top level (see GetTopLevelMetadata).
     internal static bool MembersAreHidden(Type type, TypeMetadata metadata)
     {
         return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
+    }
+
+    // Under Native AOT a type that nothing preserves shows no declared field, property, method or constructor to
+    // reflection, not even a constructor (measured), while the members it inherits may still show. A nested type
+    // or an event it declares does not count: a nested type keeps metadata of its own (measured). Never true when
+    // dynamic code is supported.
+    internal static bool ShowsNoDeclaredMember(Type type)
+    {
+        if (RuntimeFacts.IsDynamicCodeSupported)
+        {
+            return false;
+        }
+
+        return RuntimeFacts.ShowsNoDeclaredMemberOverride?.Invoke(type)
+            ?? NoDeclaredMemberCache.GetOrAdd(type, ListsNoDeclaredMember);
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The members are only counted, never used: a type that the trimmer kept no member of is the one this detects."
+    )]
+    private static bool ListsNoDeclaredMember(Type type)
+    {
+        return !type.GetMembers(
+                BindingFlags.Public
+                    | BindingFlags.NonPublic
+                    | BindingFlags.Instance
+                    | BindingFlags.Static
+                    | BindingFlags.DeclaredOnly
+            )
+            .Any(member =>
+                member.MemberType
+                    is MemberTypes.Field
+                        or MemberTypes.Property
+                        or MemberTypes.Method
+                        or MemberTypes.Constructor
+            );
     }
 
     // A compiler-generated backing field "<Name>k__BackingField" is shown as the property it backs.
@@ -411,12 +672,12 @@ internal static class MemberComparison
         }
 
         // Values of different runtime types are unequal, and neither is read: the members of one type
-        // cannot be read from the other. Two sequences are still compared element by element; two arrays
-        // only when they have the same rank, and the same length and lower bound in every dimension (see
-        // StartReferences).
+        // cannot be read from the other. Two sequences are still compared element by element when neither
+        // declares members on a class of yours (see IsComparedByElementsOnly); two arrays only when they have
+        // the same rank, and the same length and lower bound in every dimension (see StartReferences).
         Type actualType = actual.GetType();
         Type expectedType = expected.GetType();
-        if (actualType != expectedType && !(IsSequence(actual) && IsSequence(expected)))
+        if (actualType != expectedType && !AreSequencesComparedByElementsOnly(actual, expected))
         {
             return null;
         }
@@ -490,8 +751,10 @@ internal static class MemberComparison
         ComparisonContext.Frame frame = context.Enter(pair);
         bool equalWithoutWalk = false;
         Walk? walk =
-            actual is IEnumerable actualEnum && expected is IEnumerable expectedEnum
-                ? StartSequences(actualEnum, expectedEnum)
+            actual is IEnumerable actualEnum
+            && expected is IEnumerable expectedEnum
+            && (actual.GetType() != expected.GetType() || GetSequenceRule(actual.GetType()).IsComparedByElements)
+                ? StartSequencesOfSeenClasses(actualEnum, expectedEnum, context, out equalWithoutWalk)
                 : StartMembers(actual, expected, context, out equalWithoutWalk);
 
         // No walk means the pair was decided (different, equal by Equals, or not comparable) before any of its contents.
@@ -546,6 +809,75 @@ internal static class MemberComparison
         {
             return false;
         }
+    }
+
+    // Two sequences compared by their elements, unless a class of yours in the class chain of either shows no
+    // declared member (see ShowsNoDeclaredMember): they are then left to their own Equals, as a class whose
+    // members are hidden is (see StartMembers).
+    private static Walk? StartSequencesOfSeenClasses(
+        IEnumerable actual,
+        IEnumerable expected,
+        ComparisonContext context,
+        out bool equalWithoutWalk
+    )
+    {
+        equalWithoutWalk = false;
+        Type? unseen = UnseenClassOfYours(actual.GetType()) ?? UnseenClassOfYours(expected.GetType());
+        if (unseen is null)
+        {
+            return StartSequencesAndOwnMembers(actual, expected);
+        }
+
+        equalWithoutWalk = actual.Equals(expected);
+        if (!equalWithoutWalk)
+        {
+            context.Hidden = new HiddenMembers(unseen);
+        }
+
+        return null;
+    }
+
+    // The first class in the class chain of type, below System.Object, that is not a framework class and shows no
+    // declared member; none for a compiler-generated sequence of yours.
+    private static Type? UnseenClassOfYours(Type type)
+    {
+        // A compiler-generated sequence of yours is compared by its elements alone, which enumerating needs no
+        // metadata for.
+        if (GetSequenceRule(type).IsCompilerGenerated)
+        {
+            return null;
+        }
+
+        for (
+            Type? classType = type;
+            classType is not null && classType != typeof(object);
+            classType = classType.BaseType
+        )
+        {
+            if (ShowsNoDeclaredMember(classType) && !IsFrameworkClass(classType))
+            {
+                return classType;
+            }
+        }
+
+        return null;
+    }
+
+    // Two sequences of one runtime type that declares members on a class of yours are compared by their
+    // elements and then by those members; any other two sequences by their elements alone.
+    private static Walk? StartSequencesAndOwnMembers(IEnumerable actual, IEnumerable expected)
+    {
+        Walk? elements = StartSequences(actual, expected);
+        Type type = actual.GetType();
+        if (elements is null || type != expected.GetType())
+        {
+            return elements;
+        }
+
+        IReadOnlyList<MemberAccessor> ownMembers = GetSequenceRule(type).OwnMembers;
+        return ownMembers.Count == 0
+            ? elements
+            : new ElementsThenMembersWalk(elements, new MemberWalk(ownMembers, actual, expected, fieldsOnly: false));
     }
 
     // Null means the two sequences are different without walking a pair of elements. A walk that holds no
@@ -796,13 +1128,22 @@ internal static class MemberComparison
         return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, T>(ref first), array.Length);
     }
 
+    private static bool AreSequencesComparedByElementsOnly(object actual, object expected)
+    {
+        return IsSequence(actual)
+            && IsSequence(expected)
+            && IsComparedByElementsOnly(actual.GetType())
+            && IsComparedByElementsOnly(expected.GetType());
+    }
+
     private static bool IsSequence(object value)
     {
         return value is IEnumerable and not string;
     }
 
-    // Null means the pair needs no member walk. A type with no visible members is left to its own Equals;
-    // when that says "unequal" the pair could not be compared (context.Hidden is set).
+    // Null means the pair needs no member walk. A type with no visible members, or a class that is not a
+    // framework class and shows no declared member (see ShowsNoDeclaredMember), is left to its own Equals; when
+    // that says "unequal" the pair could not be compared (context.Hidden is set).
     private static MemberWalk? StartMembers(
         object actual,
         object expected,
@@ -814,7 +1155,7 @@ internal static class MemberComparison
         TypeMetadata metadata = GetOrCacheMetadata(type);
         equalWithoutWalk = false;
 
-        if (MembersAreHidden(type, metadata))
+        if (MembersAreHidden(type, metadata) || (ShowsNoDeclaredMember(type) && !IsFrameworkClass(type)))
         {
             equalWithoutWalk = actual.Equals(expected);
             if (!equalWithoutWalk)
@@ -883,8 +1224,12 @@ internal static class MemberComparison
 
     // Members in order, reading the actual value before the expected one. A value type is compared by its
     // fields only, and one without any is different (its Equals said "unequal").
-    private sealed class MemberWalk(List<MemberAccessor> members, object actual, object expected, bool fieldsOnly)
-        : Walk
+    private sealed class MemberWalk(
+        IReadOnlyList<MemberAccessor> members,
+        object actual,
+        object expected,
+        bool fieldsOnly
+    ) : Walk
     {
         private int _index = -1;
         private bool _comparedAny;
@@ -927,6 +1272,28 @@ internal static class MemberComparison
         }
     }
 
+    // The elements of a sequence, and then the members declared on its own classes.
+    private sealed class ElementsThenMembersWalk(Walk elements, Walk members) : Walk
+    {
+        private Walk _current = elements;
+        private bool _onMembers;
+
+        public override string ChildSegment => _current.ChildSegment;
+
+        public override Step Next()
+        {
+            Step step = _current.Next();
+            if (step == Step.Equal && !_onMembers)
+            {
+                _onMembers = true;
+                _current = members;
+                step = members.Next();
+            }
+
+            return step == Step.Child ? Child(_current.ChildActual, _current.ChildExpected) : step;
+        }
+    }
+
     // A dictionary, even one compared with a dictionary of another type, is compared entry by entry, in
     // enumeration order, by the keys and values its own enumerator reports, not by the KeyValuePair or
     // DictionaryEntry it yields as a sequence: those differ between dictionary types, and their Equals
@@ -962,6 +1329,20 @@ internal static class MemberComparison
             _keyCompared = true;
             return Child(_actualEntries.Key, _expectedEntries.Key);
         }
+    }
+
+    // OwnMembers is cached for every caller, so it is read-only.
+    internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers)
+    {
+        // A compiler-generated sequence of yours (a yield iterator, a collection expression): compared by its
+        // elements alone, at every level.
+        public bool IsCompilerGenerated { get; init; }
+
+        // Implements ICollection or IReadOnlyCollection<T> (see MemberComparison.IsCollection).
+        public bool IsCollection { get; init; }
+
+        // Compared by its elements (and OwnMembers), not by its members alone.
+        public bool IsComparedByElements => HasFrameworkClass || IsCompilerGenerated;
     }
 
     // Created only when a comparison is blocked. The path is prepended one segment per level on
