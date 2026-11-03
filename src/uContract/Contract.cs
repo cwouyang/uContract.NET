@@ -1777,14 +1777,19 @@ public static class Contract
 
         if (differences.Count > 0)
         {
-            throw _FieldsWereModified(differences, comparedType, declaredType);
+            // A compiler-generated sequence compared by its elements lists no member of its runtime type.
+            Type listedFrom =
+                byElements && MemberComparison.GetSequenceRule(comparedType).IsCompilerGenerated
+                    ? declaredType
+                    : comparedType;
+            throw _FieldsWereModified(differences, listedFrom, declaredType);
         }
     }
 
     // A sequence built on a framework class is compared by its elements and by its members, without the
     // framework's non-public fields and its Capacity, which the elements stand in for: its public properties
-    // (a comparer, the key of a grouping) stay. A compiler-generated sequence of yours (a yield iterator, a collection expression) is compared by its elements alone (the
-    // properties of an interface T stay).
+    // (a comparer, the key of a grouping) stay. A compiler-generated sequence of yours (a yield iterator, a
+    // collection expression) is compared by its elements alone (the properties of an interface T stay).
     private static void _RemoveMembersASequenceIsNotComparedBy(
         List<MemberAccessor> members,
         Type comparedType,

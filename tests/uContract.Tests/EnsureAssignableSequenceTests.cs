@@ -774,10 +774,7 @@ public class EnsureAssignableSequenceTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal(
-            Violation + ElementsEntry + ListedFrom(actual.GetType(), typeof(IEnumerable<int>)),
-            exception.Description
-        );
+        Assert.Equal(Violation + ElementsEntry, exception.Description);
     }
 
     // ---- A collection expression ----
@@ -867,10 +864,7 @@ public class EnsureAssignableSequenceTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal(
-            Violation + ElementsEntry + ListedFrom(actual.GetType(), typeof(IReadOnlyList<int>)),
-            exception.Description
-        );
+        Assert.Equal(Violation + ElementsEntry, exception.Description);
     }
 
     [Fact]
