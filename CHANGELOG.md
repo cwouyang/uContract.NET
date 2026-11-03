@@ -358,10 +358,11 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `List<T>` or an array: a `yield` iterator from a method that returns `IEnumerable` or
   `IEnumerable<T>`, and a collection expression held as `IReadOnlyList<T>`, `IReadOnlyCollection<T>`
   or `IEnumerable<T>` (built by the .NET 8 SDK as `<>z__ReadOnlyArray<T>`, or `<>z__ReadOnlyList<T>`
-  for a spread of a `yield` iterator). It is recognised as a class marked `[CompilerGenerated]` that
-  implements `IEnumerator`, or a class whose metadata name starts with `<>` that implements
-  `IEnumerable`; a source-generated `[CompilerGenerated]` class that implements only `IEnumerable`
-  and a `file` class are classes of yours, compared by their members. An infinite iterator does
+  for a spread of a `yield` iterator). It is recognised as a class marked `[CompilerGenerated]` with
+  a `<` or a `$` in its name that implements `IEnumerator`, or a class whose metadata name starts
+  with `<>` that implements `IEnumerable`; a source-generated `[CompilerGenerated]` class with a name
+  C# can write (also one that implements only `IEnumerable` or is its own enumerator) and a `file`
+  class are classes of yours, compared by their members. An infinite iterator does
   not return, and an exception from its body leaves the call
   unwrapped, except an `InvalidOperationException` while two sequences of different runtime types
   are enumerated, which makes them unequal. One from a method that returns only `IEnumerator` or `IEnumerator<T>` is compared by its
@@ -385,11 +386,12 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `[DynamicallyAccessedMembers]` on a base class of yours does not help. A `yield` method that
   returns only an enumerator throws under Native AOT, when nothing preserves it; the message names
   no `typeof`, which cannot be written for it, and suggests returning `IEnumerable<T>` from the
-  method. For any type that C# cannot name in `typeof` (an anonymous type, a type with one as a
-  generic argument) the messages name no `typeof`, say why, and offer what can be written instead: a
-  value of a type of yours, an element type of yours for a `List<T>` of anonymous values, the member
-  as assignable, or `DBC_POST=off`. A source-generated class keeps the `typeof` fix, and a `file`
-  class is named there by its own name.
+  method. For any type that C# cannot name in `typeof` (an anonymous type, a VB iterator, a type with
+  one among or inside its generic arguments) the messages name no `typeof`, say why, and offer what
+  can be written instead: a value of a type of yours, an element type of yours for a `List<T>` of
+  anonymous values, a type of yours in place of one deeper inside, the member as assignable, or
+  `DBC_POST=off`. A source-generated class keeps the `typeof` fix, and a `file` class is named there
+  by its own name, with the words that the method must be inside the file that declares it.
   Below the
   top level, a class of yours that nothing preserves and that only inherits visible members is
   compared by its `Equals` and ends in "cannot compare" when `Equals` reports the values unequal,

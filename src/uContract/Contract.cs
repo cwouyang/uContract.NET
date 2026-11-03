@@ -1192,15 +1192,17 @@ public static class Contract
     ///     name. The named type must be accessible where the attribute is written: a private nested type can be
     ///     written only inside its declaring type. A compiler-generated type (a metadata name that starts with
     ///     <c>&lt;&gt;</c>, such as an anonymous type, or a class marked <see cref="CompilerGeneratedAttribute" /> with
-    ///     a <c>&lt;</c> in its name, such as a yield enumerator, or a type nested in one), or a type with one as a
-    ///     generic argument, cannot be written in <c>typeof</c> at all: for it the messages name no <c>typeof</c>,
-    ///     say why (the type is compiler-generated, or has a compiler-generated type among its generic arguments),
-    ///     and offer what can be written instead: a value of a type of yours (for a yield enumerator, returning
-    ///     <see cref="IEnumerable{T}" /> from its method), a type of yours as the generic argument (for a sequence
-    ///     such as a <c>List&lt;T&gt;</c> of anonymous values, an element type of yours), the top-level member that
-    ///     leads to it as assignable when there is one, or <c>DBC_POST=off</c>. A class marked
+    ///     a <c>&lt;</c> or a <c>$</c> in its name, such as a yield enumerator or a VB iterator, or a type nested in
+    ///     one), or a type with one among or inside its generic arguments, cannot be written in <c>typeof</c> at all:
+    ///     for it the messages name no <c>typeof</c>, say why (the type is compiler-generated, or has a
+    ///     compiler-generated type among or inside its generic arguments), and offer what can be written instead: a
+    ///     value of a type of yours (for a yield enumerator, returning <see cref="IEnumerable{T}" /> from its
+    ///     method), an element type of yours (a <c>List&lt;T&gt;</c> of anonymous values), a type of yours as the
+    ///     generic argument, or a type of yours in place of the compiler-generated one deeper inside; the top-level
+    ///     member that leads to it as assignable when there is one; or <c>DBC_POST=off</c>. A class marked
     ///     <see cref="CompilerGeneratedAttribute" /> with a name C# can write (a source generator's) keeps the
-    ///     <c>typeof</c> fix, and a C# 11 <c>file</c> class is named by its own name, as inside its file. The same
+    ///     <c>typeof</c> fix, and a C# 11 <c>file</c> class is named by its own name, and the message says that the
+    ///     method must be inside the file that declares the class. The same
     ///     holds for the message for a property
     ///     without a get method, which names the declaring type of the property. A type that adds no state and
     ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
@@ -1278,7 +1280,9 @@ public static class Contract
     ///     compiler-generated sequence of yours is compared by its elements alone, at every level, also against a
     ///     sequence of another runtime type (a <c>List&lt;T&gt;</c>, an array): its fields are the state of an
     ///     iteration or the storage of the elements. It is either a class marked
-    ///     <see cref="CompilerGeneratedAttribute" /> that implements <see cref="System.Collections.IEnumerator" />,
+    ///     <see cref="CompilerGeneratedAttribute" />, with a <c>&lt;</c> or a <c>$</c> in its name (which C# cannot
+    ///     write: <c>&lt;Method&gt;d__N</c>, <c>VB$StateMachine_…</c>), that implements
+    ///     <see cref="System.Collections.IEnumerator" />,
     ///     reached as an <see cref="System.Collections.IEnumerable" />: a <c>yield</c> iterator, the result of a
     ///     <c>yield</c> method that returns <see cref="System.Collections.IEnumerable" /> or
     ///     <see cref="IEnumerable{T}" />; or a class whose metadata name starts with <c>&lt;&gt;</c> that implements
@@ -1287,8 +1291,9 @@ public static class Contract
     ///     built as (<c>&lt;&gt;z__ReadOnlyArray&lt;T&gt;</c>, also for a single element, and
     ///     <c>&lt;&gt;z__ReadOnlyList&lt;T&gt;</c> for a spread of a yield iterator; the .NET 8 SDK emits
     ///     both without <see cref="CompilerGeneratedAttribute" />, measured). A class marked
-    ///     <see cref="CompilerGeneratedAttribute" /> that implements only <see cref="System.Collections.IEnumerable" />
-    ///     (a source generator's) and a C# 11 <c>file</c> class are classes of yours, compared by their members. The
+    ///     <see cref="CompilerGeneratedAttribute" /> with a name C# can write (a source generator's, also one that
+    ///     implements only <see cref="System.Collections.IEnumerable" /> or one that is its own enumerator) and a C#
+    ///     11 <c>file</c> class are classes of yours, compared by their members. The
     ///     empty collection expression held as <see cref="IReadOnlyList{T}" /> is an empty array (measured). A
     ///     violation of such a sequence at the top level does not say that members were listed from its runtime
     ///     type: none were. "Yours" means any assembly that is not part of
