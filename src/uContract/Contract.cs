@@ -1202,7 +1202,9 @@ public static class Contract
     ///     member that leads to it as assignable when there is one; or <c>DBC_POST=off</c>. A class marked
     ///     <see cref="CompilerGeneratedAttribute" /> with a name C# can write (a source generator's) keeps the
     ///     <c>typeof</c> fix, and a C# 11 <c>file</c> class is named by its own name, and the message says that the
-    ///     method must be inside the file that declares the class. The same
+    ///     method must be inside the file that declares the class. A type whose generic arguments hold
+    ///     <c>file</c> classes of more than one file cannot be written in any one file: its message names no
+    ///     <c>typeof</c>, says so, and offers other generic arguments or <c>DBC_POST=off</c>. The same
     ///     holds for the message for a property
     ///     without a get method, which names the declaring type of the property. A type that adds no state and
     ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
@@ -1279,10 +1281,14 @@ public static class Contract
     ///     the captured state of a delegate are therefore not compared: a delegate is compared by its methods. A
     ///     compiler-generated sequence of yours is compared by its elements alone, at every level, also against a
     ///     sequence of another runtime type (a <c>List&lt;T&gt;</c>, an array): its fields are the state of an
-    ///     iteration or the storage of the elements. It is either a class marked
-    ///     <see cref="CompilerGeneratedAttribute" />, with a <c>&lt;</c> or a <c>$</c> in its name (which C# cannot
-    ///     write: <c>&lt;Method&gt;d__N</c>, <c>VB$StateMachine_…</c>), that implements
-    ///     <see cref="System.Collections.IEnumerator" />,
+    ///     iteration or the storage of the elements. It is either a class that implements
+    ///     <see cref="System.Collections.IEnumerator" /> and is compiler-generated: it, or a type in its declaring
+    ///     chain, is marked
+    ///     <see cref="CompilerGeneratedAttribute" /> with a <c>&lt;</c> or a <c>$</c> in its name (which C# cannot
+    ///     write: <c>&lt;Method&gt;d__N</c>, <c>VB$StateMachine_…</c>) or has a metadata name that starts with
+    ///     <c>&lt;&gt;</c> (the iterator of a local function that captures a variable,
+    ///     <c>&lt;&lt;Method&gt;g__Local|0&gt;d</c>, is not marked itself and is nested in its marked display class
+    ///     <c>&lt;&gt;c__DisplayClass…</c>, measured),
     ///     reached as an <see cref="System.Collections.IEnumerable" />: a <c>yield</c> iterator, the result of a
     ///     <c>yield</c> method that returns <see cref="System.Collections.IEnumerable" /> or
     ///     <see cref="IEnumerable{T}" />; or a class whose metadata name starts with <c>&lt;&gt;</c> that implements

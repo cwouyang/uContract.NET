@@ -358,9 +358,11 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `List<T>` or an array: a `yield` iterator from a method that returns `IEnumerable` or
   `IEnumerable<T>`, and a collection expression held as `IReadOnlyList<T>`, `IReadOnlyCollection<T>`
   or `IEnumerable<T>` (built by the .NET 8 SDK as `<>z__ReadOnlyArray<T>`, or `<>z__ReadOnlyList<T>`
-  for a spread of a `yield` iterator). It is recognised as a class marked `[CompilerGenerated]` with
-  a `<` or a `$` in its name that implements `IEnumerator`, or a class whose metadata name starts
-  with `<>` that implements `IEnumerable`; a source-generated `[CompilerGenerated]` class with a name
+  for a spread of a `yield` iterator). It is recognised as a class that implements `IEnumerator` and
+  is compiler-generated: it, or a type in its declaring chain, is marked `[CompilerGenerated]` with a
+  `<` or a `$` in its name or has a metadata name that starts with `<>` (so the iterator of a local function that
+  captures a variable, nested in its display class, counts too), or a class whose metadata name
+  starts with `<>` that implements `IEnumerable`; a source-generated `[CompilerGenerated]` class with a name
   C# can write (also one that implements only `IEnumerable` or is its own enumerator) and a `file`
   class are classes of yours, compared by their members. An infinite iterator does
   not return, and an exception from its body leaves the call
@@ -391,7 +393,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   can be written instead: a value of a type of yours, an element type of yours for a `List<T>` of
   anonymous values, a type of yours in place of one deeper inside, the member as assignable, or
   `DBC_POST=off`. A source-generated class keeps the `typeof` fix, and a `file` class is named there
-  by its own name, with the words that the method must be inside the file that declares it.
+  by its own name, with the words that the method must be inside the file that declares it. A type
+  whose generic arguments hold `file` classes of more than one file cannot be named in any one file:
+  its message names no `typeof`, says so, and offers other generic arguments or `DBC_POST=off`.
   Below the
   top level, a class of yours that nothing preserves and that only inherits visible members is
   compared by its `Equals` and ends in "cannot compare" when `Equals` reports the values unequal,

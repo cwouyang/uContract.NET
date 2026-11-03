@@ -290,7 +290,8 @@ internal static class MemberComparison
 
     // A class the compiler generated for a sequence: a yield iterator (it implements IEnumerator and is
     // compiler-generated as the messages define it, CSharpTypeName.IsCompilerGenerated: it, or a type in its
-    // declaring chain, is marked [CompilerGenerated] with a '<' or a '$' in its name, which C# cannot write:
+    // declaring chain, has a name that starts with "<>" or is marked [CompilerGenerated] with a '<' or a '$' in its
+    // name, which C# cannot write:
     // <Method>d__N, VB$StateMachine_…, or the unmarked <<Method>g__Local|0>d of a local function that captures a
     // variable, nested in its marked display class <>c__DisplayClass…, measured on SDK 8.0.204), or a class
     // whose metadata name starts with "<>" that implements IEnumerable (the class of a collection expression,
