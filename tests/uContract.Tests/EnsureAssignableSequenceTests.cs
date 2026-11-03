@@ -777,10 +777,95 @@ public class EnsureAssignableSequenceTests
         Assert.Equal(Violation + ElementsEntry, exception.Description);
     }
 
+    // ---- A class of yours that only looks generated ----
+
+    // A source generator marks its classes [CompilerGenerated]; one that implements only IEnumerable is a class of
+    // yours, compared by its members, and its state is not hidden behind its elements.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAGeneratedEnumerableOfYoursAndItsTagChanged_ReportsTheTag()
+    {
+        TaggedBag actual = new(1, 2) { Tag = "b" };
+        TaggedBag expected = new(1, 2) { Tag = "a" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Tag", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheTagOfAGeneratedEnumerableOfYoursChanged_ReportsTheTag()
+    {
+        object actual = new TaggedBag(1, 2) { Tag = "b" };
+        object expected = new TaggedBag(1, 2) { Tag = "a" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Tag" + ListedFrom(typeof(TaggedBag), typeof(object)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheTagOfANestedGeneratedEnumerableOfYoursChanged_ReportsTheTopLevelMember()
+    {
+        Holder<TaggedBag> actual = new() { Value = new TaggedBag(1, 2) { Tag = "b" } };
+        Holder<TaggedBag> expected = new() { Value = new TaggedBag(1, 2) { Tag = "a" } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    // A C# 11 file class has a metadata name that starts with '<' (<File>F…__FileBag); it is a class of yours,
+    // compared by its members and not enumerated.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAFileClassOfYoursAndItsExtraChanged_ReportsExtraWithoutEnumerating()
+    {
+        FileBag actual = new() { Extra = 2 };
+        FileBag expected = new() { Extra = 1 };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Extra", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheExtraOfAFileClassOfYoursChanged_ReportsExtraWithoutEnumerating()
+    {
+        object actual = new FileBag { Extra = 2 };
+        object expected = new FileBag { Extra = 1 };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Extra" + ListedFrom(typeof(FileBag), typeof(object)), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheExtraOfANestedFileClassOfYoursChanged_ReportsTheTopLevelMemberWithoutEnumerating()
+    {
+        Holder<FileBag> actual = new() { Value = new FileBag { Extra = 2 } };
+        Holder<FileBag> expected = new() { Value = new FileBag { Extra = 1 } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
     // ---- A collection expression ----
 
-    // C# 12 builds a collection expression held as IReadOnlyList<T> as a class marked [CompilerGenerated]; it is
-    // compared by its elements, as a yield iterator is, also against a sequence of another runtime type.
+    // C# 12 builds a collection expression held as IReadOnlyList<T> as <>z__ReadOnlyArray<T>, recognised by its
+    // "<>" name: it carries no [CompilerGenerated] (measured on SDK 8.0.204). It is compared by its elements, as a
+    // yield iterator is, also against a sequence of another runtime type.
     [Fact]
     public void EnsureAssignable_WhenANestedCollectionExpressionAndAListHoldEqualElements_DoesNotThrow()
     {
@@ -841,6 +926,32 @@ public class EnsureAssignableSequenceTests
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
         Assert.Null(exception);
+    }
+
+    // A spread of a source with no known length is built as <>z__ReadOnlyList<T> (measured on SDK 8.0.204), also
+    // recognised by its "<>" name.
+    [Fact]
+    public void EnsureAssignable_WhenANestedSpreadOfAYieldIteratorAndAListHoldEqualElements_DoesNotThrow()
+    {
+        Holder<IReadOnlyList<int>> actual = new() { Value = [.. Order.Generate([1, 2, 3])] };
+        Holder<IReadOnlyList<int>> expected = new() { Value = ListOf(1, 2, 3) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Equal<(string, Exception?)>(("<>z__ReadOnlyList`1", null), (actual.Value.GetType().Name, exception));
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedSpreadOfAYieldIteratorAndAListDifferInOneElement_ReportsTheMember()
+    {
+        Holder<IReadOnlyList<int>> actual = new() { Value = [.. Order.Generate([1, 2, 3])] };
+        Holder<IReadOnlyList<int>> expected = new() { Value = ListOf(1, 2, 4) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
     [Fact]
@@ -1059,5 +1170,42 @@ public class EnsureAssignableSequenceTests
         {
             return GetEnumerator();
         }
+    }
+
+    // Marked as a source generator marks its classes; implements only IEnumerable<int>, over a private list, and has
+    // state of its own.
+    [System.Runtime.CompilerServices.CompilerGenerated]
+    private sealed class TaggedBag(params int[] items) : IEnumerable<int>
+    {
+        private readonly List<int> _items = [.. items];
+
+        public string Tag = "";
+
+        public IEnumerator<int> GetEnumerator()
+        {
+            return _items.GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+    }
+}
+
+// A C# 11 file class of yours that implements IEnumerable<int> itself and has state of its own. Its enumerator
+// throws, so a comparison that enumerates it fails with that exception.
+file sealed class FileBag : IEnumerable<int>
+{
+    public int Extra;
+
+    public IEnumerator<int> GetEnumerator()
+    {
+        throw new NotSupportedException("A FileBag is not enumerated by the comparison.");
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
     }
 }

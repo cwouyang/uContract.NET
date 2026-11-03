@@ -288,13 +288,17 @@ internal static class MemberComparison
         };
     }
 
-    // A class the compiler generated that implements IEnumerator or IEnumerable: a yield iterator (marked
-    // [CompilerGenerated]) or the class of a collection expression (<>z__ReadOnlyArray<T>, which the .NET 8 SDK
-    // emits without that attribute, measured; a name with '<' cannot be written in C#).
+    // A class the compiler generated for a sequence: a yield iterator (marked [CompilerGenerated], implements
+    // IEnumerator), or a class whose metadata name starts with "<>" that implements IEnumerable (the class of a
+    // collection expression, <>z__ReadOnlyArray<T> or <>z__ReadOnlyList<T>, which the .NET 8 SDK emits without
+    // [CompilerGenerated], measured). A [CompilerGenerated] class that implements only IEnumerable (a source
+    // generator's) and a file class (<File>F…__Name) are classes of yours.
     private static bool IsCompilerGeneratedSequence(Type type)
     {
-        return (type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) || type.Name.Contains('<'))
-            && (typeof(IEnumerator).IsAssignableFrom(type) || typeof(IEnumerable).IsAssignableFrom(type));
+        return (
+                type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                && typeof(IEnumerator).IsAssignableFrom(type)
+            ) || (type.Name.StartsWith("<>", StringComparison.Ordinal) && typeof(IEnumerable).IsAssignableFrom(type));
     }
 
     // A collection holds its elements: it implements ICollection, ICollection<T> (the grouping GroupBy returns)

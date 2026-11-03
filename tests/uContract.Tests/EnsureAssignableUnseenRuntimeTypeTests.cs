@@ -651,8 +651,9 @@ public class EnsureAssignableUnseenRuntimeTypeTests
 
     // ---- A collection expression ----
 
-    // C# 12 builds a collection expression held as IReadOnlyList<T> as a class marked [CompilerGenerated] that
-    // nothing preserves; it is compared by its elements, which enumerating needs no metadata for.
+    // C# 12 builds a collection expression held as IReadOnlyList<T> as <>z__ReadOnlyArray<T>, which nothing
+    // preserves; it is recognised by its "<>" name and carries no [CompilerGenerated] (measured on SDK 8.0.204). It
+    // is compared by its elements, which enumerating needs no metadata for.
     [Fact]
     public void EnsureAssignable_WhenAnAggregateHoldsItsLinesAsACollectionExpressionThatShowsNoDeclaredMemberAndNothingChanged_DoesNotThrow()
     {
