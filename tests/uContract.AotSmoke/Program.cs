@@ -2522,7 +2522,139 @@ public static class Program
             Expect.Value("Tag"),
             Expect.Value("none")
         );
+
+        // ---- The iterator of a local function that captures a variable (spec amendment 9). ----
+        // The compiler nests it (<<UptoByLocalFunction>g__Impl|0>d) in a [CompilerGenerated] display class and does
+        // not mark it itself; nothing preserves either. It is compared by its elements, as a yield iterator is.
+
+        // Mutation: none. Visibility: T (NumbersHolder); nothing preserves the iterator; List<int> shows its members.
+        yield return new Check(
+            148,
+            "Nested capturing local iterator against List<int> of equal elements",
+            NestedCapturingIteratorAgainstListEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: another last element. Visibility: as check 148.
+        yield return new Check(
+            149,
+            "Nested capturing local iterator against List<int> of different elements",
+            NestedCapturingIteratorAgainstListDiffer,
+            Expect.Throws<PostconditionViolationException>("Items"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: nothing preserves the iterator; T is IEnumerable<int>. The value also records how
+        // many instance fields reflection lists for the iterator.
+        yield return new Check(
+            150,
+            "EnsureAssignable<IEnumerable<int>> capturing local iterator against List<int> of equal elements",
+            CapturingIteratorAgainstListEqual,
+            Expect.Value("fields=0|none"),
+            Expect.Value("fields=0|none")
+        );
+
+        // Mutation: another last element. Visibility: as check 150; T is object.
+        yield return new Check(
+            151,
+            "EnsureAssignable<object> capturing local iterator against List<int> of different elements",
+            CapturingIteratorAgainstListDifferAsObject,
+            Expect.Throws<PostconditionViolationException>("They are sequences of different runtime types"),
+            Expect.Ok
+        );
+
+        // Mutation: none (the captured delegates differ, the elements are equal). Visibility: nothing preserves the
+        // iterator; T is IEnumerable<int>. By its members the two would differ in their captured state.
+        yield return new Check(
+            152,
+            "EnsureAssignable<IEnumerable<int>> capturing local iterators of different delegates and equal elements",
+            CapturingIteratorsOfDifferentDelegatesEqual,
+            Expect.Ok,
+            Expect.Ok
+        );
     }
+
+    private static IEnumerable<int> UptoByLocalFunction(int last)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(last);
+        return Impl();
+
+        IEnumerable<int> Impl()
+        {
+            for (int number = 1; number <= last; number++)
+            {
+                yield return number;
+            }
+        }
+    }
+
+    private static IEnumerable<int> ScaledByLocalFunction(int[] numbers, Func<int, int> scale)
+    {
+        ArgumentNullException.ThrowIfNull(scale);
+        return Impl();
+
+        IEnumerable<int> Impl()
+        {
+            foreach (int number in numbers)
+            {
+                yield return scale(number);
+            }
+        }
+    }
+
+    private static object? NestedCapturingIteratorAgainstListEqual()
+    {
+        List<int> expected = [1, 2, 3];
+        return NoResult(() =>
+            Contract.EnsureAssignable(
+                new NumbersHolder { Items = UptoByLocalFunction(3) },
+                new NumbersHolder { Items = expected }
+            )
+        );
+    }
+
+    private static object? NestedCapturingIteratorAgainstListDiffer()
+    {
+        List<int> expected = [1, 2, 4];
+        return NoResult(() =>
+            Contract.EnsureAssignable(
+                new NumbersHolder { Items = UptoByLocalFunction(3) },
+                new NumbersHolder { Items = expected }
+            )
+        );
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2075",
+        Justification = "The fields are only counted, to record what Native AOT shows for a type nothing preserves."
+    )]
+    private static string CapturingIteratorAgainstListEqual()
+    {
+        IEnumerable<int> actual = UptoByLocalFunction(3);
+        List<int> expected = [1, 2, 3];
+        int fields = actual
+            .GetType()
+            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .Length;
+        string entries = ViolationEntriesOf(() => Contract.EnsureAssignable<IEnumerable<int>>(actual, expected));
+        return $"fields={fields}|{entries}";
+    }
+
+    private static object? CapturingIteratorAgainstListDifferAsObject()
+    {
+        object expected = new List<int> { 1, 2, 4 };
+        return NoResult(() => Contract.EnsureAssignable<object>(UptoByLocalFunction(3), expected));
+    }
+
+    private static object? CapturingIteratorsOfDifferentDelegatesEqual() =>
+        NoResult(static () =>
+            Contract.EnsureAssignable(
+                ScaledByLocalFunction([1, 2], static number => number * 2),
+                ScaledByLocalFunction([1, 2], static number => number + number)
+            )
+        );
 
     private static string GeneratedTaggedCursorChanged() =>
         ViolationEntriesOf(static () =>
