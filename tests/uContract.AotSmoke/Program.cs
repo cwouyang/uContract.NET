@@ -669,6 +669,35 @@ internal sealed class ReadOnlyNumbersHolder
     public IReadOnlyList<int> Items { get; set; } = [];
 }
 
+// Passed as T. Marked as a source generator marks its classes, with a name C# can write; it is its own enumerator,
+// over a private array, and has state of its own.
+[CompilerGenerated]
+internal sealed class GeneratedTaggedCursor : IEnumerable<int>, IEnumerator<int>
+{
+    private readonly int[] _items = [1, 2];
+    private int _index = -1;
+
+    public string Tag = "";
+
+    int IEnumerator<int>.Current => _items[_index];
+
+    object System.Collections.IEnumerator.Current => _items[_index];
+
+    public IEnumerator<int> GetEnumerator()
+    {
+        _index = -1;
+        return this;
+    }
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public bool MoveNext() => ++_index < _items.Length;
+
+    public void Reset() => _index = -1;
+
+    public void Dispose() { }
+}
+
 // Passed as T. Marked as a source generator marks its classes, implements only IEnumerable<int> over a private list,
 // and has state of its own.
 [CompilerGenerated]
@@ -2483,7 +2512,22 @@ public static class Program
             Expect.Value("Extra"),
             Expect.Value("none")
         );
+
+        // Mutation: Tag. Visibility: T (GeneratedTaggedCursor). A [CompilerGenerated] class with a name C# can write
+        // that is its own enumerator (a source generator's cursor) is a class of yours, compared by its members.
+        yield return new Check(
+            147,
+            "EnsureAssignable<GeneratedTaggedCursor> tag changed",
+            GeneratedTaggedCursorChanged,
+            Expect.Value("Tag"),
+            Expect.Value("none")
+        );
     }
+
+    private static string GeneratedTaggedCursorChanged() =>
+        ViolationEntriesOf(static () =>
+            Contract.EnsureAssignable(new GeneratedTaggedCursor { Tag = "b" }, new GeneratedTaggedCursor { Tag = "a" })
+        );
 
     private static string GeneratedTaggedBagChanged() =>
         ViolationEntriesOf(static () =>
