@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 
 namespace uContract;
 
@@ -11,6 +12,12 @@ namespace uContract;
 /// </summary>
 internal static class CSharpTypeName
 {
+    private static readonly Regex FileClassName = new(
+        "^<[^<>]+>F[0-9A-F]+__(?<name>.+)$",
+        RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+        TimeSpan.FromSeconds(1)
+    );
+
     // Namespace-qualified, with generic arguments in angle brackets, a nested type after its declaring type and a
     // dot, and an array with its rank in brackets. C# writes the ranks of an array of arrays outermost first
     // (int[][,] is an array of int[,]), the reverse of how the runtime nests them.
@@ -26,9 +33,9 @@ internal static class CSharpTypeName
         return (type.IsGenericParameter ? type.Name : Of(type, type.GetGenericArguments())) + ranks;
     }
 
-    // False for a type that C# cannot name in typeof: one the compiler generated (marked [CompilerGenerated], or
-    // with a '<' in its name, which C# cannot write), nested in such a type, or with such a type among its generic
-    // arguments or as its element type.
+    // False for a type that C# cannot name in typeof: one the compiler generated (see IsCompilerGenerated), or one
+    // with such a type among its generic arguments or as its element type. A [CompilerGenerated] class with a name
+    // C# can write (a source generator's) and a file class (written by its own name inside its file) can be named.
     internal static bool CanBeWritten(Type type)
     {
         while (type.HasElementType)
@@ -36,18 +43,29 @@ internal static class CSharpTypeName
             type = type.GetElementType()!;
         }
 
+        return !IsCompilerGenerated(type) && (!type.IsGenericType || type.GetGenericArguments().All(CanBeWritten));
+    }
+
+    // A type the compiler generated, or nested in one: its metadata name starts with "<>" (an anonymous type, a
+    // closure, the class of a collection expression), or it is marked [CompilerGenerated] and has a '<' in its name
+    // (the enumerator of a yield method, <Method>d__N).
+    internal static bool IsCompilerGenerated(Type type)
+    {
         for (Type? declaring = type; declaring is not null; declaring = declaring.DeclaringType)
         {
             if (
-                declaring.Name.Contains('<', StringComparison.Ordinal)
-                || declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                declaring.Name.StartsWith("<>", StringComparison.Ordinal)
+                || (
+                    declaring.Name.Contains('<', StringComparison.Ordinal)
+                    && declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                )
             )
             {
-                return false;
+                return true;
             }
         }
 
-        return !type.IsGenericType || type.GetGenericArguments().All(CanBeWritten);
+        return false;
     }
 
     // The generic arguments of a nested type include those of its declaring types, first; each type in the chain
@@ -60,7 +78,7 @@ internal static class CSharpTypeName
             : type.Namespace is { } ns ? ns + "."
             : "";
 
-        string name = type.Name;
+        string name = SourceName(type.Name);
         int tick = name.IndexOf('`', StringComparison.Ordinal);
         if (tick < 0)
         {
@@ -71,5 +89,12 @@ internal static class CSharpTypeName
         int ownCount = int.Parse(name[(tick + 1)..], CultureInfo.InvariantCulture);
         IEnumerable<string> own = arguments.Skip(outerCount).Take(ownCount).Select(Of);
         return $"{prefix}{name[..tick]}<{string.Join(", ", own)}>";
+    }
+
+    // A file class is emitted as <File>F{checksum}__Name; inside its file C# names it Name.
+    private static string SourceName(string metadataName)
+    {
+        Match fileClass = FileClassName.Match(metadataName);
+        return fileClass.Success ? fileClass.Groups["name"].Value : metadataName;
     }
 }

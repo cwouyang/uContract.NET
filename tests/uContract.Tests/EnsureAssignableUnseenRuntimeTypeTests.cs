@@ -435,10 +435,10 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         Assert.Null(exception);
     }
 
-    // Under Native AOT a yield enumerator that nothing preserves lists no field to reflection. Under the JIT a real
-    // one lists its state fields, so a hand-written enumerator that declares no field stands in for it.
+    // A [CompilerGenerated] class with a name C# can write (as a source generator emits) can be named in typeof, so
+    // the fix keeps it. (The enumerator of a real yield method, named <Method>d__N, is checked by AotSmoke 144.)
     [Fact]
-    public void EnsureAssignable_WhenTIsAnEnumeratorInterfaceAndTheYieldEnumeratorListsNoMember_SuggestsReturningASequenceFromItsMethod()
+    public void EnsureAssignable_WhenTIsAnEnumeratorInterfaceAndAGeneratedEnumeratorWithAWritableNameListsNoMember_KeepsTheTypeofFix()
     {
         IEnumerator<int> actual = new EnumeratorWithoutFields();
         IEnumerator<int> expected = new EnumeratorWithoutFields();
@@ -449,9 +449,29 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         Assert.Equal(
             $"EnsureAssignable cannot compare {typeof(EnumeratorWithoutFields)}, the runtime type of the values (T is "
                 + $"{typeof(IEnumerator<int>)}): no properties or fields are visible to reflection under Native AOT. "
-                + "The type is compiler-generated and cannot be named in typeof. Ways out: return IEnumerable<T> from "
-                + "the yield method that builds it, or use a value of a type of yours instead; or set DBC_POST=off "
-                + "(disables all postcondition checks).",
+                + "If the type has members, preserve them, for example with [DynamicDependency("
+                + $"DynamicallyAccessedMemberTypes.All, typeof({ThisClass}.EnumeratorWithoutFields))] on a method that "
+                + "runs, or pass the values as that type; otherwise set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    // A C# 11 file class has the metadata name <File>F…__Name, which C# cannot write, but inside its file it is
+    // named by its own name: the fix names it so.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheRuntimeTypeThatShowsNoDeclaredMemberIsAFileClass_NamesItBySourceNameInTheFix()
+    {
+        object actual = new FileTicket { Seat = 1 };
+        object expected = new FileTicket { Seat = 1 };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [actual.GetType()],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            CannotCompare(actual.GetType(), typeof(object), "uContract.Tests.FileTicket"),
             cannotCompare.Message
         );
     }
@@ -906,4 +926,10 @@ public class EnsureAssignableUnseenRuntimeTypeTests
     {
         public int Seat { get; set; }
     }
+}
+
+// A C# 11 file class of yours, which nothing preserves in the tests that report it as unseen.
+file sealed class FileTicket
+{
+    public int Seat { get; set; }
 }

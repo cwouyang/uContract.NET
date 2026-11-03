@@ -1670,8 +1670,9 @@ public class EnsureAssignableTests
         );
     }
 
+    // A source generator marks its classes [CompilerGenerated] but gives them names C# can write in typeof.
     [Fact]
-    public void EnsureAssignable_WhenACompilerGeneratedTypeHasAWriteOnlyProperty_NamesNoTypeofInTheFix()
+    public void EnsureAssignable_WhenAGeneratedTypeWithAWritableNameHasAWriteOnlyProperty_KeepsTheTypeofFix()
     {
         GeneratedWriteOnly first = new() { X = "a" };
         GeneratedWriteOnly second = new() { X = "a" };
@@ -1681,10 +1682,12 @@ public class EnsureAssignableTests
         );
 
         Assert.Equal(
-            $"EnsureAssignable cannot read property {typeof(GeneratedWriteOnly)}.X: no get method is visible through "
-                + "the compared type. The type is compiler-generated and cannot be named in typeof. Ways out: list the "
-                + "top-level member that leads to it as assignable; use a materialised value (for example ToList()) or "
-                + "a value of a type of yours instead; or set DBC_POST=off (disables all postcondition checks).",
+            $"EnsureAssignable cannot read property {typeof(GeneratedWriteOnly)}.X: no get method is visible through the "
+                + "compared type. If trimming removed it, preserve the type's members, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + "typeof(uContract.Tests.EnsureAssignableTests.GeneratedWriteOnly))] on a method that runs. Otherwise "
+                + "list the top-level member that leads to it as assignable, or set DBC_POST=off (disables all "
+                + "postcondition checks).",
             exception.Message
         );
     }
