@@ -296,14 +296,8 @@ internal static class MemberComparison
     // own enumerator) and a file class (<File>F…__Name) are classes of yours.
     private static bool IsCompilerGeneratedSequence(Type type)
     {
-        return (
-                type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                && (
-                    type.Name.Contains('<', StringComparison.Ordinal)
-                    || type.Name.Contains('$', StringComparison.Ordinal)
-                )
-                && typeof(IEnumerator).IsAssignableFrom(type)
-            ) || (type.Name.StartsWith("<>", StringComparison.Ordinal) && typeof(IEnumerable).IsAssignableFrom(type));
+        return (CSharpTypeName.IsMarkedWithUnwritableName(type) && typeof(IEnumerator).IsAssignableFrom(type))
+            || (CSharpTypeName.HasCompilerPrefix(type) && typeof(IEnumerable).IsAssignableFrom(type));
     }
 
     // A collection holds its elements: it implements ICollection, ICollection<T> (the grouping GroupBy returns)
