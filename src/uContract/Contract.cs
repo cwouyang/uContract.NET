@@ -1783,7 +1783,7 @@ public static class Contract
 
     // A sequence built on a framework class is compared by its elements and by its members, without the
     // framework's non-public fields and its Capacity, which the elements stand in for: its public properties
-    // (a comparer, the key of a grouping) stay. A yield iterator of yours is compared by its elements alone (the
+    // (a comparer, the key of a grouping) stay. A compiler-generated sequence of yours (a yield iterator, a collection expression) is compared by its elements alone (the
     // properties of an interface T stay).
     private static void _RemoveMembersASequenceIsNotComparedBy(
         List<MemberAccessor> members,
@@ -1791,7 +1791,7 @@ public static class Contract
         Type declaredType
     )
     {
-        if (MemberComparison.GetSequenceRule(comparedType).IsIterator)
+        if (MemberComparison.GetSequenceRule(comparedType).IsCompilerGenerated)
         {
             members.RemoveAll(m => !m.DeclaringType.IsInterface);
             return;
@@ -1922,7 +1922,7 @@ public static class Contract
 
     // Under Native AOT a runtime type other than T that nothing preserves shows no declared member, and comparing
     // it by what does show (the members of T, those it inherits, its elements) would miss what it adds. A value
-    // compared as a whole lists no member of it, and a yield iterator of yours is compared by its elements alone,
+    // compared as a whole lists no member of it, and a compiler-generated sequence of yours is compared by its elements alone,
     // which enumerating needs no metadata for. side names the parameter whose runtime type this is when the two
     // values are of different runtime types; null when they are of one.
     private static void _ThrowIfShowsNoDeclaredMember(Type runtimeType, Type declaredType, string? side = null)
@@ -1931,7 +1931,7 @@ public static class Contract
             runtimeType != declaredType
             && !_IsComparedAsWhole(runtimeType)
             && MemberComparison.ShowsNoDeclaredMember(runtimeType)
-            && !MemberComparison.GetSequenceRule(runtimeType).IsIterator
+            && !MemberComparison.GetSequenceRule(runtimeType).IsCompilerGenerated
         )
         {
             throw _ShowsNoDeclaredMember(runtimeType, declaredType, side);
@@ -1963,7 +1963,7 @@ public static class Contract
     }
 
     // The members the top level is compared by: those of comparedType, and, when T is an interface other than
-    // comparedType, the properties the interface declares. A yield iterator of yours compared by its elements
+    // comparedType, the properties the interface declares. A compiler-generated sequence of yours compared by its elements
     // keeps none of its own members (see _RemoveMembersASequenceIsNotComparedBy), so its members being hidden
     // under Native AOT, as they are when nothing preserves it, leaves nothing uncompared.
     private static List<MemberAccessor> _TopLevelMembers(
@@ -1999,7 +1999,7 @@ public static class Contract
             TypeMetadata metadata = MemberComparison.GetTopLevelMetadata(comparedType, declaredType);
             if (
                 MemberComparison.MembersAreHidden(comparedType, metadata)
-                && !(byElements && MemberComparison.GetSequenceRule(comparedType).IsIterator)
+                && !(byElements && MemberComparison.GetSequenceRule(comparedType).IsCompilerGenerated)
             )
             {
                 throw _NoMembersVisible(comparedType, declaredType);

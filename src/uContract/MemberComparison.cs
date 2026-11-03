@@ -261,8 +261,8 @@ internal static class MemberComparison
     // How a sequence of the runtime type is compared: when its class chain holds a framework class below
     // System.Object, by its elements and by OwnMembers, the members of its member list declared on a type that
     // is not a framework class; otherwise, as a class of yours that implements IEnumerable itself, by its
-    // members alone. A yield iterator of yours (a class marked [CompilerGenerated] that implements IEnumerator)
-    // is compared by its elements alone: its fields are the state of the iteration.
+    // members alone. A compiler-generated sequence of yours (see IsCompilerGeneratedSequence) is compared by its
+    // elements alone: its fields are the state of an iteration or the storage of a collection expression.
     internal static SequenceRule GetSequenceRule(Type runtimeType)
     {
         return SequenceRuleCache.GetOrAdd(runtimeType, CreateSequenceRule);
@@ -271,9 +271,12 @@ internal static class MemberComparison
     private static SequenceRule CreateSequenceRule(Type type)
     {
         bool hasFrameworkClass = HasFrameworkClassBelowObject(type);
-        if (!hasFrameworkClass && IsCompilerGeneratedIterator(type))
+        if (!hasFrameworkClass && IsCompilerGeneratedSequence(type))
         {
-            return new SequenceRule(HasFrameworkClass: false, Array.Empty<MemberAccessor>()) { IsIterator = true };
+            return new SequenceRule(HasFrameworkClass: false, Array.Empty<MemberAccessor>())
+            {
+                IsCompilerGenerated = true,
+            };
         }
 
         return new SequenceRule(
@@ -285,7 +288,10 @@ internal static class MemberComparison
         };
     }
 
-    private static bool IsCompilerGeneratedIterator(Type type)
+    // A class the compiler generated that implements IEnumerator or IEnumerable: a yield iterator (marked
+    // [CompilerGenerated]) or the class of a collection expression (<>z__ReadOnlyArray<T>, which the .NET 8 SDK
+    // emits without that attribute, measured; a name with '<' cannot be written in C#).
+    private static bool IsCompilerGeneratedSequence(Type type)
     {
         return (type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) || type.Name.Contains('<'))
             && (typeof(IEnumerator).IsAssignableFrom(type) || typeof(IEnumerable).IsAssignableFrom(type));
@@ -764,11 +770,12 @@ internal static class MemberComparison
     }
 
     // The first class in the class chain of type, below System.Object, that is not a framework class and shows no
-    // declared member; none for a yield iterator of yours.
+    // declared member; none for a compiler-generated sequence of yours.
     private static Type? UnseenClassOfYours(Type type)
     {
-        // A yield iterator of yours is compared by its elements alone, which enumerating needs no metadata for.
-        if (GetSequenceRule(type).IsIterator)
+        // A compiler-generated sequence of yours is compared by its elements alone, which enumerating needs no
+        // metadata for.
+        if (GetSequenceRule(type).IsCompilerGenerated)
         {
             return null;
         }
@@ -1259,14 +1266,15 @@ internal static class MemberComparison
     // OwnMembers is cached for every caller, so it is read-only.
     internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers)
     {
-        // A yield iterator of yours: compared by its elements alone, at every level.
-        public bool IsIterator { get; init; }
+        // A compiler-generated sequence of yours (a yield iterator, a collection expression): compared by its
+        // elements alone, at every level.
+        public bool IsCompilerGenerated { get; init; }
 
         // Implements ICollection or IReadOnlyCollection<T> (see MemberComparison.IsCollection).
         public bool IsCollection { get; init; }
 
         // Compared by its elements (and OwnMembers), not by its members alone.
-        public bool IsComparedByElements => HasFrameworkClass || IsIterator;
+        public bool IsComparedByElements => HasFrameworkClass || IsCompilerGenerated;
     }
 
     // Created only when a comparison is blocked. The path is prepended one segment per level on
