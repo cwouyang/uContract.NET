@@ -1670,6 +1670,28 @@ public class EnsureAssignableTests
         );
     }
 
+    // A generic class of yours with an anonymous type as its argument cannot be named in typeof.
+    [Fact]
+    public void EnsureAssignable_WhenAWriteOnlyPropertyIsDeclaredOnAGenericClassOfAnAnonymousType_NamesNoTypeofInTheFix()
+    {
+        var tag = new { Code = 1 };
+        object first = GenericWriteOnlyOf(tag);
+        object second = GenericWriteOnlyOf(tag);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(first, second)
+        );
+
+        Assert.EndsWith(
+            ".X: no get method is visible through the compared type. The type has a compiler-generated type among "
+                + "its generic arguments and cannot be named in typeof. Ways out: list the top-level member that leads "
+                + "to it as assignable; use a type of yours as its generic argument instead; or set DBC_POST=off "
+                + "(disables all postcondition checks).",
+            exception.Message,
+            StringComparison.Ordinal
+        );
+    }
+
     // A source generator marks its classes [CompilerGenerated] but gives them names C# can write in typeof.
     [Fact]
     public void EnsureAssignable_WhenAGeneratedTypeWithAWritableNameHasAWriteOnlyProperty_KeepsTheTypeofFix()
@@ -2260,7 +2282,26 @@ public class EnsureAssignableTests
         public int XLength => _x.Length;
     }
 
-    // Marked as the compiler marks a class it generates, which C# cannot name in typeof.
+    private static GenericWriteOnly<TTag> GenericWriteOnlyOf<TTag>(TTag tag)
+    {
+        return new GenericWriteOnly<TTag> { Tag = tag, X = "a" };
+    }
+
+    private sealed class GenericWriteOnly<TTag>
+    {
+        private string _x = "";
+
+        public TTag? Tag { get; set; }
+
+        public string X
+        {
+            set => _x = value;
+        }
+
+        public int XLength => _x.Length;
+    }
+
+    // Marked as a source generator marks a class it generates; its name can be written in typeof.
     [System.Runtime.CompilerServices.CompilerGenerated]
     private sealed class GeneratedWriteOnly
     {

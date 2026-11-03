@@ -417,15 +417,31 @@ internal static class MemberComparison
             && string.Equals(comparedBase.Name, declaredBase.Name, StringComparison.Ordinal);
     }
 
-    // The ways out for a type that C# cannot name in typeof (see CSharpTypeName.CanBeWritten). firstWayOut is
-    // empty, or a way out that ends with "; ". An enumerator (from a yield method that returns only IEnumerator or
-    // IEnumerator<T>) cannot be materialised; its method can return a sequence instead.
+    // The ways out for a type that C# cannot name in typeof (see CSharpTypeName.CanBeWritten), matched to why it
+    // cannot. firstWayOut is empty, or a way out that ends with "; ". A compiler-generated type is replaced by a
+    // value of a type of yours, except an enumerator (from a yield method that returns only IEnumerator or
+    // IEnumerator<T>), whose method can return a sequence instead. A type of yours or of .NET with a
+    // compiler-generated generic argument (List<anonymous type>) keeps its type and takes another argument: for a
+    // sequence, an element type of yours.
     internal static string WaysOutForAnUnnamedType(Type type, string firstWayOut = "")
     {
+        bool isSequence = typeof(IEnumerable).IsAssignableFrom(type);
+        if (!CSharpTypeName.IsCompilerGenerated(type))
+        {
+            string replaceArgument = isSequence
+                ? "use an element type of yours instead of the compiler-generated one; "
+                : "use a type of yours as its generic argument instead; ";
+            return "The type has a compiler-generated type among its generic arguments and cannot be named in typeof. "
+                + "Ways out: "
+                + firstWayOut
+                + replaceArgument
+                + "or set DBC_POST=off (disables all postcondition checks).";
+        }
+
         string replaceIt =
-            typeof(IEnumerator).IsAssignableFrom(type) && !typeof(IEnumerable).IsAssignableFrom(type)
+            typeof(IEnumerator).IsAssignableFrom(type) && !isSequence
                 ? "return IEnumerable<T> from the yield method that builds it, or use a value of a type of yours instead; "
-                : "use a materialised value (for example ToList()) or a value of a type of yours instead; ";
+                : "use a value of a type of yours instead; ";
         return "The type is compiler-generated and cannot be named in typeof. Ways out: "
             + firstWayOut
             + replaceIt

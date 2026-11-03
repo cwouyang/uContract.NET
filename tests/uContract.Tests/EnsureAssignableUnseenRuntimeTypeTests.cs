@@ -42,16 +42,21 @@ public class EnsureAssignableUnseenRuntimeTypeTests
 
     // A compiler-generated type cannot be named in typeof, so the fix offers what can be written instead.
     private const string CompilerGeneratedWaysOut =
-        "The type is compiler-generated and cannot be named in typeof. Ways out: use a materialised value (for "
-        + "example ToList()) or a value of a type of yours instead; or set DBC_POST=off (disables all postcondition "
-        + "checks).";
+        "The type is compiler-generated and cannot be named in typeof. Ways out: use a value of a type of yours "
+        + "instead; or set DBC_POST=off (disables all postcondition checks).";
 
-    private static string CannotCompareCompilerGenerated(Type runtimeType, Type declaredType)
+    // A list of anonymous values is already materialised; what can change is its element type.
+    private const string GeneratedElementWaysOut =
+        "The type has a compiler-generated type among its generic arguments and cannot be named in typeof. Ways out: "
+        + "use an element type of yours instead of the compiler-generated one; or set DBC_POST=off (disables all "
+        + "postcondition checks).";
+
+    private static string CannotCompareCompilerGenerated(Type runtimeType, Type declaredType, string waysOut)
     {
         return $"EnsureAssignable cannot compare {runtimeType}, the runtime type of the values (T is {declaredType}): "
             + "under Native AOT it shows no declared member to reflection, as a type that nothing preserves does, so "
             + "its members cannot be listed. "
-            + CompilerGeneratedWaysOut;
+            + waysOut;
     }
 
     [Fact]
@@ -66,7 +71,10 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(CannotCompareCompilerGenerated(actual.GetType(), typeof(object)), cannotCompare.Message);
+        Assert.Equal(
+            CannotCompareCompilerGenerated(actual.GetType(), typeof(object), CompilerGeneratedWaysOut),
+            cannotCompare.Message
+        );
     }
 
     // List<T> can be written, but not with an anonymous type as T.
@@ -82,7 +90,10 @@ public class EnsureAssignableUnseenRuntimeTypeTests
         );
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(CannotCompareCompilerGenerated(actual.GetType(), typeof(object)), cannotCompare.Message);
+        Assert.Equal(
+            CannotCompareCompilerGenerated(actual.GetType(), typeof(object), GeneratedElementWaysOut),
+            cannotCompare.Message
+        );
     }
 
     [Fact]
@@ -566,8 +577,8 @@ public class EnsureAssignableUnseenRuntimeTypeTests
                 + "unequal (without an Equals override this only means they are different instances), and their "
                 + "members cannot be listed. The type is compiler-generated and cannot be named in typeof. Ways out: "
                 + "list 'Content' as assignable (patterns are regular expressions matched against top-level member "
-                + "names, so use the plain member name); use a materialised value (for example ToList()) or a value of "
-                + "a type of yours instead; or set DBC_POST=off (disables all postcondition checks).",
+                + "names, so use the plain member name); use a value of a type of yours instead; or set DBC_POST=off "
+                + "(disables all postcondition checks).",
             cannotCompare.Message
         );
     }
