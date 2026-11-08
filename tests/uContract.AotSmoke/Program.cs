@@ -744,6 +744,26 @@ internal sealed class EncodingHolder
     public System.Text.Encoding Encoding { get; set; } = System.Text.Encoding.UTF8;
 }
 
+// Reached as a member of SpanStateHolder. Only its public properties are preserved, by a generic method whose type
+// parameter is annotated with PublicProperties: its ReadOnlySpan<byte> property is listed, the array behind it not.
+internal sealed class PropertiesOnlySpanState(params byte[] bytes)
+{
+    private byte[] _bytes = bytes;
+
+    public ReadOnlySpan<byte> Bytes => _bytes;
+
+    public void Replace(params byte[] bytes)
+    {
+        _bytes = bytes;
+    }
+}
+
+// Passed as T.
+internal sealed class SpanStateHolder
+{
+    public PropertiesOnlySpanState State { get; set; } = new();
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -2633,6 +2653,29 @@ public static class Program
         // Mutation: none. Visibility: T (EncodingHolder); no DynamicDependency roots UTF8Encoding, whose Preamble is a
         // ReadOnlySpan<byte>.
         yield return new Check(156, "Encoding member unchanged", EncodingUnchanged, Expect.Ok, Expect.Ok);
+
+        // Mutation: the Encoding member replaced by one with another preamble. Visibility: T (EncodingHolder); no
+        // DynamicDependency roots UTF8Encoding. The value also records what reflection lists for UTF8Encoding.
+        // Expected values measured, see #40 byref-like: UTF8Encoding shows no member, so it cannot be compared.
+        yield return new Check(
+            157,
+            "Encoding member replaced",
+            EncodingReplaced,
+            Expect.Value("fields=0|properties=0|Preamble=False|cannot compare"),
+            Expect.Value("fields=0|properties=0|Preamble=False|none")
+        );
+
+        // Mutation: the array behind the span property replaced. Visibility: T (SpanStateHolder); only the public
+        // properties of PropertiesOnlySpanState are preserved. The value also records what reflection lists for it.
+        // Expected values measured, see #40 byref-like: the span property is listed and the field is not, so the
+        // change is not reported.
+        yield return new Check(
+            158,
+            "Properties-only span state changed",
+            PropertiesOnlySpanStateChanged,
+            Expect.Value("fields=0|properties=1|Bytes=True|none"),
+            Expect.Value("fields=0|properties=1|Bytes=True|none")
+        );
     }
 
     private static IEnumerable<int> UptoByLocalFunction(int last)
@@ -3555,6 +3598,64 @@ public static class Program
         };
         EncodingHolder copy = Contract.Old(() => original);
         return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    // "none", "violation:<entries>", or "cannot compare". Any other exception fails the check.
+    private static string ByRefLikeOutcomeOf(Action call)
+    {
+        try
+        {
+            string entries = ViolationEntriesOf(call);
+            return string.Equals(entries, "none", StringComparison.Ordinal) ? entries : "violation:" + entries;
+        }
+        catch (InvalidOperationException ex)
+            when (ex.Message.StartsWith("EnsureAssignable cannot compare", StringComparison.Ordinal))
+        {
+            return "cannot compare";
+        }
+    }
+
+    // What reflection lists for the runtime type of value: instance fields, public instance properties, and whether
+    // a property named propertyName is among them.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2075",
+        Justification = "The members are only counted, to record what Native AOT shows for the type."
+    )]
+    private static string ListingOf(object value, string propertyName)
+    {
+        Type type = value.GetType();
+        int fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Length;
+        PropertyInfo[] properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        bool listed = properties.Any(p => string.Equals(p.Name, propertyName, StringComparison.Ordinal));
+        return $"fields={fields}|properties={properties.Length}|{propertyName}={listed}";
+    }
+
+    private static string EncodingReplaced()
+    {
+        EncodingHolder original = new()
+        {
+            Encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+        };
+        EncodingHolder copy = Contract.Old(() => original);
+        original.Encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        string outcome = ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, copy));
+        return $"{ListingOf(original.Encoding, "Preamble")}|{outcome}";
+    }
+
+    private static void KeepPublicProperties<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] TKept
+    >() { }
+
+    private static string PropertiesOnlySpanStateChanged()
+    {
+        KeepPublicProperties<PropertiesOnlySpanState>();
+        // Two instances, not Old: how Old copies a type whose fields are hidden is not what is measured here.
+        SpanStateHolder original = new() { State = new PropertiesOnlySpanState(1, 2) };
+        SpanStateHolder expected = new() { State = new PropertiesOnlySpanState(1, 2) };
+        original.State.Replace(9);
+        string outcome = ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, expected));
+        return $"{ListingOf(original.State, "Bytes")}|{outcome}";
     }
 
     private static RingNode NewRing()
