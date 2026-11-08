@@ -712,6 +712,38 @@ internal sealed class GeneratedTaggedBag : IEnumerable<int>
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
+// ---- Byref-like properties (issue #40). Nothing preserves a fixture unless its comment says so. ----
+
+// Passed as T. Its ReadOnlySpan<byte> property shows the private array behind it.
+internal sealed class SpanBytes(params byte[] bytes)
+{
+    private readonly byte[] _bytes = bytes;
+
+    public ReadOnlySpan<byte> Bytes => _bytes;
+
+    public void Overwrite(int index, byte value)
+    {
+        _bytes[index] = value;
+    }
+}
+
+// Passed as T. Has no field; its only member is a ReadOnlySpan<byte> property.
+internal sealed class EmptySpanSource
+{
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "An instance property is what EnsureAssignable lists."
+    )]
+    public ReadOnlySpan<byte> Bytes => ReadOnlySpan<byte>.Empty;
+}
+
+// Passed as T. Holds an Encoding, whose Preamble is a ReadOnlySpan<byte>.
+internal sealed class EncodingHolder
+{
+    public System.Text.Encoding Encoding { get; set; } = System.Text.Encoding.UTF8;
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -2573,6 +2605,34 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // ---- Byref-like properties (issue #40). Reflection cannot read them; the fields behind them are compared. ----
+
+        // Mutation: none. Visibility: T (SpanBytes); its ReadOnlySpan<byte> property is not compared.
+        yield return new Check(153, "Span property unchanged", SpanPropertyUnchanged, Expect.Ok, Expect.Ok);
+
+        // Mutation: element write in the array behind the span property. Visibility: as check 153.
+        yield return new Check(
+            154,
+            "Span property changed",
+            SpanPropertyChanged,
+            Expect.Throws<PostconditionViolationException>("_bytes"),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (EmptySpanSource), whose only member is a ReadOnlySpan<byte> property; it
+        // counts as visible, so the rule "no members visible" does not apply.
+        yield return new Check(
+            155,
+            "Span property as the only member",
+            OnlySpanPropertyUnchanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (EncodingHolder); no DynamicDependency roots UTF8Encoding, whose Preamble is a
+        // ReadOnlySpan<byte>.
+        yield return new Check(156, "Encoding member unchanged", EncodingUnchanged, Expect.Ok, Expect.Ok);
     }
 
     private static IEnumerable<int> UptoByLocalFunction(int last)
@@ -3466,6 +3526,34 @@ public static class Program
         PointerHolder original = new() { Address = (int*)16 };
         PointerHolder copy = Contract.Old(() => original);
         original.Address = (int*)32;
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? SpanPropertyUnchanged()
+    {
+        SpanBytes original = new(1, 2);
+        SpanBytes copy = Contract.Old(() => original);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? SpanPropertyChanged()
+    {
+        SpanBytes original = new(1, 2);
+        SpanBytes copy = Contract.Old(() => original);
+        original.Overwrite(0, 9);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? OnlySpanPropertyUnchanged() =>
+        NoResult(static () => Contract.EnsureAssignable(new EmptySpanSource(), new EmptySpanSource()));
+
+    private static object? EncodingUnchanged()
+    {
+        EncodingHolder original = new()
+        {
+            Encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+        };
+        EncodingHolder copy = Contract.Old(() => original);
         return NoResult(() => Contract.EnsureAssignable(original, copy));
     }
 
