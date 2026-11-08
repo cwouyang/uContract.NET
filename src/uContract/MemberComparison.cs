@@ -108,7 +108,11 @@ internal static class MemberComparison
         FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
         List<MemberAccessor> members = properties
-            .Where(p => p.GetIndexParameters().Length == 0 && !IsOverriddenByAnother(p, properties))
+            .Where(p =>
+                p.GetIndexParameters().Length == 0
+                && !p.PropertyType.IsByRefLike
+                && !IsOverriddenByAnother(p, properties)
+            )
             .Select(p => new MemberAccessor(p, ExistingGetter(p)))
             .Concat(fields.Select(f => new MemberAccessor(f)))
             .ToList();
