@@ -712,6 +712,77 @@ internal sealed class GeneratedTaggedBag : IEnumerable<int>
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
+// ---- Byref-like properties (issue #40). Nothing preserves a fixture unless its comment says so. ----
+
+// Passed as T. Its ReadOnlySpan<byte> property shows the private array behind it.
+internal sealed class SpanBytes(params byte[] bytes)
+{
+    private readonly byte[] _bytes = bytes;
+
+    public ReadOnlySpan<byte> Bytes => _bytes;
+
+    public void Overwrite(int index, byte value)
+    {
+        _bytes[index] = value;
+    }
+}
+
+// Passed as T. Has no field; its only member is a ReadOnlySpan<byte> property.
+internal sealed class EmptySpanSource
+{
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "An instance property is what EnsureAssignable lists."
+    )]
+    public ReadOnlySpan<byte> Bytes => ReadOnlySpan<byte>.Empty;
+}
+
+// Passed as T. Holds an Encoding, whose Preamble is a ReadOnlySpan<byte>.
+internal sealed class EncodingHolder
+{
+    public System.Text.Encoding Encoding { get; set; } = System.Text.Encoding.UTF8;
+}
+
+// Reached as a member of SpanStateHolder. Only its public properties are preserved, by a generic method whose type
+// parameter is annotated with PublicProperties: its ReadOnlySpan<byte> property is listed, the array behind it not.
+internal sealed class PropertiesOnlySpanState(params byte[] bytes)
+{
+    private byte[] _bytes = bytes;
+
+    public ReadOnlySpan<byte> Bytes => _bytes;
+
+    public void Replace(params byte[] bytes)
+    {
+        _bytes = bytes;
+    }
+}
+
+// Passed as T.
+internal sealed class SpanStateHolder
+{
+    public PropertiesOnlySpanState State { get; set; } = new();
+}
+
+// A ref struct of this program: a byref-like type that is neither Span<T> nor ReadOnlySpan<T>.
+internal ref struct WindowView
+{
+    public int Start { get; init; }
+}
+
+// Passed as T. Its WindowView property shows the private field behind it.
+internal sealed class SlidingWindow(int start)
+{
+    private int _start = start;
+
+    public WindowView Current => new() { Start = _start };
+
+    public void Move(int start)
+    {
+        _start = start;
+    }
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -2573,6 +2644,81 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // ---- Byref-like properties (issue #40). Reflection cannot read them; the fields behind them are compared. ----
+
+        // Mutation: none. Visibility: T (SpanBytes); its ReadOnlySpan<byte> property is not compared.
+        yield return new Check(153, "Span property unchanged", SpanPropertyUnchanged, Expect.Ok, Expect.Ok);
+
+        // Mutation: element write in the array behind the span property. Visibility: as check 153.
+        yield return new Check(
+            154,
+            "Span property changed",
+            SpanPropertyChanged,
+            Expect.Throws<PostconditionViolationException>("_bytes"),
+            Expect.Ok
+        );
+
+        // Mutation: none (two instances). Visibility: T (EmptySpanSource), whose only member is a ReadOnlySpan<byte>
+        // property; a byref-like property does not count as visible, so the rule "no members visible" applies.
+        yield return new Check(
+            155,
+            "Span property as the only member, two instances",
+            OnlySpanPropertyUnchanged,
+            Expect.Throws<InvalidOperationException>(
+                "are properties of a byref-like type",
+                "do not count as members",
+                "DBC_POST=off"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (EncodingHolder); no DynamicDependency roots UTF8Encoding, whose Preamble is a
+        // ReadOnlySpan<byte>.
+        yield return new Check(156, "Encoding member unchanged", EncodingUnchanged, Expect.Ok, Expect.Ok);
+
+        // Mutation: the Encoding member replaced by one with another preamble. Visibility: T (EncodingHolder); no
+        // DynamicDependency roots UTF8Encoding. The value also records what reflection lists for UTF8Encoding.
+        // Expected values measured, see #40 byref-like: UTF8Encoding shows no member, so it cannot be compared.
+        yield return new Check(
+            157,
+            "Encoding member replaced",
+            EncodingReplaced,
+            Expect.Value("fields=0|properties=0|Preamble=False|cannot compare"),
+            Expect.Value("fields=0|properties=0|Preamble=False|none")
+        );
+
+        // Mutation: the array behind the span property replaced. Visibility: T (SpanStateHolder); only the public
+        // properties of PropertiesOnlySpanState are preserved. The value also records what reflection lists for it.
+        // Expected values measured, see #40 byref-like: the span property is listed and the field is not; the span
+        // property does not count as visible, so the type shows no members and cannot be compared.
+        yield return new Check(
+            158,
+            "Properties-only span state changed",
+            PropertiesOnlySpanStateChanged,
+            Expect.Value("fields=0|properties=1|Bytes=True|cannot compare"),
+            Expect.Value("fields=0|properties=1|Bytes=True|none")
+        );
+
+        // Mutation: none. Visibility: T (SlidingWindow), whose WindowView property is of a ref struct of this program.
+        // Expected values measured, see #40 byref-like.
+        yield return new Check(
+            159,
+            "Ref struct property unchanged",
+            RefStructPropertyUnchanged,
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // Mutation: field write behind the ref struct property. Visibility: as check 159. Expected values measured,
+        // see #40 byref-like.
+        yield return new Check(
+            160,
+            "Ref struct property changed",
+            RefStructPropertyChanged,
+            Expect.Value("violation:_start"),
+            Expect.Value("none")
+        );
     }
 
     private static IEnumerable<int> UptoByLocalFunction(int last)
@@ -3467,6 +3613,107 @@ public static class Program
         PointerHolder copy = Contract.Old(() => original);
         original.Address = (int*)32;
         return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? SpanPropertyUnchanged()
+    {
+        SpanBytes original = new(1, 2);
+        SpanBytes copy = Contract.Old(() => original);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? SpanPropertyChanged()
+    {
+        SpanBytes original = new(1, 2);
+        SpanBytes copy = Contract.Old(() => original);
+        original.Overwrite(0, 9);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static object? OnlySpanPropertyUnchanged() =>
+        NoResult(static () => Contract.EnsureAssignable(new EmptySpanSource(), new EmptySpanSource()));
+
+    private static object? EncodingUnchanged()
+    {
+        EncodingHolder original = new()
+        {
+            Encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+        };
+        EncodingHolder copy = Contract.Old(() => original);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    // "none", "violation:<entries>", or "cannot compare". Any other exception fails the check.
+    private static string ByRefLikeOutcomeOf(Action call)
+    {
+        try
+        {
+            string entries = ViolationEntriesOf(call);
+            return string.Equals(entries, "none", StringComparison.Ordinal) ? entries : "violation:" + entries;
+        }
+        catch (InvalidOperationException ex)
+            when (ex.Message.StartsWith("EnsureAssignable cannot compare", StringComparison.Ordinal))
+        {
+            return "cannot compare";
+        }
+    }
+
+    // What reflection lists for the runtime type of value: instance fields, public instance properties, and whether
+    // a property named propertyName is among them.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2075",
+        Justification = "The members are only counted, to record what Native AOT shows for the type."
+    )]
+    private static string ListingOf(object value, string propertyName)
+    {
+        Type type = value.GetType();
+        int fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Length;
+        PropertyInfo[] properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        bool listed = properties.Any(p => string.Equals(p.Name, propertyName, StringComparison.Ordinal));
+        return $"fields={fields}|properties={properties.Length}|{propertyName}={listed}";
+    }
+
+    private static string EncodingReplaced()
+    {
+        EncodingHolder original = new()
+        {
+            Encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+        };
+        EncodingHolder copy = Contract.Old(() => original);
+        original.Encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        string outcome = ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, copy));
+        return $"{ListingOf(original.Encoding, "Preamble")}|{outcome}";
+    }
+
+    private static void KeepPublicProperties<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] TKept
+    >() { }
+
+    private static string PropertiesOnlySpanStateChanged()
+    {
+        KeepPublicProperties<PropertiesOnlySpanState>();
+        // Two instances, not Old: how Old copies a type whose fields are hidden is not what is measured here.
+        SpanStateHolder original = new() { State = new PropertiesOnlySpanState(1, 2) };
+        SpanStateHolder expected = new() { State = new PropertiesOnlySpanState(1, 2) };
+        original.State.Replace(9);
+        string outcome = ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, expected));
+        return $"{ListingOf(original.State, "Bytes")}|{outcome}";
+    }
+
+    private static string RefStructPropertyUnchanged()
+    {
+        SlidingWindow original = new(start: 3);
+        SlidingWindow copy = Contract.Old(() => original);
+        return ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static string RefStructPropertyChanged()
+    {
+        SlidingWindow original = new(start: 3);
+        SlidingWindow copy = Contract.Old(() => original);
+        original.Move(5);
+        return ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, copy));
     }
 
     private static RingNode NewRing()

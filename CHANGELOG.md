@@ -472,6 +472,18 @@ AOT](README.md#trimming-and-native-aot) in the README.
   as it was. Measured once, for two `byte[]` of 1,000,000 equal elements as `T` (.NET 8.0.16, JIT,
   Release): 80,780,176 bytes and about 187 ms before, 1,152 bytes and about 0.13 ms now. (#64;
   ADR-0022)
+- Under Native AOT, `EnsureAssignable<T>()` throws `InvalidOperationException` ("cannot compare …")
+  for a type of which reflection lists no property or field other than properties of a byref-like
+  type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`): such properties are not compared and do not
+  count as visible members. As the type compared at the top level it throws on every call, also for
+  one instance on both sides and also when an assignable pattern names the property, which avoided
+  the call's exception before (a value of a value type passed as another `T` asks its `Equals`
+  first). Below the top level its `Equals` decides, so an `Old` copy of it
+  throws unless an `Equals` override reports it equal. The message says that only properties of a
+  byref-like type are visible and names the ways out: `Contract.Ensure` on each state member, an
+  `Equals` override or the top-level member as assignable (below the top level), preserving the
+  fields of the type if it has any, or `DBC_POST=off`. Builds with dynamic code are not affected
+  (#40; ADR-0021, ADR-0022).
 - Known limitation: a property that returns a new instance of its own type on every read (for
   example `DirectoryInfo.Root`) now makes the comparison grow without bound, where 2.0.0 overflowed
   the stack. Fields-only comparison would remove it; it was evaluated in
@@ -509,6 +521,18 @@ AOT](README.md#trimming-and-native-aot) in the README.
   caches held each type they looked up, so a type from a collectible assembly, and the assembly, could
   not be collected; a constructed generic type over such a type, such as a `List<T>` of it, is
   covered too. Results do not change (#48; ADR-0024).
+- `EnsureAssignable<T>()` no longer throws `NotSupportedException` when a compared type has a public
+  property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`), for example an
+  object that holds an `Encoding`, whose `Preamble` is a `ReadOnlySpan<byte>`. Reflection cannot read
+  such a property, so it is not compared, at any level, and nothing reports that it was left out; a
+  write-only one does not throw "cannot read property" either. The fields of the type are still
+  compared, so a change of a field that such a property shows is still a violation, named by the
+  field at the top level and, below it, by the top-level member that leads to it. A property that
+  returns by reference (`ref int`) is compared as before. For the rule on two sequences of different
+  runtime types, such a property declared on a class of yours still counts as a member of yours.
+  Under Native AOT such a property that reflection lists does not count as a visible member, because
+  the fields behind it may not be preserved: a type of which reflection lists no other property or
+  field is a type with no visible members (see the entry under Changed) (#40; ADR-0022).
 
 ### Removed
 

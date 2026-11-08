@@ -107,8 +107,18 @@ internal static class MemberComparison
     {
         FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
-        List<MemberAccessor> members = properties
-            .Where(p => p.GetIndexParameters().Length == 0 && !IsOverriddenByAnother(p, properties))
+        // Indexers are not compared. A property of a byref-like type cannot be read through reflection, so it is
+        // not compared either; the fields behind it are. Nor does it count for the "no members visible" rule: under
+        // Native AOT those fields may be hidden (see MembersAreHidden).
+        PropertyInfo[] comparedProperties =
+        [
+            .. properties.Where(p =>
+                p.GetIndexParameters().Length == 0
+                && !p.PropertyType.IsByRefLike
+                && !IsOverriddenByAnother(p, properties)
+            ),
+        ];
+        List<MemberAccessor> members = comparedProperties
             .Select(p => new MemberAccessor(p, ExistingGetter(p)))
             .Concat(fields.Select(f => new MemberAccessor(f)))
             .ToList();
@@ -117,7 +127,8 @@ internal static class MemberComparison
         // members above, which decide the "no members visible" rule together with the private fields declared
         // on privateFieldsUpTo: [DynamicallyAccessedMembers] on T preserves those under Native AOT.
         int ownMemberCount = members.Count;
-        List<FieldInfo> baseClassPrivateFields = BaseClassPrivateFields(type, properties, privateFieldsUpTo).ToList();
+        List<FieldInfo> baseClassPrivateFields = BaseClassPrivateFields(type, comparedProperties, privateFieldsUpTo)
+            .ToList();
         ownMemberCount += baseClassPrivateFields.Count(f => f.DeclaringType == privateFieldsUpTo);
         members.AddRange(baseClassPrivateFields.Select(f => new MemberAccessor(f)));
 
@@ -223,7 +234,7 @@ internal static class MemberComparison
     )]
     private static IEnumerable<FieldInfo> BaseClassPrivateFields(
         Type type,
-        PropertyInfo[] properties,
+        PropertyInfo[] comparedProperties,
         Type? privateFieldsUpTo
     )
     {
@@ -243,7 +254,7 @@ internal static class MemberComparison
                 )
             )
             {
-                if (field.IsPrivate && !BacksAComparedProperty(field, baseType, properties))
+                if (field.IsPrivate && !BacksAComparedProperty(field, baseType, comparedProperties))
                 {
                     yield return field;
                 }
@@ -285,7 +296,15 @@ internal static class MemberComparison
         )
         {
             IsCollection = IsCollection(type),
+            DeclaresByRefLikeProperty = DeclaresByRefLikeProperty(type),
         };
+    }
+
+    // A property of a byref-like type (see ByRefLikeProperties) declared on a type that is not a framework class.
+    private static bool DeclaresByRefLikeProperty(Type type)
+    {
+        return ByRefLikeProperties(type)
+            .Any(p => p.DeclaringType is { } declaringType && !IsFrameworkClass(declaringType));
     }
 
     // A class the compiler generated for a sequence: a yield iterator (it implements IEnumerator and is
@@ -334,11 +353,12 @@ internal static class MemberComparison
     }
 
     // A sequence that is compared by its elements alone, also against a sequence of another runtime type: its
-    // class chain holds a framework class, and it declares no member on a class of yours.
+    // class chain holds a framework class, and it declares no member on a class of yours (a property of a byref-like
+    // type counts, although it is not compared).
     internal static bool IsComparedByElementsOnly(Type runtimeType)
     {
         SequenceRule rule = GetSequenceRule(runtimeType);
-        return rule.IsComparedByElements && rule.OwnMembers.Count == 0;
+        return rule.IsComparedByElements && rule.OwnMembers.Count == 0 && !rule.DeclaresByRefLikeProperty;
     }
 
     private static bool HasFrameworkClassBelowObject(Type type)
@@ -378,7 +398,7 @@ internal static class MemberComparison
         "IL2070",
         Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a property of a base class that the trimmer hides from reflection matches no compared property, so its backing field is compared."
     )]
-    private static bool BacksAComparedProperty(FieldInfo field, Type baseType, PropertyInfo[] properties)
+    private static bool BacksAComparedProperty(FieldInfo field, Type baseType, PropertyInfo[] comparedProperties)
     {
         string name = SourceName(field.Name);
         if (string.Equals(name, field.Name, StringComparison.Ordinal))
@@ -392,7 +412,7 @@ internal static class MemberComparison
             )
             .Any(declared =>
                 string.Equals(declared.Name, name, StringComparison.Ordinal)
-                && properties.Any(compared =>
+                && comparedProperties.Any(compared =>
                     string.Equals(compared.Name, name, StringComparison.Ordinal) && IsOrOverrides(compared, declared)
                 )
             );
@@ -467,6 +487,48 @@ internal static class MemberComparison
             + "or set DBC_POST=off (disables all postcondition checks).";
     }
 
+    // The sentence of a "cannot compare" message that says what reflection shows of a type under Native AOT.
+    // onlyByRefLikePropertiesVisible: the rule "no members visible" fired (see MembersAreHidden) for a type that
+    // lists properties of a byref-like type. Its properties are visible, so they were preserved; those properties
+    // are not compared and do not count for the rule.
+    internal static string WhatIsVisible(bool onlyByRefLikePropertiesVisible)
+    {
+        return onlyByRefLikePropertiesVisible
+            ? "under Native AOT the only properties or fields visible to reflection are properties of a byref-like "
+                + "type (Span<T>, ReadOnlySpan<T>, a ref struct), which are not compared and do not count as members. "
+            : "no properties or fields are visible to reflection under Native AOT. ";
+    }
+
+    // What preserving the type would bring: its fields, when its properties are visible already.
+    private static string PreserveWhat(bool onlyByRefLikePropertiesVisible)
+    {
+        return onlyByRefLikePropertiesVisible ? "if the type has fields" : "if the type has members";
+    }
+
+    // Below the top level the Equals of the type decides before its members are listed; an override that compares
+    // the state of a type whose only visible properties are byref-like lets two equal values pass.
+    private static string OverrideEqualsWayOut(bool onlyByRefLikePropertiesVisible)
+    {
+        return onlyByRefLikePropertiesVisible ? "override Equals so that it compares the state; " : "";
+    }
+
+    internal static bool ListsByRefLikeProperty(Type type)
+    {
+        return ByRefLikeProperties(type).Any();
+    }
+
+    // The public instance properties of a byref-like type that reflection lists for type, indexers left out.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The runtime type is known only at run time; under Native AOT a property the trimmer removed is not listed, and the type is then treated as one without it."
+    )]
+    private static IEnumerable<PropertyInfo> ByRefLikeProperties(Type type)
+    {
+        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0 && p.PropertyType.IsByRefLike);
+    }
+
     internal static InvalidOperationException CannotCompareNested(
         Type comparedType,
         MemberAccessor topLevelMember,
@@ -480,7 +542,7 @@ internal static class MemberComparison
         string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-            + "no properties or fields are visible to reflection under Native AOT. "
+            + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
             + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
         string listAsAssignable =
             $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
@@ -493,8 +555,10 @@ internal static class MemberComparison
         return new InvalidOperationException(
             cannotList
                 + "Ways out: "
+                + OverrideEqualsWayOut(hidden.OnlyByRefLikePropertiesVisible)
                 + listAsAssignable
-                + "if the type has members, preserve them, for example with "
+                + PreserveWhat(hidden.OnlyByRefLikePropertiesVisible)
+                + ", preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
@@ -512,7 +576,7 @@ internal static class MemberComparison
         string path = $"{start}{hidden.PathBelowTopLevelMember}";
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-            + "no properties or fields are visible to reflection under Native AOT. "
+            + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
             + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
         if (!CSharpTypeName.CanBeWritten(hidden.Type))
         {
@@ -521,7 +585,10 @@ internal static class MemberComparison
 
         return new InvalidOperationException(
             cannotList
-                + "Ways out: if the type has members, preserve them, for example with "
+                + "Ways out: "
+                + OverrideEqualsWayOut(hidden.OnlyByRefLikePropertiesVisible)
+                + PreserveWhat(hidden.OnlyByRefLikePropertiesVisible)
+                + ", preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
@@ -538,7 +605,8 @@ internal static class MemberComparison
     // Under Native AOT a type whose members were not preserved reflects as having none, which
     // would make every comparison of it pass. System.Object genuinely has none (lock objects). The rule is
     // decided on OwnMemberCount, which leaves out the private fields of base classes, also when those fields
-    // are visible, except the private fields declared on a class T at the top level (see GetTopLevelMetadata).
+    // are visible, except the private fields declared on a class T at the top level (see GetTopLevelMetadata). A
+    // byref-like property is not counted: it is not compared, and the fields behind it may be hidden.
     internal static bool MembersAreHidden(Type type, TypeMetadata metadata)
     {
         return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
@@ -1162,7 +1230,10 @@ internal static class MemberComparison
             if (!equalWithoutWalk)
             {
                 // CannotCompareNested's wording relies on Equals having returned false here.
-                context.Hidden = new HiddenMembers(type);
+                context.Hidden = new HiddenMembers(type)
+                {
+                    OnlyByRefLikePropertiesVisible = MembersAreHidden(type, metadata) && ListsByRefLikeProperty(type),
+                };
             }
 
             return null;
@@ -1342,6 +1413,10 @@ internal static class MemberComparison
         // Implements ICollection or IReadOnlyCollection<T> (see MemberComparison.IsCollection).
         public bool IsCollection { get; init; }
 
+        // Declares a public property of a byref-like type on a class of yours. The property is never read, but it
+        // is a member of yours: the sequence is not compared by its elements alone (see IsComparedByElementsOnly).
+        public bool DeclaresByRefLikeProperty { get; init; }
+
         // Compared by its elements (and OwnMembers), not by its members alone.
         public bool IsComparedByElements => HasFrameworkClass || IsCompilerGenerated;
     }
@@ -1351,6 +1426,11 @@ internal static class MemberComparison
     internal sealed class HiddenMembers(Type type)
     {
         public Type Type { get; } = type;
+
+        // The rule "no members visible" fired (see MembersAreHidden), and the only properties the type lists are of
+        // a byref-like type. False for a type that shows no declared member while the members it inherits stay
+        // visible (see ShowsNoDeclaredMember).
+        public bool OnlyByRefLikePropertiesVisible { get; init; }
 
         public string PathBelowTopLevelMember { get; private set; } = "";
 

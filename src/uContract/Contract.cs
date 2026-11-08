@@ -1152,7 +1152,7 @@ public static class Contract
     ///     Also thrown under Native AOT when the type compared at the top level (<typeparamref name="T" />, or the
     ///     runtime type of the values when that is compared: see the remarks) has no properties or fields visible
     ///     to reflection, where the private fields declared on a class <typeparamref name="T" /> that the runtime
-    ///     type derives from count as visible, and
+    ///     type derives from count as visible and a property of a byref-like type does not (see the remarks), and
     ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
     ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to
     ///     be compared has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c>
@@ -1165,6 +1165,18 @@ public static class Contract
     ///     element.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
     ///     from this rule (no members visible) only, not from the rule for one shared instance above.
+    ///     When this rule fired for a type of which reflection lists properties of a byref-like type (see the
+    ///     remarks), the message says that these are the only properties or fields visible, that they are not
+    ///     compared and do not count as members, and names no missing annotation. Its ways out: for
+    ///     <typeparamref name="T" />, check each state member with <c>Contract.Ensure</c> and a value taken with
+    ///     <c>Contract.Old</c>, or set <c>DBC_POST=off</c>; for a runtime type other than
+    ///     <typeparamref name="T" />, if the type has fields, also preserve them or pass the values as that type,
+    ///     which preserves them; below the top level, override <c>Equals</c> so
+    ///     that it compares the state, list the top-level member that leads to it as assignable (where there is
+    ///     one), preserve its fields if it has any, or set <c>DBC_POST=off</c>. At the top level an assignable
+    ///     pattern does not avoid it, also one that names the property: the rule is decided before the patterns
+    ///     are applied. Below the top level, a type that shows no declared member (nothing preserves it) while
+    ///     the members it inherits stay visible gets the general message, whose way out is to preserve its members.
     ///     Also thrown under Native AOT when at the top level the runtime type of the values is not
     ///     <typeparamref name="T" />, they are not compared as a whole, and that runtime type shows no declared
     ///     member to reflection: for a class also when the two values are equal; for a value type only when its
@@ -1210,7 +1222,8 @@ public static class Contract
     ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
     ///     top level the rule for a class with no visible members above applies instead (see the remarks).
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method:
-    ///     a write-only property, or one whose getter was removed by trimming.
+    ///     a write-only property, or one whose getter was removed by trimming. A property of a byref-like type is
+    ///     not reached, with or without a get method (see the remarks).
     ///     This applies to properties of <typeparamref name="T" />, of nested members, of collection elements and
     ///     of base classes. A property whose getter is non-public is compared as usual when the getter is declared
     ///     on the compared type. A property whose getter is not visible through the compared type — a private
@@ -1226,7 +1239,8 @@ public static class Contract
     ///     enumerated.
     /// </exception>
     /// <remarks>
-    ///     This method uses reflection to compare the public instance properties (indexers excluded)
+    ///     This method uses reflection to compare the public instance properties (indexers and properties of a
+    ///     byref-like type excluded)
     ///     and the instance fields of each compared type, non-public fields included, and the private instance
     ///     fields declared on its base classes. This holds for <typeparamref name="T" />, for each nested object
     ///     that is compared by its members, whose members are listed from its runtime type, and for each element
@@ -1243,6 +1257,22 @@ public static class Contract
     ///     as a sequence (see below). A change of such a field, for example raising a domain event that a
     ///     base aggregate class keeps in a private list, is a violation unless the member is listed as
     ///     assignable.
+    ///     A property of a byref-like type (<c>Span&lt;T&gt;</c>, <c>ReadOnlySpan&lt;T&gt;</c>, a <c>ref struct</c>
+    ///     of yours; <c>Encoding.Preamble</c>, for example) cannot be read through reflection, so it is not
+    ///     compared and its getter does not run, at every level, with no message. The fields of the type are
+    ///     compared as above, so a change of a field that such a property shows is a violation, named by the field
+    ///     at the top level and, below it, by the top-level member that leads to it. A property that returns by
+    ///     reference (<c>ref int</c>, <c>ref readonly int</c>) is not of a byref-like type and is compared as any
+    ///     other property. For the rule on two sequences of different runtime types (see below), such a property
+    ///     declared on a class that is not a framework class still counts as a member declared there, although it
+    ///     is not compared. Under Native AOT a property of a byref-like type that reflection lists does not count
+    ///     as a visible member for the rule "no members visible": the fields behind it may not be preserved, and a
+    ///     change of them would pass silently. A type of which reflection lists no other property or field is a
+    ///     type with no visible members (see the exceptions): as the type compared at the top level it throws on
+    ///     every call, also for one instance on both sides (a value of a value type passed as another
+    ///     <typeparamref name="T" /> is decided by its <c>Equals</c> first), and below the top level its
+    ///     <c>Equals</c> decides, so two different instances, an <see cref="Old{T}" /> copy among them, throw
+    ///     unless an <c>Equals</c> override reports them equal.
     ///     Native AOT: the private fields declared on a base class are not preserved, so they are not compared,
     ///     and <see cref="Old{T}" /> shares the objects they refer to. To compare them, preserve the base class,
     ///     for example with <c>[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]</c>
@@ -1332,7 +1362,8 @@ public static class Contract
     ///     fields of <c>XmlDocument</c>. A nested one is enumerated as any other sequence.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
-    ///     chains hold a framework class, and neither declares a member on a class that is not a framework class;
+    ///     chains hold a framework class, and neither declares a member on a class that is not a framework class,
+    ///     a property of a byref-like type included;
     ///     an array and a value-type sequence such as <c>ImmutableArray&lt;T&gt;</c> qualify), which are compared
     ///     element by element. Two arrays, of
     ///     one runtime type or of two, are equal only when they also have the same rank, and the same length and
@@ -1943,10 +1974,27 @@ public static class Contract
 
     // [DynamicallyAccessedMembers] preserves the members of T, not of a runtime type other than T, so the
     // remedy differs.
+    // This is the rule "no members visible" (see MemberComparison.MembersAreHidden). A type that lists properties of a
+    // byref-like type had its properties preserved, so no annotation is missing; those properties do not count. Passed
+    // as T, such a type has its fields preserved too, so passing the values as that type helps only if it has fields.
     private static InvalidOperationException _NoMembersVisible(Type comparedType, Type declaredType)
     {
+        const string CheckWithEnsure =
+            "check each state member with Contract.Ensure and a value taken with Contract.Old; ";
+        bool listsByRefLikeProperty = MemberComparison.ListsByRefLikeProperty(comparedType);
         if (comparedType == declaredType)
         {
+            if (listsByRefLikeProperty)
+            {
+                return new InvalidOperationException(
+                    $"EnsureAssignable cannot compare {comparedType}: "
+                        + MemberComparison.WhatIsVisible(onlyByRefLikePropertiesVisible: true)
+                        + "Ways out: "
+                        + CheckWithEnsure
+                        + "or set DBC_POST=off (disables all postcondition checks)."
+                );
+            }
+
             return new InvalidOperationException(
                 $"EnsureAssignable cannot compare {comparedType}: no properties or fields are visible to reflection "
                     + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
@@ -1957,10 +2005,22 @@ public static class Contract
 
         string cannotSee =
             $"EnsureAssignable cannot compare {comparedType}, the runtime type of the values (T is {declaredType}): "
-            + "no properties or fields are visible to reflection under Native AOT. ";
+            + MemberComparison.WhatIsVisible(listsByRefLikeProperty);
         if (!CSharpTypeName.CanBeWritten(comparedType))
         {
             return new InvalidOperationException(cannotSee + MemberComparison.WaysOutForAnUnnamedType(comparedType));
+        }
+
+        if (listsByRefLikeProperty)
+        {
+            return new InvalidOperationException(
+                cannotSee
+                    + "Ways out: if the type has fields, either preserve them, for example with "
+                    + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(comparedType)}, or pass the values as that type, which preserves them; "
+                    + "otherwise "
+                    + CheckWithEnsure
+                    + "or set DBC_POST=off (disables all postcondition checks)."
+            );
         }
 
         return new InvalidOperationException(
