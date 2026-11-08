@@ -19,4 +19,11 @@ internal sealed class TypeMetadata
     ///     on T. Other private fields of base classes are not counted, and the cached metadata never counts them.
     /// </summary>
     public int OwnMemberCount { get; set; }
+
+    /// <summary>
+    ///     The number of public properties of a byref-like type that reflection lists for the type. They cannot be
+    ///     read through reflection and are left out of <see cref="Members" />, but they are visible, so they count
+    ///     for the "no members visible" rule.
+    /// </summary>
+    public int ByRefLikePropertyCount { get; set; }
 }

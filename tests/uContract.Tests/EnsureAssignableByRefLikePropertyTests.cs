@@ -1,11 +1,38 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace uContract.Tests;
 
 // A public property of a byref-like type (Span<T>, ReadOnlySpan<T>, a ref struct of the user) cannot be read
-// through reflection. It is not compared; the fields behind it are.
+// through reflection. It is not compared; the fields behind it are. Some tests simulate Native AOT through the
+// RuntimeFacts seam, which is process-wide state.
+[Collection("EnvironmentVariables")]
 public class EnsureAssignableByRefLikePropertyTests
 {
+    // ---- The rule "no members visible" under Native AOT ----
+
+    // The property is not compared, but it is visible, so the type does not count as showing no members.
+    [Fact]
+    public void EnsureAssignable_WithoutDynamicCode_WhenTheOnlyMemberIsASpanProperty_DoesNotThrow()
+    {
+        EmptySpanSource actual = new();
+        EmptySpanSource expected = new();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    public sealed class EmptySpanSource
+    {
+        [SuppressMessage(
+            "Performance",
+            "CA1822:Mark members as static",
+            Justification = "An instance property is what EnsureAssignable lists."
+        )]
+        public ReadOnlySpan<byte> Bytes => ReadOnlySpan<byte>.Empty;
+    }
+
     // ---- A framework type with a byref-like property ----
 
     // Encoding.Preamble is a ReadOnlySpan<byte>.

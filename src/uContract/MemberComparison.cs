@@ -85,6 +85,7 @@ internal static class MemberComparison
                 OwnMemberCount =
                     cached.OwnMemberCount
                     + cached.Members.Skip(cached.OwnMemberCount).Count(m => m.DeclaringType == declaredType),
+                ByRefLikePropertyCount = cached.ByRefLikePropertyCount,
             };
         }
 
@@ -127,7 +128,14 @@ internal static class MemberComparison
 
         QualifyCollidingNames(members);
 
-        return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
+        return new TypeMetadata
+        {
+            Members = members,
+            OwnMemberCount = ownMemberCount,
+            ByRefLikePropertyCount = properties.Count(p =>
+                p.GetIndexParameters().Length == 0 && p.PropertyType.IsByRefLike
+            ),
+        };
     }
 
     // Members of one raw name (ordinal), counted after the declarations of one virtual property are merged,
@@ -542,10 +550,13 @@ internal static class MemberComparison
     // Under Native AOT a type whose members were not preserved reflects as having none, which
     // would make every comparison of it pass. System.Object genuinely has none (lock objects). The rule is
     // decided on OwnMemberCount, which leaves out the private fields of base classes, also when those fields
-    // are visible, except the private fields declared on a class T at the top level (see GetTopLevelMetadata).
+    // are visible, except the private fields declared on a class T at the top level (see GetTopLevelMetadata), and
+    // counts the byref-like properties, which are visible though not compared.
     internal static bool MembersAreHidden(Type type, TypeMetadata metadata)
     {
-        return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
+        return metadata.OwnMemberCount + metadata.ByRefLikePropertyCount == 0
+            && type != typeof(object)
+            && !RuntimeFacts.IsDynamicCodeSupported;
     }
 
     // Under Native AOT a type that nothing preserves shows no declared field, property, method or constructor to
