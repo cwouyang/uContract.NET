@@ -135,7 +135,9 @@ public class EnsureAssignableSameSharedInstanceTests
             { () => new ConditionalWeakTable<object, object>(), typeof(ConditionalWeakTable<,>) },
             { () => new AsyncLocal<int>(), typeof(AsyncLocal<>) },
             // System.Threading.Lock is the stand-in of LockStandIn.cs: this suite runs on net8.0.
+#pragma warning disable CS9216 // The net8.0 stand-in of LockStandIn.cs is converted to object on purpose; no lock statement uses it.
             { () => new System.Threading.Lock(), typeof(System.Threading.Lock) },
+#pragma warning restore CS9216
             { () => new DerivedLock(), typeof(System.Threading.Lock) },
             { () => new SafeFileHandle(IntPtr.Zero, ownsHandle: false), typeof(CriticalFinalizerObject) },
             { () => s_uninitializedComObject, typeof(ComObject) },
