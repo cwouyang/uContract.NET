@@ -18,7 +18,8 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           # Resolve the SDK from global.json so CI cannot drift from it.
-          # global.json (8.0.400 / latestPatch) accepts only the 8.0.4xx band. A floating
+          # global.json (8.0.427 / latestPatch) accepts the 8.0.4xx band from 8.0.427, the
+          # first patched SDK (ILCompiler 8.0.33). A floating
           # 'dotnet-version: 8.0.x' once resolved to a band global.json rejected, so builds
           # silently relied on the runner image happening to preinstall a matching SDK.
           global-json-file: global.json
