@@ -997,9 +997,10 @@ public class EnsureAssignableSequenceTests
 
     // ---- A collection expression ----
 
-    // C# 12 builds a collection expression held as IReadOnlyList<T> as <>z__ReadOnlyArray<T>, recognised by its
-    // "<>" name: it carries no [CompilerGenerated] (measured on SDK 8.0.204). It is compared by its elements, as a
-    // yield iterator is, also against a sequence of another runtime type.
+    // C# 12 builds a collection expression of more than one element held as IReadOnlyList<T> as
+    // <>z__ReadOnlyArray<T>, recognised by its "<>" name: it carries no [CompilerGenerated] (measured on SDK
+    // 8.0.204). It is compared by its elements, as a yield iterator is, also against a sequence of another runtime
+    // type.
     [Fact]
     public void EnsureAssignable_WhenANestedCollectionExpressionAndAListHoldEqualElements_DoesNotThrow()
     {
@@ -1038,7 +1039,9 @@ public class EnsureAssignableSequenceTests
         Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
-    // On the .NET 8 SDK a single-element collection expression is built as the same class as a longer one.
+    // The class of a single-element collection expression depends on the compiler: <>z__ReadOnlyArray<T> on SDK
+    // 8.0.204, <>z__ReadOnlySingleElementList<T> on SDK 8.0.427 (measured). Both names start with "<>", so it is
+    // compared by its elements either way.
     [Fact]
     public void EnsureAssignable_WhenANestedSingleElementCollectionExpressionAndAListHoldTheSameElement_DoesNotThrow()
     {
@@ -1048,6 +1051,19 @@ public class EnsureAssignableSequenceTests
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenANestedSingleElementCollectionExpressionAndAListHoldDifferentElements_ReportsTheMember()
+    {
+        Holder<IReadOnlyList<int>> actual = new() { Value = [5] };
+        Holder<IReadOnlyList<int>> expected = new() { Value = ListOf(6) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
     // The empty collection expression is Array.Empty<T>(), an array.
