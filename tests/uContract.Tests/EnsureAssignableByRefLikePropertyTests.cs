@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Text;
 using uContract.Exceptions;
 
@@ -62,6 +63,107 @@ public class EnsureAssignableByRefLikePropertyTests
     public sealed class EmptySpanSourceHolder
     {
         public EmptySpanSource Source { get; set; } = new();
+    }
+
+    // ---- A sequence of yours that declares a span property ----
+
+    // The span property is not read, but it is a member declared on a class of yours: the list is not compared by
+    // its elements alone, so it differs from a List<byte> of the same elements.
+    [Fact]
+    public void EnsureAssignable_WhenAListWithASpanViewAndAListHoldEqualElements_ReportsBothRuntimeTypes()
+    {
+        SpanViewList withView = [1, 2];
+        List<byte> plain = [1, 2];
+        IEnumerable<byte> actual = withView;
+        IEnumerable<byte> expected = plain;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            "actual and expected are of different runtime types: actual is "
+                + $"{typeof(SpanViewList)}, expected is {typeof(List<byte>)}, and T is {typeof(IEnumerable<byte>)}. "
+                + "No member was compared, so assignable patterns do not apply.",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAMemberHoldsAListWithASpanViewAndThenAListOfEqualElements_ReportsTheMember()
+    {
+        SpanViewList withView = [1, 2];
+        List<byte> plain = [1, 2];
+        SequenceHolder actual = new() { Items = withView };
+        SequenceHolder expected = new() { Items = plain };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Items\n  - <Items>k__BackingField", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTwoListsWithASpanViewHoldEqualElements_DoesNotThrow()
+    {
+        SpanViewList actual = [1, 2];
+        SpanViewList expected = [1, 2];
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTwoListsWithASpanViewHoldDifferentElements_ReportsTheElements()
+    {
+        SpanViewList actual = [1, 2];
+        SpanViewList expected = [1, 3];
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.IsType<PostconditionViolationException>(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheLabelOfALabelledListWithASpanViewChanges_ReportsTheLabel()
+    {
+        LabelledSpanViewList actual = new() { Label = "a" };
+        LabelledSpanViewList expected = new() { Label = "b" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Label\n  - <Label>k__BackingField", exception.Description);
+    }
+
+    [SuppressMessage(
+        "Naming",
+        "CA1711:Identifiers should not have incorrect suffix",
+        Justification = "Names a list of bytes."
+    )]
+    public sealed class SpanViewList : List<byte>
+    {
+        public ReadOnlySpan<byte> View => CollectionsMarshal.AsSpan(this);
+    }
+
+    [SuppressMessage(
+        "Naming",
+        "CA1711:Identifiers should not have incorrect suffix",
+        Justification = "Names a list of bytes."
+    )]
+    public sealed class LabelledSpanViewList : List<byte>
+    {
+        public string Label { get; set; } = "";
+
+        public ReadOnlySpan<byte> View => CollectionsMarshal.AsSpan(this);
+    }
+
+    public sealed class SequenceHolder
+    {
+        public IEnumerable<byte>? Items { get; set; }
     }
 
     // ---- A write-only span property ----
