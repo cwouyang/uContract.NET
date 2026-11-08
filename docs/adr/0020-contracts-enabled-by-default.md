@@ -241,41 +241,65 @@ are 8.0.33.
 ### Amendment (2026-11-09): After .NET 8 end of support
 
 For [issue #82](https://github.com/cwouyang/uContract.NET/issues/82). .NET 8 and .NET 9 reach end
-of support on 2026-11-10; .NET 10 (LTS) on 2028-11-14 (Microsoft's `releases-index.json`).
+of support on 2026-11-10; .NET 10 (LTS) on 2028-11-14. Source: Microsoft's
+`releases-index.json`, fetched 2026-11-09.
 
 **Measured** on 2026-11-09, on win-x64 only. CI runs the Native AOT smoke on linux-x64, which was
 not measured.
 
-- A newer SDK alone does not avoid an advisory on the 8.0 packs: SDK 10.0.403 resolves the
-  `net8.0` Native AOT smoke to ILCompiler 8.0.33, as SDK 8.0.427 does.
-- The fallback works on SDK 8.0.427 (NuGet 6.11.2.1). With a vulnerable ILCompiler (8.0.4)
-  referenced from the smoke project, the restore failed with NU1903. Adding
-  `<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-p3jp-9v83-76w9" />` to that
-  project made the restore succeed, and `project.assets.json` recorded the advisory as
-  suppressed.
+- SDK 10.0.403 maps `net8.0` Native AOT to ILCompiler 8.0.33, the same pack as SDK 8.0.427. From
+  this it is inferred that a newer SDK alone does not avoid an advisory on the 8.0 packs.
+- The fallback works on SDK 8.0.427 (NuGet 6.11.2.1) with the implicit ILCompiler reference that
+  `PublishAot` adds. The smoke project was temporarily given
+  `<KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler" ILCompilerPackVersion="8.0.4" />`, so
+  the SDK itself referenced the vulnerable ILCompiler 8.0.4 (`autoReferenced` in
+  `project.assets.json`). The restore failed (exit 1) with NU1903 for
+  `https://github.com/advisories/GHSA-p3jp-9v83-76w9`, so the implicit reference is audited.
+  With `<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-p3jp-9v83-76w9" />`
+  added in an `<ItemGroup>`, the restore succeeded (exit 0, no diagnostic), still resolved 8.0.4,
+  and `project.assets.json` listed the advisory under `suppressedAdvisories`. An earlier run with an explicit `PackageReference` to 8.0.4 gave the
+  same two results.
 - On SDK 10.0.403, with every project still `net8.0`, the build fails with 124 IDE code-style
   errors: 30 in `src` (IDE0018, IDE0046, IDE0059, IDE0301, IDE0305) and 94 in the tests. The
   cause is inferred, not confirmed: SDK 10 applies the `:warning` suffix of `.editorconfig`
   options in the build, and SDK 8 does not.
 - Built for .NET 10, the stand-ins `ReadOnlySetStandIn.cs` and `LockStandIn.cs` clash with .NET 10
   types (CS0436).
-- [Issue #84](https://github.com/cwouyang/uContract.NET/issues/84): on the .NET 10 runtime,
-  `EnsureAssignable` throws `NotSupportedException` for inline arrays; 6 unit tests fail. The
-  `net8.0` test build fails the same 6 with `DOTNET_ROLL_FORWARD=LatestMajor` (the runtime
-  version of that run was not recorded), so the shipped `net8.0` package is affected on a newer runtime too.
+- [Issue #84](https://github.com/cwouyang/uContract.NET/issues/84): a `net10.0` build of the
+  tests fails 6 of 1491: `EnsureAssignable` throws `NotSupportedException` for inline arrays. A
+  `net8.0` build of the tests, run on the newest installed runtime with
+  `DOTNET_ROLL_FORWARD=LatestMajor`, fails the same 6; that run did not record the runtime
+  version. It is inferred that the shipped `net8.0` package fails the same way on a newer
+  runtime.
 - [Issue #85](https://github.com/cwouyang/uContract.NET/issues/85): with the smoke built for
   `net10.0` (ILCompiler 10.0.14), check 89 fails: `EnsureImmutableCollection` reports a violation
   for a class that implements `IImmutableStack<int>`.
-- A `net8.0` test assembly does not roll forward to a newer major runtime. With SDK 10, CI needs
-  an 8.0 runtime next to it to run the `net8.0` tests.
+- A `net8.0` test assembly does not roll forward to a newer major runtime by default. Measured
+  with a runtimeconfig that asks for an 8.0 runtime that is not installed (8.0.99): the host
+  failed (exit 150) although 9.0 and 10.0 runtimes were installed. The test project's
+  runtimeconfig sets no `rollForward`. So with SDK 10, CI needs an 8.0 runtime next to it to run
+  the `net8.0` tests.
 - `Microsoft.CodeAnalysis.PublicApiAnalyzers` 3.3.4 loads and reports on SDK 10 (Roslyn 5.9).
 
 **Plans** (not yet done). The maintainer chose "加上 D（函式庫多目標）" from "先 C，再遷移到 .NET 10
 (Recommended)", "只做 C" and "加上 D（函式庫多目標）".
 
-- Until the switch, `global.json` stays on SDK 8.0.427. If a new advisory fails the restore, add
-  one `NuGetAuditSuppress` item with that advisory's URL to `tests/uContract.AotSmoke` only, with
-  a comment, in its own PR.
+- Until the switch, `global.json` stays on SDK 8.0.427.
+- Fallback, if a new advisory fails the restore: in its own PR, add to
+  `tests/uContract.AotSmoke/uContract.AotSmoke.csproj` only an `<ItemGroup>` with one item per
+  advisory. Copy the URL exactly as the NU1901–NU1904 message prints it, and name the advisory
+  in a comment:
+
+  ```xml
+  <ItemGroup>
+    <!-- GHSA-xxxx-xxxx-xxxx: suppressed until the move to SDK 10 (issue #82). -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-xxxx-xxxx-xxxx" />
+  </ItemGroup>
+  ```
+
+- Consequence of the fallback: the item only lets the restore pass. The toolchain stays
+  unpatched, and the audit no longer reports that advisory for the smoke project. Remove the item
+  when the move to SDK 10 and the `net10.0` smoke lands, or when a patched 8.0 pack exists.
 - Direction: build with SDK 10; run the unit tests on `net8.0` and `net10.0`; run the Native AOT
   smoke on `net10.0`; multi-target the library to `net8.0` and `net10.0`, released with 3.0.0.
 - Prerequisites before the switch: #84, #85, the IDE severity question, the stand-in clashes and
@@ -306,4 +330,4 @@ not measured.
 | 2026-10-04 | Amended     | "3 of 40 full-suite runs" is one of two measured series (3 of 40 and 5 of 80; 8 of 120 together). See Implementation Notes > second Amendment. |
 | 2026-10-07 | Amended     | `Old<T>()` no longer deep-copies through JSON (ADR-0022): the JSON copy statement and its `InvalidOperationException` no longer apply. Decision unchanged. See Implementation Notes > third Amendment. |
 | 2026-11-08 | Amended     | SDK pin moved from 8.0.200 to 8.0.427 (issue #80; advisory GHSA-p3jp-9v83-76w9); .NET 8 end of support tracked in #82. Decision unchanged. See Implementation Notes > fourth Amendment. |
-| 2026-11-09 | Amended     | After .NET 8 end of support (issue #82): `NuGetAuditSuppress` fallback measured on SDK 8.0.427; decided move to SDK 10 with a `net8.0`/`net10.0` library, after #84, #85, the IDE severity question, the stand-in clashes and the CI runtime. Decision unchanged. See Implementation Notes > fifth Amendment. |
+| 2026-11-09 | Amended     | After .NET 8 end of support (issue #82): `NuGetAuditSuppress` fallback measured on SDK 8.0.427 with the implicit ILCompiler reference; decided move to SDK 10 with a `net8.0`/`net10.0` library, after #84, #85, the IDE severity question, the stand-in clashes and the CI runtime. Decision unchanged. See Implementation Notes > fifth Amendment. |
