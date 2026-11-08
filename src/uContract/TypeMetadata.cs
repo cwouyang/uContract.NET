@@ -17,13 +17,7 @@ internal sealed class TypeMetadata
     ///     reflection lists for the type (its public properties and the fields GetFields returns), plus, in the
     ///     metadata the top level builds for a class T other than the runtime type, the private fields declared
     ///     on T. Other private fields of base classes are not counted, and the cached metadata never counts them.
+    ///     Properties of a byref-like type are not in <see cref="Members" /> and are not counted either.
     /// </summary>
     public int OwnMemberCount { get; set; }
-
-    /// <summary>
-    ///     The number of public properties of a byref-like type that reflection lists for the type. They cannot be
-    ///     read through reflection and are left out of <see cref="Members" />, but they are visible, so they count
-    ///     for the "no members visible" rule.
-    /// </summary>
-    public int ByRefLikePropertyCount { get; set; }
 }

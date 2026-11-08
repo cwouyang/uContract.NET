@@ -85,7 +85,6 @@ internal static class MemberComparison
                 OwnMemberCount =
                     cached.OwnMemberCount
                     + cached.Members.Skip(cached.OwnMemberCount).Count(m => m.DeclaringType == declaredType),
-                ByRefLikePropertyCount = cached.ByRefLikePropertyCount,
             };
         }
 
@@ -109,13 +108,14 @@ internal static class MemberComparison
         FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
         // Indexers are not compared. A property of a byref-like type cannot be read through reflection, so it is
-        // not compared either; the fields behind it are. It is visible, though (see MembersAreHidden).
-        ILookup<bool, PropertyInfo> isByRefLike = properties
-            .Where(p => p.GetIndexParameters().Length == 0)
-            .ToLookup(p => p.PropertyType.IsByRefLike);
-
-        List<MemberAccessor> members = isByRefLike[false]
-            .Where(p => !IsOverriddenByAnother(p, properties))
+        // not compared either; the fields behind it are. Nor does it count for the "no members visible" rule: under
+        // Native AOT those fields may be hidden (see MembersAreHidden).
+        List<MemberAccessor> members = properties
+            .Where(p =>
+                p.GetIndexParameters().Length == 0
+                && !p.PropertyType.IsByRefLike
+                && !IsOverriddenByAnother(p, properties)
+            )
             .Select(p => new MemberAccessor(p, ExistingGetter(p)))
             .Concat(fields.Select(f => new MemberAccessor(f)))
             .ToList();
@@ -130,12 +130,7 @@ internal static class MemberComparison
 
         QualifyCollidingNames(members);
 
-        return new TypeMetadata
-        {
-            Members = members,
-            OwnMemberCount = ownMemberCount,
-            ByRefLikePropertyCount = isByRefLike[true].Count(),
-        };
+        return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
     }
 
     // Members of one raw name (ordinal), counted after the declarations of one virtual property are merged,
