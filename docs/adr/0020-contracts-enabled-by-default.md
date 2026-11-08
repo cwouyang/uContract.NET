@@ -10,6 +10,7 @@
 - **Amended**: 2026-10-04 — the "Trimming and Native AOT: not verified" consequence below is superseded by [ADR-0021](0021-postconditions-under-trimming-and-aot.md); see the Amendment under Implementation Notes
 - **Amended**: 2026-10-04 — the "3 of 40 full-suite runs" figure is one of two measured series; see the second Amendment under Implementation Notes
 - **Amended**: 2026-10-07 — `Old<T>()` no longer deep-copies through JSON serialization; see [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) and the third Amendment under Implementation Notes
+- **Amended**: 2026-11-08 — the SDK pin in `global.json` moved to 8.0.427 (the 8.0.4xx band); see the fourth Amendment under Implementation Notes
 
 ---
 
@@ -170,7 +171,6 @@ This ADR was written after the implementation so that it could record what the w
 - **Documentation errors found on the way.** Item 2 of the four `*Enabled` property remarks stated the precedence backwards and was corrected. ADR-0014's example stderr output shows `(default: Debug)` without the word "from" that the code emits; its amendment shows the line as emitted.
 - **Test-suite ordering.** `Contract.Config` freezes at first use, and `ContractConfigurationTests` changed process-wide environment variables without clearing them. The suite passed only because the last test to run in that class happened to leave contracts enabled; renaming a test changed which test ran last, and 3 of 40 full-suite runs then failed with the same 78 failures. `ContractConfigurationTests` now clears the variables after every test, as `DiagnosticLoggingTests` already did. The suite still relies on `DisableTestParallelization`.
 - **SDK pinning.** `dotnet pack` run from outside the repository directory does not see `global.json`, picks a newer SDK, and fails under `TreatWarningsAsErrors` on analyzer rule IDE0305. Packing from the repository root, as the release checklist does, works.
-  - *Note (2026-11-08):* `global.json` moved from `8.0.200` to `8.0.427` (`latestPatch`): the 8.0.4xx band from its first patched SDK, whose ILCompiler and runtime packs are 8.0.33 ([issue #80](https://github.com/cwouyang/uContract.NET/issues/80)). The 8.0.2xx band is out of service, and its ILCompiler and runtime packs (below 8.0.33) fall under advisory GHSA-p3jp-9v83-76w9, which fails the Native AOT smoke restore under `TreatWarningsAsErrors` (NU1903). On SDK 8.0.427 the build raised one new diagnostic, CS9216 on the `System.Threading.Lock` stand-in in a test, which is now suppressed at that line.
 
 ### Amendment (2026-10-04): Trimming and Native AOT consequence superseded by ADR-0021
 
@@ -220,6 +220,23 @@ the JSON copy with a reflection copy.
 - `[RequiresDynamicCode]` is removed from `Old<T>`; `[RequiresUnreferencedCode]` stays.
 - The decision of this ADR (contracts enabled by default) is unchanged.
 
+### Amendment (2026-11-08): The SDK pin moved to 8.0.427
+
+The "SDK pinning" note above was written when `global.json` named `8.0.200`. For
+[issue #80](https://github.com/cwouyang/uContract.NET/issues/80) it names `8.0.427`
+(`latestPatch`): the 8.0.4xx band from its first patched SDK, whose ILCompiler and runtime packs
+are 8.0.33.
+
+- The 8.0.2xx band is out of service. Its ILCompiler and runtime packs (below 8.0.33) fall under
+  advisory GHSA-p3jp-9v83-76w9, which fails the restore of the Native AOT smoke project under
+  `TreatWarningsAsErrors` (NU1903).
+- On SDK 8.0.427 the build raised one new diagnostic, CS9216 on the `System.Threading.Lock`
+  stand-in in a test. It is suppressed at that line.
+- .NET 8 reaches end of support on 2026-11-10, and 8.0.427 is its last SDK. What happens after
+  that is tracked in [issue #82](https://github.com/cwouyang/uContract.NET/issues/82).
+- The note about packing from outside the repository directory still applies. The decision of
+  this ADR is unchanged.
+
 ---
 
 ## References
@@ -243,3 +260,4 @@ the JSON copy with a reflection copy.
 | 2026-10-04 | Amended     | "Trimming and Native AOT: not verified" consequence superseded by ADR-0021. Decision unchanged. See Implementation Notes > Amendment. |
 | 2026-10-04 | Amended     | "3 of 40 full-suite runs" is one of two measured series (3 of 40 and 5 of 80; 8 of 120 together). See Implementation Notes > second Amendment. |
 | 2026-10-07 | Amended     | `Old<T>()` no longer deep-copies through JSON (ADR-0022): the JSON copy statement and its `InvalidOperationException` no longer apply. Decision unchanged. See Implementation Notes > third Amendment. |
+| 2026-11-08 | Amended     | SDK pin moved from 8.0.200 to 8.0.427 (issue #80; advisory GHSA-p3jp-9v83-76w9); .NET 8 end of support tracked in #82. Decision unchanged. See Implementation Notes > fourth Amendment. |
