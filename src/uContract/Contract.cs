@@ -1165,6 +1165,16 @@ public static class Contract
     ///     element.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
     ///     from this rule (no members visible) only, not from the rule for one shared instance above.
+    ///     When reflection lists properties of a byref-like type for the type (see the remarks), the message says
+    ///     that these are the only properties or fields visible, that they are not compared and do not count as
+    ///     members, and names no missing annotation. Its ways out: for <typeparamref name="T" />, check each state
+    ///     member with <c>Contract.Ensure</c> and a value taken with <c>Contract.Old</c>, or set
+    ///     <c>DBC_POST=off</c>; for a runtime type other than <typeparamref name="T" />, also preserve the fields of
+    ///     the type if it has any, or pass the values as that type; below the top level, override <c>Equals</c> so
+    ///     that it compares the state, list the top-level member that leads to it as assignable (where there is
+    ///     one), preserve its fields if it has any, or set <c>DBC_POST=off</c>. At the top level an assignable
+    ///     pattern does not avoid it, also one that names the property: the rule is decided before the patterns
+    ///     are applied.
     ///     Also thrown under Native AOT when at the top level the runtime type of the values is not
     ///     <typeparamref name="T" />, they are not compared as a whole, and that runtime type shows no declared
     ///     member to reflection: for a class also when the two values are equal; for a value type only when its
@@ -1248,14 +1258,19 @@ public static class Contract
     ///     A property of a byref-like type (<c>Span&lt;T&gt;</c>, <c>ReadOnlySpan&lt;T&gt;</c>, a <c>ref struct</c>
     ///     of yours; <c>Encoding.Preamble</c>, for example) cannot be read through reflection, so it is not
     ///     compared and its getter does not run, at every level, with no message. The fields of the type are
-    ///     compared as above, so a change of a field that such a property shows is a violation named by the
-    ///     field. A property that returns by reference (<c>ref int</c>, <c>ref readonly int</c>) is not of a
-    ///     byref-like type and is compared as any other property. Under Native AOT a property of a byref-like type
-    ///     that reflection lists does not count as a visible member for the rule "no members visible": the fields
-    ///     behind it may not be preserved, and a change of them would pass silently. A type of which reflection
-    ///     lists no other property or field is a type with no visible members (see the exceptions): as the type
-    ///     compared at the top level it throws, and below the top level its <c>Equals</c> decides, so two
-    ///     different instances without an <c>Equals</c> override throw.
+    ///     compared as above, so a change of a field that such a property shows is a violation, named by the field
+    ///     at the top level and, below it, by the top-level member that leads to it. A property that returns by
+    ///     reference (<c>ref int</c>, <c>ref readonly int</c>) is not of a byref-like type and is compared as any
+    ///     other property. For the rule on two sequences of different runtime types (see below), such a property
+    ///     declared on a class that is not a framework class still counts as a member declared there, although it
+    ///     is not compared. Under Native AOT a property of a byref-like type that reflection lists does not count
+    ///     as a visible member for the rule "no members visible": the fields behind it may not be preserved, and a
+    ///     change of them would pass silently. A type of which reflection lists no other property or field is a
+    ///     type with no visible members (see the exceptions): as the type compared at the top level it throws on
+    ///     every call, also for one instance on both sides (a value of a value type passed as another
+    ///     <typeparamref name="T" /> is decided by its <c>Equals</c> first), and below the top level its
+    ///     <c>Equals</c> decides, so two different instances, an <see cref="Old{T}" /> copy among them, throw
+    ///     unless an <c>Equals</c> override reports them equal.
     ///     Native AOT: the private fields declared on a base class are not preserved, so they are not compared,
     ///     and <see cref="Old{T}" /> shares the objects they refer to. To compare them, preserve the base class,
     ///     for example with <c>[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]</c>
@@ -1345,7 +1360,8 @@ public static class Contract
     ///     fields of <c>XmlDocument</c>. A nested one is enumerated as any other sequence.
     ///     Every comparison of a member or element decides on the runtime types of the two values. Values of different
     ///     runtime types are unequal, except two sequences that are compared by their elements alone (their class
-    ///     chains hold a framework class, and neither declares a member on a class that is not a framework class;
+    ///     chains hold a framework class, and neither declares a member on a class that is not a framework class,
+    ///     a property of a byref-like type included;
     ///     an array and a value-type sequence such as <c>ImmutableArray&lt;T&gt;</c> qualify), which are compared
     ///     element by element. Two arrays, of
     ///     one runtime type or of two, are equal only when they also have the same rank, and the same length and
