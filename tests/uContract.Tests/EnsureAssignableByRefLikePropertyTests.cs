@@ -14,55 +14,42 @@ public class EnsureAssignableByRefLikePropertyTests
 
     // ---- The rule "no members visible" under Native AOT ----
 
-    // The property is not compared, but it is visible, so the type does not count as showing no members.
+    // The property is not compared, and it does not count as visible either: under Native AOT the fields behind it
+    // may be hidden, and a change to them must not pass silently.
     [Fact]
-    public void EnsureAssignable_WithoutDynamicCode_WhenTheOnlyMemberIsASpanProperty_DoesNotThrow()
+    public void EnsureAssignable_WithoutDynamicCode_WhenTheOnlyMemberIsASpanProperty_ThrowsCannotCompare()
     {
         EmptySpanSource actual = new();
         EmptySpanSource expected = new();
 
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
-        Assert.Null(exception);
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.StartsWith(
+            $"EnsureAssignable cannot compare {typeof(EmptySpanSource)}: no properties or fields are visible",
+            cannotCompare.Message,
+            StringComparison.Ordinal
+        );
     }
 
-    // At the top level, T is a class of the user that the runtime type derives from: the property of the runtime type
-    // counts in the members that decide the rule for that T too.
+    // Below the top level, the type's Equals decides; two distinct instances are unequal.
     [Fact]
-    public void EnsureAssignable_WithoutDynamicCode_WhenTIsABaseClassOfARuntimeTypeWithOnlyASpanProperty_DoesNotThrow()
-    {
-        SpanSourceBase actual = new DerivedEmptySpanSource();
-        SpanSourceBase expected = new DerivedEmptySpanSource();
-
-        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
-
-        Assert.Null(exception);
-    }
-
-    [Fact]
-    public void EnsureAssignable_WithoutDynamicCode_WhenANestedMemberHasOnlyASpanProperty_DoesNotThrow()
+    public void EnsureAssignable_WithoutDynamicCode_WhenANestedMemberHasOnlyASpanProperty_ThrowsCannotCompare()
     {
         EmptySpanSourceHolder actual = new() { Source = new EmptySpanSource() };
         EmptySpanSourceHolder expected = new() { Source = new EmptySpanSource() };
 
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
-        Assert.Null(exception);
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.StartsWith(
+            $"EnsureAssignable cannot compare {typeof(EmptySpanSource)} (reached through 'EmptySpanSourceHolder.Source')",
+            cannotCompare.Message,
+            StringComparison.Ordinal
+        );
     }
 
     public sealed class EmptySpanSource
-    {
-        [SuppressMessage(
-            "Performance",
-            "CA1822:Mark members as static",
-            Justification = "An instance property is what EnsureAssignable lists."
-        )]
-        public ReadOnlySpan<byte> Bytes => ReadOnlySpan<byte>.Empty;
-    }
-
-    public abstract class SpanSourceBase;
-
-    public sealed class DerivedEmptySpanSource : SpanSourceBase
     {
         [SuppressMessage(
             "Performance",

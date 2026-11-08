@@ -2640,13 +2640,13 @@ public static class Program
             Expect.Ok
         );
 
-        // Mutation: none. Visibility: T (EmptySpanSource), whose only member is a ReadOnlySpan<byte> property; it
-        // counts as visible, so the rule "no members visible" does not apply.
+        // Mutation: none (two instances). Visibility: T (EmptySpanSource), whose only member is a ReadOnlySpan<byte>
+        // property; a byref-like property does not count as visible, so the rule "no members visible" applies.
         yield return new Check(
             155,
-            "Span property as the only member",
+            "Span property as the only member, two instances",
             OnlySpanPropertyUnchanged,
-            Expect.Ok,
+            Expect.Throws<InvalidOperationException>("no properties or fields are visible"),
             Expect.Ok
         );
 
@@ -2667,13 +2667,13 @@ public static class Program
 
         // Mutation: the array behind the span property replaced. Visibility: T (SpanStateHolder); only the public
         // properties of PropertiesOnlySpanState are preserved. The value also records what reflection lists for it.
-        // Expected values measured, see #40 byref-like: the span property is listed and the field is not, so the
-        // change is not reported.
+        // Expected values measured, see #40 byref-like: the span property is listed and the field is not; the span
+        // property does not count as visible, so the type shows no members and cannot be compared.
         yield return new Check(
             158,
             "Properties-only span state changed",
             PropertiesOnlySpanStateChanged,
-            Expect.Value("fields=0|properties=1|Bytes=True|none"),
+            Expect.Value("fields=0|properties=1|Bytes=True|cannot compare"),
             Expect.Value("fields=0|properties=1|Bytes=True|none")
         );
     }

@@ -550,13 +550,11 @@ internal static class MemberComparison
     // Under Native AOT a type whose members were not preserved reflects as having none, which
     // would make every comparison of it pass. System.Object genuinely has none (lock objects). The rule is
     // decided on OwnMemberCount, which leaves out the private fields of base classes, also when those fields
-    // are visible, except the private fields declared on a class T at the top level (see GetTopLevelMetadata), and
-    // counts the byref-like properties, which are visible though not compared.
+    // are visible, except the private fields declared on a class T at the top level (see GetTopLevelMetadata). A
+    // byref-like property is not counted: it is not compared, and the fields behind it may be hidden.
     internal static bool MembersAreHidden(Type type, TypeMetadata metadata)
     {
-        return metadata.OwnMemberCount + metadata.ByRefLikePropertyCount == 0
-            && type != typeof(object)
-            && !RuntimeFacts.IsDynamicCodeSupported;
+        return metadata.OwnMemberCount == 0 && type != typeof(object) && !RuntimeFacts.IsDynamicCodeSupported;
     }
 
     // Under Native AOT a type that nothing preserves shows no declared field, property, method or constructor to
