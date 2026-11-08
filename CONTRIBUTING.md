@@ -2,6 +2,8 @@
 
 ## Setup
 
+Requires the .NET 8 SDK 8.0.427 or a later 8.0.4xx patch, as `global.json` sets.
+
 ```bash
 git clone https://github.com/cwouyang/uContract.NET.git
 cd uContract.NET

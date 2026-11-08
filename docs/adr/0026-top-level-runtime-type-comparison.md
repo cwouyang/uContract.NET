@@ -7,6 +7,7 @@
 - **Date**: 2026-11-02
 - **Deciders**: Project maintainer (cwouyang)
 - **Status Date**: 2026-11-02
+- **Amended**: 2026-11-08 — on SDK 8.0.427 a one-element collection expression is built as another class; see the Amendment under Implementation Notes
 
 ---
 
@@ -237,6 +238,25 @@ This ADR was written after the implementation so that it could record what the w
 - **Unit tests.** New test classes `EnsureAssignableRuntimeTypeTests`, `EnsureAssignableTopLevelWholeValueTests`, `EnsureAssignableSequenceTests` and `EnsureAssignableUnseenRuntimeTypeTests`; tests that pinned the old gaps were rewritten to the new result, not deleted. On master at `70d7083` 1243 unit tests passed; on this branch 1408 passed before the final fix of 2026-11-03, 1427 after it, 1437 after amendment 7, 1447 after amendment 8, and 1459 after amendment 9. All figures are snapshots. Amendment 9 adds a unit test under the H3 seam that only the elements rule can satisfy: an emitted `[CompilerGenerated]` class named `<Numbers>d__0` that lists no member of its own; removing the exemption for a compiler-generated sequence in `_TopLevelMembers`, or dropping the `<` route of the `IEnumerator` clause, turns it red (measured by a temporary revert; the older test with `CountTo(2)` stayed green under both).
 - **Native AOT.** Smoke check 100 now expects `Code|(the elements; assignable patterns do not apply to them)|frameworkPrivateFields=items`. Checks 109 to 139 are added: an `object`-typed class of yours (109–111), a base class `T` with an unpreserved, a preserved and a stateless derived type (112–120), a `Queue<int>` as `object` (121), a type passed as `T` elsewhere (122–124), a nested unpreserved class that only inherits visible members (125), boxed `DateTime` and `decimal` (126–129), a preserved nested type in an unpreserved class (130), `yield` iterators nested and at the top level (131–133, 137–139), an unpreserved nested class as `object` (134), a preserved closed generic (135) and LINQ queries as `object` (136). Measured on `win-x64` with the Native AOT publish of the default build (`-warnaserror`, no IL warnings): 139 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`. The check list "`List<int>` as `object`" is pinned with `Queue<int>`: check 3 of the same program preserves `List<>`. The CI workflow had not run for this change when this ADR was written. The final fix of 2026-11-03 adds checks 140 to 144: a nested collection expression unchanged and changed (140, 141), collection expressions as `IReadOnlyList<int>` of equal and of different elements (142, 143), and the enumerators of a `yield` method that returns only `IEnumerator<int>` as `T` = `IEnumerator<int>` (144, which throws with the fix that names no `typeof`). Checks 137 and 143 compare the whole list of violation entries, `(the elements; assignable patterns do not apply to them)`, so the line "Members were listed from the runtime type" would fail them. Measured the same way: 144 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`. Amendment 7 adds checks 145 (a `[CompilerGenerated]` class that implements only `IEnumerable<int>`, as `T`, `Tag` changed: entries exactly `Tag`) and 146 (a `file` class that implements `IEnumerable<int>` and whose enumerator throws, as `T`, `Extra` changed: entries exactly `Extra`). Measured the same way: 146 `PASS`, no `FAIL`, both ways. Checks 145 and 146 were added after the narrowing and were not run against the wide rule. Amendment 8 adds check 147 (a `[CompilerGenerated]` class with a name C# can write that is its own enumerator, as `T`, `Tag` changed: entries exactly `Tag`). Measured the same way: 147 `PASS`, no `FAIL`, both ways; check 147 was not run against the rule before amendment 8 either. Amendment 9 adds checks 148 to 152, the iterator of a local function that captures a variable: nested against a `List<int>` of equal and of different elements (148, 149), at `T` = `IEnumerable<int>` against a `List<int>` of equal elements, with the number of instance fields reflection lists for it (150: `fields=0|none`), at `T` = `object` against a `List<int>` of different elements (151), and two such iterators that capture different delegates and yield equal elements (152). Measured the same way: 152 `PASS`, no `FAIL`, both ways; checks 148 to 152 were not run against the rule before amendment 9.
 
+### Amendment (2026-11-08): A one-element collection expression on SDK 8.0.427
+
+Item 3 of the Details above (a compiler-generated sequence) says the .NET 8 SDK builds a collection expression "as
+`<>z__ReadOnlyArray<T>`, also for one element". That was measured on SDK 8.0.204 and stays true
+there. When `global.json` moved to SDK 8.0.427 ([issue #80](https://github.com/cwouyang/uContract.NET/issues/80),
+[ADR-0020](0020-contracts-enabled-by-default.md)), a probe measured that SDK 8.0.427 builds a
+one-element collection expression held as `IReadOnlyList<T>` or `IEnumerable<T>` as
+`<>z__ReadOnlySingleElementList<T>`; more than one element is still `<>z__ReadOnlyArray<T>`.
+
+- The class depends on the compiler. Both names start with `<>`, so the rule (a class whose
+  metadata name starts with `<>` that implements `IEnumerable`) compares both by their elements.
+  The probe measured this too: equal elements against a `List<T>` pass, different elements throw.
+- A unit test pins that a one-element collection expression held as `IReadOnlyList<int>` is
+  compared by its elements against a `List<int>`: equal elements pass, and different elements
+  report the member. With the `<>` clause disabled by a temporary change, the equal-elements test
+  fails; the different-elements test still passes, because a comparison by members reports the
+  member too.
+- The decision is unchanged.
+
 ---
 
 ## References
@@ -262,3 +282,4 @@ This ADR was written after the implementation so that it could record what the w
 | 2026-11-03 | Accepted    | Amendment 7, 「收窄，連同 Minor 一起修」: the compiler-generated sequence rule narrowed to `[CompilerGenerated]` + `IEnumerator`, or a `<>` name + `IEnumerable`; a source-generated class or a `file` class keeps the `typeof` fix (a `file` class by its own name); the ways out match why a type cannot be named; smoke checks 145 and 146. |
 | 2026-11-03 | Accepted    | Amendment 8, 「開第 3 輪，全部修」: the `IEnumerator` clause also requires a `<` or a `$` in the name; one definition of a compiler-generated name for the rule and the messages; the `typeof` fix for a `file` class says it must be written inside the file that declares the class; wording for a compiler-generated type inside a generic argument; smoke check 147. |
 | 2026-11-03 | Accepted    | Amendment 9, 「開第 4 輪，連同剩下的 Minor」: the `IEnumerator` clause checks the declaring chain too, so the iterator of a local function that captures a variable is compared by its elements; a type with `file` classes of more than one file in its generic arguments names no `typeof`; a seam test only the elements rule can satisfy; smoke checks 148 to 152. |
+| 2026-11-08 | Amended     | SDK 8.0.427 builds a one-element collection expression as `<>z__ReadOnlySingleElementList<T>` (8.0.204: `<>z__ReadOnlyArray<T>`); the `<>` rule covers both. Decision unchanged. See Implementation Notes > Amendment. |

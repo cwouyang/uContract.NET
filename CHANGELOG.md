@@ -358,7 +358,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `List<T>` or an array: a `yield` iterator from a method that returns `IEnumerable` or
   `IEnumerable<T>`, and a collection expression held as `IReadOnlyList<T>`, `IReadOnlyCollection<T>`
   or `IEnumerable<T>` (built by the .NET 8 SDK as `<>z__ReadOnlyArray<T>`, or `<>z__ReadOnlyList<T>`
-  for a spread of a `yield` iterator). It is recognised as a class that implements `IEnumerator` and
+  for a spread of a `yield` iterator; a single element is `<>z__ReadOnlyArray<T>` with the 8.0.2xx SDK
+  and `<>z__ReadOnlySingleElementList<T>` with SDK 8.0.427, so the class depends on the compiler and
+  the `<>` at the start of its name decides). It is recognised as a class that implements `IEnumerator` and
   is compiler-generated: it, or a type in its declaring chain, is marked `[CompilerGenerated]` with a
   `<` or a `$` in its name or has a metadata name that starts with `<>` (so the iterator of a local function that
   captures a variable, nested in its display class, counts too), or a class whose metadata name

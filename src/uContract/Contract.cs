@@ -1294,9 +1294,11 @@ public static class Contract
     ///     <see cref="IEnumerable{T}" />; or a class whose metadata name starts with <c>&lt;&gt;</c> that implements
     ///     <see cref="System.Collections.IEnumerable" />: the class that a collection expression held as
     ///     <see cref="IReadOnlyList{T}" />, <see cref="IReadOnlyCollection{T}" /> or <see cref="IEnumerable{T}" /> is
-    ///     built as (<c>&lt;&gt;z__ReadOnlyArray&lt;T&gt;</c>, also for a single element, and
-    ///     <c>&lt;&gt;z__ReadOnlyList&lt;T&gt;</c> for a spread of a yield iterator; the .NET 8 SDK emits
-    ///     both without <see cref="CompilerGeneratedAttribute" />, measured). A class marked
+    ///     built as (<c>&lt;&gt;z__ReadOnlyArray&lt;T&gt;</c>, <c>&lt;&gt;z__ReadOnlyList&lt;T&gt;</c> for a spread
+    ///     of a yield iterator, and for a single element <c>&lt;&gt;z__ReadOnlyArray&lt;T&gt;</c> with the 8.0.2xx
+    ///     SDK or <c>&lt;&gt;z__ReadOnlySingleElementList&lt;T&gt;</c> with SDK 8.0.427; the class depends on the
+    ///     compiler and its name starts with <c>&lt;&gt;</c>, which decides; the 8.0.2xx SDK emits the first two
+    ///     without <see cref="CompilerGeneratedAttribute" />, measured). A class marked
     ///     <see cref="CompilerGeneratedAttribute" /> with a name C# can write (a source generator's, also one that
     ///     implements only <see cref="System.Collections.IEnumerable" /> or one that is its own enumerator) and a C#
     ///     11 <c>file</c> class are classes of yours, compared by their members. The

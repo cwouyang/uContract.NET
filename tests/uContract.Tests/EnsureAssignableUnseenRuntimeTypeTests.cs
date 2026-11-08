@@ -918,7 +918,8 @@ public class EnsureAssignableUnseenRuntimeTypeTests
 
     // ---- A collection expression ----
 
-    // C# 12 builds a collection expression held as IReadOnlyList<T> as <>z__ReadOnlyArray<T>, which nothing
+    // C# 12 builds a collection expression held as IReadOnlyList<T> as a class whose name starts with "<>"
+    // (<>z__ReadOnlyArray<T>, or <>z__ReadOnlySingleElementList<T> for one element on SDK 8.0.4xx), which nothing
     // preserves; it is recognised by its "<>" name and carries no [CompilerGenerated] (measured on SDK 8.0.204). It
     // is compared by its elements, which enumerating needs no metadata for.
     [Fact]

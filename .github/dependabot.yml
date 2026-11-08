@@ -33,8 +33,8 @@ updates:
           - "patch"
     ignore:
       # PublicApiAnalyzers 4.x+ ships analyzers compiled against Roslyn 4.12, which the
-      # SDK pinned in global.json (8.0.200 -> Roslyn 4.9) refuses to load (CS9057).
-      # Lift this once the repo moves to a newer SDK. See PR #11.
+      # SDK pinned in global.json (8.0.4xx band -> Roslyn 4.11) refuses to load (CS9057).
+      # Lift this once the repo moves to an SDK with Roslyn 4.12 or newer. See PR #11.
       - dependency-name: "Microsoft.CodeAnalysis.PublicApiAnalyzers"
         update-types:
           - "version-update:semver-major"

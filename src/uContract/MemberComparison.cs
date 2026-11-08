@@ -295,8 +295,9 @@ internal static class MemberComparison
     // <Method>d__N, VB$StateMachine_…, or the unmarked <<Method>g__Local|0>d of a local function that captures a
     // variable, nested in its marked display class <>c__DisplayClass…, measured on SDK 8.0.204), or a class
     // whose metadata name starts with "<>" that implements IEnumerable (the class of a collection expression,
-    // <>z__ReadOnlyArray<T> or <>z__ReadOnlyList<T>, which the .NET 8 SDK emits without [CompilerGenerated],
-    // measured). A [CompilerGenerated] class with a name C# can write (a source generator's, even one that is its
+    // <>z__ReadOnlyArray<T> or <>z__ReadOnlyList<T>, which the 8.0.2xx SDK emits without [CompilerGenerated],
+    // measured; one element is <>z__ReadOnlyArray<T> on 8.0.2xx and <>z__ReadOnlySingleElementList<T> on 8.0.427,
+    // measured: the class depends on the compiler, the "<>" prefix does not). A [CompilerGenerated] class with a name C# can write (a source generator's, even one that is its
     // own enumerator) and a file class (<File>F…__Name) are classes of yours.
     private static bool IsCompilerGeneratedSequence(Type type)
     {
