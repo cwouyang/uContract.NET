@@ -19,6 +19,7 @@
 - **Amended**: 2026-10-26 — two arrays of one runtime type whose element type is `bool`, `char`, an integer type, `float`, `double` or an enum are compared without boxing an element, so the cost figure of limit 15 of the #57 amendment no longer holds for them; every result is unchanged, and `Old<T>()`, B1 to B8, R0 to R8 and rule S are unchanged (#64); the smoke program has 107 checks; see the tenth Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — fields-only comparison was evaluated in #46 and is not adopted, so D9 stands and the statements that defer work to #46 are settled; an assignable pattern is also matched against the property name of a compiler-generated backing field ([ADR-0025](0025-fields-only-comparison-not-adopted.md)); the smoke program has 108 checks; see the eleventh Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — the top level of `EnsureAssignable<T>()` compares the runtime type of the two values, so "the top level comparing the members of `typeof(T)`" no longer holds; R6 and R7 compare a sequence by the class chain of its runtime type; under Native AOT R8 also covers a nested class of yours that shows no declared member, and its message names the type in C# syntax; two different instances of a shared type as `T` are a violation by reference (#40 item 2, [ADR-0026](0026-top-level-runtime-type-comparison.md)); the smoke program has 139 checks; see the twelfth Amendment under Implementation Notes
+- **Amended**: 2026-11-08 — `EnsureAssignable<T>()` leaves out a public property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`), which reflection cannot read and which made it throw `NotSupportedException`; the fields behind it are still compared, and under Native AOT it counts as a visible member; D9 and the "untouched" statement on the byref-like property in the #52 amendment are qualified (#40); the smoke program has 156 checks; see the thirteenth Amendment under Implementation Notes
 
 ---
 
@@ -3957,6 +3958,73 @@ fix clause: "typeof(X))] where X is that type" became "typeof({C# type name}))] 
 runs". The smoke program has 139 checks (check 100 changes and checks 109 to 139 are
 listed in the #40 amendment of ADR-0021 dated 2026-11-02).
 
+### Amendment (2026-11-08): Properties of a byref-like type are not compared (#40)
+
+[Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), the byref-like property. On master
+at 416927d, `EnsureAssignable<T>()` threw `NotSupportedException` when a compared type had a public
+property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`), for example an object
+that holds an `Encoding`, whose `Preamble` is a `ReadOnlySpan<byte>`. `MemberAccessor.GetValue` reads
+a property with `MethodInfo.Invoke`, which cannot return a byref-like value, and nothing caught the
+exception (measured: before the change, the unit test with an `Encoding` member failed with that
+exception, thrown from `RuntimeMethodInfo.ThrowNoInvokeException`). The 2.0.0 source lists the same
+properties (public, instance, not indexers) and reads them with `PropertyInfo.GetValue`; 2.0.0 was not
+measured for this.
+
+**Decision.** The property is skipped, not only documented. `MemberComparison.CreateMetadata` leaves
+out of the compared members every public instance property, not an indexer, whose
+`PropertyType.IsByRefLike`. Every list of members is built there, so the rule holds at every level:
+`T`, the properties that an interface `T` declares, a nested object (also one held by a member
+declared as `object` or as an interface) and a collection element. There is no message and no
+exception. The maintainer chose to skip silently and document it ("悄悄跳過並寫進文件"). The fields of
+the type are compared as before, so a change of a field that such a property shows is a violation
+named by the field (`_bytes`). Under Native AOT the skipped property counts as a visible member for
+the rule "no members visible" (the maintainer's choice: "算", it counts):
+`TypeMetadata.ByRefLikePropertyCount` holds the number of such properties that reflection lists, and
+`MemberComparison.MembersAreHidden` decides on `OwnMemberCount + ByRefLikePropertyCount`. `Old<T>()`
+is unchanged: it copies fields and reads no property.
+
+**What was measured.** Unit tests in `EnsureAssignableByRefLikePropertyTests`, under the JIT:
+
+- A `ReadOnlySpan<byte>` property over a private array, unchanged: no exception; an element of the
+  array changed: a violation whose only entry is `_bytes`.
+- A property of a `ref struct` of the test: no exception.
+- A type with such a property reached through a member declared as `object`, through a member
+  declared as an interface, as a collection element, and as an interface `T` that declares the
+  property: no exception. Changed through the interface member: the entries are `Source` and
+  `<Source>k__BackingField`, as for any nested change.
+- A property that returns by reference (`ref int`, `ref readonly int`) is not of a byref-like type
+  (its `PropertyType` is `int&`) and is compared as before: a changed value is reported as the
+  property and its field (`Count` and `_count`, `Limit` and `_limit`).
+- With dynamic code turned off through the test seam, a type whose only member is a
+  `ReadOnlySpan<byte>` property: no exception.
+
+Smoke checks 153 to 156 (listed in the #40 amendment of ADR-0021 dated 2026-11-08): 156 `PASS`, no
+`FAIL`, in the Native AOT publish for `win-x64`, with postconditions on and with `DBC_POST=off`. The
+publish needed `-p:WarningsNotAsErrors=NU1903`: restore failed on advisory NU1903 for
+`Microsoft.DotNet.ILCompiler` 8.0.4, independent of this change. Check 156, an `Encoding` member that
+nothing preserves, also passed in three more runs; it asserts only that no exception is thrown, and
+which members of `UTF8Encoding` are compared under Native AOT was not examined. Checks 153 to 156
+were not run against a build without the change.
+
+**Limits.**
+
+- A property of a byref-like type is never compared itself. State that only such a property shows,
+  held where the comparison does not reach (a private field of a framework base class, a field that
+  Native AOT did not preserve), is not compared, and nothing says so.
+- A write-only property of a byref-like type is not reported by the rule for a property without a get
+  method (ADR-0021): it is left out before that rule is reached (read from the code, not measured).
+
+Each statement of this ADR that the change settles or qualifies is quoted by its opening words:
+
+- D9: "Unchanged: public properties and instance fields." The public properties of a byref-like type
+  are not among them.
+- The #52 amendment, "**Left in #40**": "Items 1, 4, 6 (top level) and 7, and the byref-like
+  property, are untouched." The byref-like property is now handled, as above.
+
+**Unchanged.** `Old<T>()`, B1 to B8, R0 to R8, rule S, the patterns and the messages. The smoke
+program has 156 checks (checks 140 to 152 are listed in the #40 amendment of ADR-0021 dated
+2026-11-02).
+
 ---
 
 ## References
@@ -4011,3 +4079,4 @@ listed in the #40 amendment of ADR-0021 dated 2026-11-02).
 | 2026-10-26 | Amended     | Two arrays of one runtime type whose element type is `bool`, `char`, an integer type, `float`, `double` or an enum are compared without boxing an element; the cost figure of limit 15 of the #57 amendment no longer holds for them; results unchanged (#64); 107 smoke checks. Decision unchanged. See Implementation Notes > tenth Amendment. |
 | 2026-11-02 | Amended     | Fields-only comparison evaluated and not adopted (#46), so D9 stands; assignable patterns also match the property name of a backing field; decision in ADR-0025; 108 smoke checks. Decision unchanged. See Implementation Notes > eleventh Amendment. |
 | 2026-11-02 | Amended     | The top level compares the runtime type of the two values; R6 and R7 compare a sequence by the class chain of its runtime type; R8 also covers a nested class of yours that shows no declared member under Native AOT, and names the type in C# syntax (#40 item 2); decision in ADR-0026; 139 smoke checks. `Old<T>()` unchanged. See Implementation Notes > twelfth Amendment. |
+| 2026-11-08 | Amended     | A public property of a byref-like type is not compared, at any level, with no message; the fields behind it are; under Native AOT it counts as a visible member (#40, the byref-like property); 156 smoke checks. `Old<T>()` unchanged. See Implementation Notes > thirteenth Amendment. |

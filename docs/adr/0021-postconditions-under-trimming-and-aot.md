@@ -18,6 +18,7 @@
 - **Amended**: 2026-10-26 — smoke checks 101 to 107 for two arrays of one primitive or enum element type, which `EnsureAssignable<T>()` now compares without boxing an element; the annotations and suppressions are unchanged (#64, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the ninth Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — an assignable pattern is also matched against the property name of a compiler-generated backing field, so `^Customer$` also skips `<Customer>k__BackingField`; smoke check 108; the annotations and suppressions are unchanged (#46, [ADR-0025](0025-fields-only-comparison-not-adopted.md)); see the tenth Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — the top level of `EnsureAssignable<T>()` compares the runtime type of the two values; under Native AOT a runtime type other than `T` that shows no declared member, or has no visible members, throws "cannot compare", also for equal values; the "cannot compare" messages name the type in C# syntax; the `System.Object` exemption no longer covers `EnsureAssignable<object>` for values of another runtime type; the gap list of the Known Limitations is settled; three more `IL2070` suppressions; smoke check 100 changes and checks 109 to 139 are added (#40, [ADR-0026](0026-top-level-runtime-type-comparison.md)); see the eleventh Amendment under Implementation Notes
+- **Amended**: 2026-11-08 — `EnsureAssignable<T>()` does not compare a public property of a byref-like type, and the "no members visible" rule counts such a property as a visible member; the unreadable-property rule does not reach it; smoke checks 153 to 156 (#40, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); see the twelfth Amendment under Implementation Notes
 
 ---
 
@@ -742,6 +743,28 @@ Each check has its own expectation with `DBC_POST=off`. Measured on `win-x64` wi
 
 Unchanged: the "no members visible" rule when the runtime type is `T`, and its message for `T`; the unreadable-property rule (its message changed on 2026-11-03, see above); the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`; and the other decisions of this ADR.
 
+### Amendment (2026-11-08): Properties of a byref-like type count as visible members (#40)
+
+The decision is unchanged. [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), the byref-like property: `EnsureAssignable<T>()` no longer compares a public property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`), which reflection cannot read; [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) (thirteenth Amendment) records the decision, the measurements and the limits. Such a property counts as a visible member for this rule (the maintainer's choice), so a type whose only visible member is one does not throw "cannot compare". `MemberComparison.MembersAreHidden` decides on `TypeMetadata.OwnMemberCount + TypeMetadata.ByRefLikePropertyCount`. The annotations, the attributes and the suppressions do not change.
+
+These statements, each quoted by its opening words, no longer hold as written:
+
+- Decision, **No members visible**: "It runs on every call. The cached metadata is read each time, so a cached empty member list throws every time." A cached empty member list does not throw when reflection lists a property of a byref-like type for the type: the property is not in the member list, but it counts.
+- Decision, **Unreadable property**: "when a property that has to be compared (public, instance, non-indexer, inherited ones included) has `PropertyInfo.GetMethod == null`". A property of a byref-like type is not compared, so the rule does not reach it: a write-only one is left out with no message (read from the code, not measured).
+
+**The checks.** Smoke checks 153 to 156 are added:
+
+| # | Check | Expected under Native AOT, postconditions enabled |
+|---|---|---|
+| 153 | `EnsureAssignable<SpanBytes>` unchanged (a `ReadOnlySpan<byte>` property over a private array) | no exception |
+| 154 | `EnsureAssignable<SpanBytes>`, an element of the array changed | violation `_bytes` |
+| 155 | `EnsureAssignable<EmptySpanSource>` (no field; its only member is a `ReadOnlySpan<byte>` property) | no exception |
+| 156 | `EnsureAssignable<EncodingHolder>` unchanged (an `Encoding` member; nothing preserves `UTF8Encoding`) | no exception |
+
+With `DBC_POST=off` each expects no exception. Measured on `win-x64` with the Native AOT publish: 156 `PASS`, no `FAIL`, with postconditions on and with `DBC_POST=off`. Restore of the default publish failed on advisory NU1903 for `Microsoft.DotNet.ILCompiler` 8.0.4, independent of this change, so the publish was made with `-p:WarningsNotAsErrors=NU1903`; no other warning was reported. Checks 153 to 156 were not run against a build without the change, no trimmed publish was made, and the CI workflow had not run for this change when this amendment was written.
+
+Unchanged: the messages of the "no members visible" rule and of the unreadable-property rule, the rule for a runtime type that shows no declared member, the annotations and the attributes of `Old<T>()` and of `EnsureAssignable<T>()`, and the other decisions of this ADR.
+
 ---
 
 ## References
@@ -779,3 +802,4 @@ Unchanged: the "no members visible" rule when the runtime type is `T`, and its m
 | 2026-10-26 | Amended     | Smoke checks 101 to 107 for two arrays of one primitive or enum element type, compared without boxing an element (#64); no annotation or suppression changed; decision in ADR-0022. Decision unchanged. See Implementation Notes > ninth Amendment. |
 | 2026-11-02 | Amended     | Assignable patterns are also matched against the property name of a compiler-generated backing field, so `^Customer$` also skips the backing field (#46); smoke check 108; no annotation or suppression changed; decision in ADR-0025. Decision unchanged. See Implementation Notes > tenth Amendment. |
 | 2026-11-02 | Amended     | The top level compares the runtime type (#40 item 2); under Native AOT a runtime type other than `T` that shows no declared member or has no visible members throws; messages name the type in C# syntax; the gap list is settled; three more `IL2070` suppressions; smoke check 100 changed, checks 109 to 139 added; decision in ADR-0026. Annotations unchanged. See Implementation Notes > eleventh Amendment. |
+| 2026-11-08 | Amended     | A public property of a byref-like type is not compared and counts as a visible member for the "no members visible" rule; the unreadable-property rule does not reach it; smoke checks 153 to 156 (#40); decision in ADR-0022. Annotations unchanged. See Implementation Notes > twelfth Amendment. |
