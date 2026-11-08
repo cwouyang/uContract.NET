@@ -323,7 +323,79 @@ public class EnsureAssignableByRefLikePropertyTests
         Assert.Null(exception);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenAnEncodingMemberIsReplacedByOneWithAnotherPreamble_Throws()
+    {
+        EncodingHolder original = new() { Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true) };
+        EncodingHolder old = Contract.Old(() => original);
+        original.Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(original, old));
+
+        Assert.IsType<PostconditionViolationException>(exception);
+    }
+
+    // A framework class as T: the private fields of the runtime type are listed up to and including T.
+    [Fact]
+    public void EnsureAssignable_WhenTIsEncodingAndTwoUtf8EncodingsEmitTheSamePreamble_DoesNotThrow()
+    {
+        Encoding actual = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        Encoding expected = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsEncodingAndTwoUtf8EncodingsEmitDifferentPreambles_Throws()
+    {
+        Encoding actual = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        Encoding expected = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.IsType<PostconditionViolationException>(exception);
+    }
+
     // ---- A span property of the compared type ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTheOnlyMemberIsASpanPropertyAndTheInstancesDiffer_DoesNotThrow()
+    {
+        EmptySpanSource actual = new();
+        EmptySpanSource expected = new();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenASpanPropertyHasAGetterWithASideEffect_DoesNotRunTheGetter()
+    {
+        CountingSpanSource actual = new();
+        CountingSpanSource expected = new();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+        Assert.Equal(0, actual.Reads + expected.Reads);
+    }
+
+    public sealed class CountingSpanSource
+    {
+        public int Reads { get; private set; }
+
+        public ReadOnlySpan<byte> Bytes
+        {
+            get
+            {
+                Reads++;
+                return ReadOnlySpan<byte>.Empty;
+            }
+        }
+    }
 
     [Fact]
     public void EnsureAssignable_WhenASpanPropertyAndTheFieldBehindItAreUnchanged_DoesNotThrow()
