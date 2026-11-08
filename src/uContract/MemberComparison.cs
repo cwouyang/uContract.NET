@@ -110,12 +110,15 @@ internal static class MemberComparison
         // Indexers are not compared. A property of a byref-like type cannot be read through reflection, so it is
         // not compared either; the fields behind it are. Nor does it count for the "no members visible" rule: under
         // Native AOT those fields may be hidden (see MembersAreHidden).
-        List<MemberAccessor> members = properties
-            .Where(p =>
+        PropertyInfo[] comparedProperties =
+        [
+            .. properties.Where(p =>
                 p.GetIndexParameters().Length == 0
                 && !p.PropertyType.IsByRefLike
                 && !IsOverriddenByAnother(p, properties)
-            )
+            ),
+        ];
+        List<MemberAccessor> members = comparedProperties
             .Select(p => new MemberAccessor(p, ExistingGetter(p)))
             .Concat(fields.Select(f => new MemberAccessor(f)))
             .ToList();
@@ -124,7 +127,8 @@ internal static class MemberComparison
         // members above, which decide the "no members visible" rule together with the private fields declared
         // on privateFieldsUpTo: [DynamicallyAccessedMembers] on T preserves those under Native AOT.
         int ownMemberCount = members.Count;
-        List<FieldInfo> baseClassPrivateFields = BaseClassPrivateFields(type, properties, privateFieldsUpTo).ToList();
+        List<FieldInfo> baseClassPrivateFields = BaseClassPrivateFields(type, comparedProperties, privateFieldsUpTo)
+            .ToList();
         ownMemberCount += baseClassPrivateFields.Count(f => f.DeclaringType == privateFieldsUpTo);
         members.AddRange(baseClassPrivateFields.Select(f => new MemberAccessor(f)));
 
@@ -230,7 +234,7 @@ internal static class MemberComparison
     )]
     private static IEnumerable<FieldInfo> BaseClassPrivateFields(
         Type type,
-        PropertyInfo[] properties,
+        PropertyInfo[] comparedProperties,
         Type? privateFieldsUpTo
     )
     {
@@ -250,7 +254,7 @@ internal static class MemberComparison
                 )
             )
             {
-                if (field.IsPrivate && !BacksAComparedProperty(field, baseType, properties))
+                if (field.IsPrivate && !BacksAComparedProperty(field, baseType, comparedProperties))
                 {
                     yield return field;
                 }
@@ -394,7 +398,7 @@ internal static class MemberComparison
         "IL2070",
         Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a property of a base class that the trimmer hides from reflection matches no compared property, so its backing field is compared."
     )]
-    private static bool BacksAComparedProperty(FieldInfo field, Type baseType, PropertyInfo[] properties)
+    private static bool BacksAComparedProperty(FieldInfo field, Type baseType, PropertyInfo[] comparedProperties)
     {
         string name = SourceName(field.Name);
         if (string.Equals(name, field.Name, StringComparison.Ordinal))
@@ -408,7 +412,7 @@ internal static class MemberComparison
             )
             .Any(declared =>
                 string.Equals(declared.Name, name, StringComparison.Ordinal)
-                && properties.Any(compared =>
+                && comparedProperties.Any(compared =>
                     string.Equals(compared.Name, name, StringComparison.Ordinal) && IsOrOverrides(compared, declared)
                 )
             );
