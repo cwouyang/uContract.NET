@@ -3988,16 +3988,18 @@ lists no other property or field is therefore a type with no visible members. As
 the top level it throws "cannot compare" (also for one instance on both sides, as for any `T` with no
 visible members, see the #54 amendment of ADR-0021). Below the top level its `Equals` decides: one
 instance on both sides is equal before the rule is reached, and two different instances that `Equals`
-reports unequal throw "cannot compare". When reflection lists properties of a byref-like type for the
-type, the "cannot compare" messages (`Contract._NoMembersVisible`, `MemberComparison.CannotCompareNested`
+reports unequal throw "cannot compare". When the rule "no members visible" fired for a type of which
+reflection lists properties of a byref-like type, the "cannot compare" messages (`Contract._NoMembersVisible`, `MemberComparison.CannotCompareNested`
 and `CannotCompareBelowWhole`) say "under Native AOT the only properties or fields visible to reflection
 are properties of a byref-like type (Span<T>, ReadOnlySpan<T>, a ref struct), which are not compared
-and do not count as members." They name no missing annotation, and their ways out are those that
-apply: for `T`, `Contract.Ensure` on each state member with a value taken with `Contract.Old`, or
-`DBC_POST=off`; for a runtime type other than `T`, also "if the type has fields, preserve them" or pass
-the values as that type; below the top level, "override Equals so that it compares the state", the
+and do not count as members." They name no missing annotation (the properties are visible, so they
+were preserved), and their ways out are those that apply: for `T`, `Contract.Ensure` on each state member
+with a value taken with `Contract.Old`, or `DBC_POST=off`; for a runtime type other than `T`, also "if the
+type has fields, either preserve them … or pass the values as that type, which preserves them"; below the top level, "override Equals so that it compares the state", the
 top-level member as assignable (not below a `T` compared as a whole), "if the type has fields,
-preserve them", or `DBC_POST=off`. The other messages are unchanged. `Old<T>()` is unchanged: it
+preserve them", or `DBC_POST=off`. Below the top level, a type that shows no declared member (nothing
+preserves it) while the members it inherits stay visible keeps the general message and its way out "if
+the type has members, preserve them". The other messages are unchanged. `Old<T>()` is unchanged: it
 copies fields and reads no property.
 
 **R6 and the byref-like property: a one-way door.** The angle review measured, on master at 416927d
