@@ -296,22 +296,11 @@ internal static class MemberComparison
         };
     }
 
-    // A public instance property of a byref-like type, not an indexer, declared on a type that is not a framework
-    // class.
-    [UnconditionalSuppressMessage(
-        "Trimming",
-        "IL2070",
-        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The runtime type is known only at run time; under Native AOT a property the trimmer removed is not found, and the sequence is then compared as one that declares no member of yours."
-    )]
+    // A property of a byref-like type (see ByRefLikeProperties) declared on a type that is not a framework class.
     private static bool DeclaresByRefLikeProperty(Type type)
     {
-        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Any(p =>
-                p.GetIndexParameters().Length == 0
-                && p.PropertyType.IsByRefLike
-                && p.DeclaringType is { } declaringType
-                && !IsFrameworkClass(declaringType)
-            );
+        return ByRefLikeProperties(type)
+            .Any(p => p.DeclaringType is { } declaringType && !IsFrameworkClass(declaringType));
     }
 
     // A class the compiler generated for a sequence: a yield iterator (it implements IEnumerator and is
@@ -518,15 +507,21 @@ internal static class MemberComparison
         return ListsByRefLikeProperty(type) ? "override Equals so that it compares the state; " : "";
     }
 
+    internal static bool ListsByRefLikeProperty(Type type)
+    {
+        return ByRefLikeProperties(type).Any();
+    }
+
+    // The public instance properties of a byref-like type that reflection lists for type, indexers left out.
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Only the wording of a message depends on it; a property the trimmer removed is not listed."
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. The runtime type is known only at run time; under Native AOT a property the trimmer removed is not listed, and the type is then treated as one without it."
     )]
-    internal static bool ListsByRefLikeProperty(Type type)
+    private static IEnumerable<PropertyInfo> ByRefLikeProperties(Type type)
     {
         return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Any(p => p.GetIndexParameters().Length == 0 && p.PropertyType.IsByRefLike);
+            .Where(p => p.GetIndexParameters().Length == 0 && p.PropertyType.IsByRefLike);
     }
 
     internal static InvalidOperationException CannotCompareNested(
