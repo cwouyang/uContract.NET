@@ -9,7 +9,7 @@
 - **Status Date**: 2026-10-26
 - **Amended**: 2026-11-02 — an assignable pattern is also matched against the property name of a compiler-generated backing field (#46, [ADR-0025](0025-fields-only-comparison-not-adopted.md)); the decisions stand; see the Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — the top level compares the members of the runtime type of the two values; for a framework class as `T` the walk goes up to and including `T`; a collection class of yours is compared by its class chain, no longer by its elements alone (#40 item 2, [ADR-0026](0026-top-level-runtime-type-comparison.md)); the decisions stand; see the second Amendment under Implementation Notes
-- **Amended**: 2026-11-08 — a public property of a byref-like type is left out of the member list, and counts for the "no members visible" rule (#40, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); the decisions stand; see the third Amendment under Implementation Notes
+- **Amended**: 2026-11-08 — a public property of a byref-like type is left out of the member list, and does not count for the "no members visible" rule (#40, [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)); the decisions stand; see the third Amendment under Implementation Notes
 
 ---
 
@@ -198,11 +198,12 @@ Unchanged: the merge of decision 2, the display of colliding names, the pattern 
 
 ### Amendment (2026-11-08): Properties of a byref-like type are left out of the list (#40)
 
-The decisions are unchanged. [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), the byref-like property: a public property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`) cannot be read through reflection and is no longer compared; [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) (thirteenth Amendment) records the decision, the measurements and the limits, and [ADR-0021](0021-postconditions-under-trimming-and-aot.md) (twelfth Amendment) the rule "no members visible" and smoke checks 153 to 156. Each statement of this ADR that it qualifies is quoted by its opening words:
+The decisions are unchanged. [Issue #40](https://github.com/cwouyang/uContract.NET/issues/40), the byref-like property: a public property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`) cannot be read through reflection and is no longer compared; [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md) (thirteenth Amendment) records the decision, the measurements and the limits, and [ADR-0021](0021-postconditions-under-trimming-and-aot.md) (twelfth Amendment) the rule "no members visible" and smoke checks 153 to 158. Each statement of this ADR that it qualifies is quoted by its opening words:
 
-- Implementation Notes, **Where it lives**: "the public properties (indexers left out, merged declarations dropped by `IsOverriddenByAnother`)". Properties of a byref-like type are left out too, before the merge.
-- Implementation Notes: "**The "no members visible" count is kept apart.** `TypeMetadata.OwnMemberCount` is the number of members before the base-class private fields are added; `MemberComparison.MembersAreHidden` decides on it". It now decides on `OwnMemberCount + ByRefLikePropertyCount`: the properties of a byref-like type that reflection lists count as visible, though they are not in the list.
-- Neutral Consequences: "The "no members visible" decision for a type is unchanged: it is made on the members of the 2.0.0 list." The properties of a byref-like type in that list still count, as above.
+- Implementation Notes, **Where it lives**: "the public properties (indexers left out, merged declarations dropped by `IsOverriddenByAnother`)". Properties of a byref-like type are left out too, in the same filter.
+- Neutral Consequences: "The "no members visible" decision for a type is unchanged: it is made on the members of the 2.0.0 list." Decision 1, **"No members visible"**, says the same: "is decided on the members of the 2.0.0 list". It is made on that list without the properties of a byref-like type: they are not in `OwnMemberCount`, so they do not count as visible (under Native AOT the fields behind them may be hidden; see ADR-0022).
+
+Still true: "**The "no members visible" count is kept apart.**" `MembersAreHidden` still decides on `OwnMemberCount` alone.
 
 Unchanged: the base-class walk, the framework stop, the merge of decision 2, the display of colliding names, the pattern rules, and the trimming annotations.
 
@@ -231,4 +232,4 @@ Unchanged: the base-class walk, the framework stop, the merge of decision 2, the
 | 2026-10-26 | Accepted    | Decision recorded after implementation (#40 items 1 and 4). Amends ADR-0021 and ADR-0022. |
 | 2026-11-02 | Amended     | Assignable patterns are also matched against the property name of a compiler-generated backing field (#46); decision in ADR-0025. Decisions unchanged. See Implementation Notes > Amendment. |
 | 2026-11-02 | Amended     | The top level compares the runtime type; for a framework class as `T` the walk goes up to and including `T`; a collection class of yours is compared by its class chain (#40 item 2); decision in ADR-0026. Decisions unchanged. See Implementation Notes > second Amendment. |
-| 2026-11-08 | Amended     | A public property of a byref-like type is left out of the member list and counts for the "no members visible" rule (#40); decision in ADR-0022. Decisions unchanged. See Implementation Notes > third Amendment. |
+| 2026-11-08 | Amended     | A public property of a byref-like type is left out of the member list and does not count for the "no members visible" rule (#40); decision in ADR-0022. Decisions unchanged. See Implementation Notes > third Amendment. |
