@@ -764,6 +764,25 @@ internal sealed class SpanStateHolder
     public PropertiesOnlySpanState State { get; set; } = new();
 }
 
+// A ref struct of this program: a byref-like type that is neither Span<T> nor ReadOnlySpan<T>.
+internal ref struct WindowView
+{
+    public int Start { get; init; }
+}
+
+// Passed as T. Its WindowView property shows the private field behind it.
+internal sealed class SlidingWindow(int start)
+{
+    private int _start = start;
+
+    public WindowView Current => new() { Start = _start };
+
+    public void Move(int start)
+    {
+        _start = start;
+    }
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -2646,7 +2665,11 @@ public static class Program
             155,
             "Span property as the only member, two instances",
             OnlySpanPropertyUnchanged,
-            Expect.Throws<InvalidOperationException>("no properties or fields are visible"),
+            Expect.Throws<InvalidOperationException>(
+                "are properties of a byref-like type",
+                "do not count as members",
+                "DBC_POST=off"
+            ),
             Expect.Ok
         );
 
@@ -2675,6 +2698,26 @@ public static class Program
             PropertiesOnlySpanStateChanged,
             Expect.Value("fields=0|properties=1|Bytes=True|cannot compare"),
             Expect.Value("fields=0|properties=1|Bytes=True|none")
+        );
+
+        // Mutation: none. Visibility: T (SlidingWindow), whose WindowView property is of a ref struct of this program.
+        // Expected values measured, see #40 byref-like.
+        yield return new Check(
+            159,
+            "Ref struct property unchanged",
+            RefStructPropertyUnchanged,
+            Expect.Value("none"),
+            Expect.Value("none")
+        );
+
+        // Mutation: field write behind the ref struct property. Visibility: as check 159. Expected values measured,
+        // see #40 byref-like.
+        yield return new Check(
+            160,
+            "Ref struct property changed",
+            RefStructPropertyChanged,
+            Expect.Value("violation:_start"),
+            Expect.Value("none")
         );
     }
 
@@ -3656,6 +3699,21 @@ public static class Program
         original.State.Replace(9);
         string outcome = ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, expected));
         return $"{ListingOf(original.State, "Bytes")}|{outcome}";
+    }
+
+    private static string RefStructPropertyUnchanged()
+    {
+        SlidingWindow original = new(start: 3);
+        SlidingWindow copy = Contract.Old(() => original);
+        return ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    private static string RefStructPropertyChanged()
+    {
+        SlidingWindow original = new(start: 3);
+        SlidingWindow copy = Contract.Old(() => original);
+        original.Move(5);
+        return ByRefLikeOutcomeOf(() => Contract.EnsureAssignable(original, copy));
     }
 
     private static RingNode NewRing()
