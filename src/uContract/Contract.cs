@@ -1152,7 +1152,7 @@ public static class Contract
     ///     Also thrown under Native AOT when the type compared at the top level (<typeparamref name="T" />, or the
     ///     runtime type of the values when that is compared: see the remarks) has no properties or fields visible
     ///     to reflection, where the private fields declared on a class <typeparamref name="T" /> that the runtime
-    ///     type derives from count as visible, and
+    ///     type derives from count as visible and a property of a byref-like type does not (see the remarks), and
     ///     neither <paramref name="actual" /> nor <paramref name="expected" /> is null, and <typeparamref name="T" />
     ///     is not compared as a whole, or when the runtime type of a nested member or collection element that has to
     ///     be compared has none and its <c>Equals</c> reports the two values unequal (without an <c>Equals</c>
@@ -1251,8 +1251,11 @@ public static class Contract
     ///     compared as above, so a change of a field that such a property shows is a violation named by the
     ///     field. A property that returns by reference (<c>ref int</c>, <c>ref readonly int</c>) is not of a
     ///     byref-like type and is compared as any other property. Under Native AOT a property of a byref-like type
-    ///     that reflection lists counts as a visible member for the rule "no members visible", so a type whose only
-    ///     visible member is such a property is not reported by that rule.
+    ///     that reflection lists does not count as a visible member for the rule "no members visible": the fields
+    ///     behind it may not be preserved, and a change of them would pass silently. A type of which reflection
+    ///     lists no other property or field is a type with no visible members (see the exceptions): as the type
+    ///     compared at the top level it throws, and below the top level its <c>Equals</c> decides, so two
+    ///     different instances without an <c>Equals</c> override throw.
     ///     Native AOT: the private fields declared on a base class are not preserved, so they are not compared,
     ///     and <see cref="Old{T}" /> shares the objects they refer to. To compare them, preserve the base class,
     ///     for example with <c>[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]</c>

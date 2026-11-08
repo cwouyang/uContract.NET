@@ -513,11 +513,13 @@ AOT](README.md#trimming-and-native-aot) in the README.
   property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`), for example an
   object that holds an `Encoding`, whose `Preamble` is a `ReadOnlySpan<byte>`. Reflection cannot read
   such a property, so it is not compared, at any level, and nothing reports that it was left out; a
-  write-only one does not throw "cannot read property" either. The
-  fields of the type are still compared, so a change of a field that such a property shows is still a
-  violation, named by the field. A property that returns by reference (`ref int`) is compared as
-  before. Under Native AOT such a property counts as a visible member, so a type whose only visible
-  member is one does not throw "cannot compare" (#40; ADR-0022).
+  write-only one does not throw "cannot read property" either. The fields of the type are still
+  compared, so a change of a field that such a property shows is still a violation, named by the
+  field. A property that returns by reference (`ref int`) is compared as before. Under Native AOT
+  such a property that reflection lists does not count as a visible member, because the fields behind
+  it may not be preserved: a type of which reflection lists no other property or field is a type with
+  no visible members, so at the top level it throws "cannot compare", and below the top level its
+  `Equals` decides (#40; ADR-0022).
 
 ### Removed
 
