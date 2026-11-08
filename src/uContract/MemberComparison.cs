@@ -494,6 +494,41 @@ internal static class MemberComparison
             + "or set DBC_POST=off (disables all postcondition checks).";
     }
 
+    // The sentence of a "cannot compare" message that says what reflection shows of type under Native AOT. A
+    // type that lists properties of a byref-like type is preserved; those properties are not compared and do not
+    // count for the rule "no members visible" (see MembersAreHidden), so no annotation is missing.
+    internal static string WhatIsVisible(Type type)
+    {
+        return ListsByRefLikeProperty(type)
+            ? "under Native AOT the only properties or fields visible to reflection are properties of a byref-like "
+                + "type (Span<T>, ReadOnlySpan<T>, a ref struct), which are not compared and do not count as members. "
+            : "no properties or fields are visible to reflection under Native AOT. ";
+    }
+
+    // What preserving the type would bring: its fields, when its properties are visible already.
+    internal static string PreserveWhat(Type type)
+    {
+        return ListsByRefLikeProperty(type) ? "if the type has fields" : "if the type has members";
+    }
+
+    // Below the top level the Equals of the type decides before its members are listed; an override that compares
+    // the state of a type that lists byref-like properties lets two equal values pass.
+    private static string OverrideEqualsWayOut(Type type)
+    {
+        return ListsByRefLikeProperty(type) ? "override Equals so that it compares the state; " : "";
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Only the wording of a message depends on it; a property the trimmer removed is not listed."
+    )]
+    internal static bool ListsByRefLikeProperty(Type type)
+    {
+        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Any(p => p.GetIndexParameters().Length == 0 && p.PropertyType.IsByRefLike);
+    }
+
     internal static InvalidOperationException CannotCompareNested(
         Type comparedType,
         MemberAccessor topLevelMember,
@@ -507,7 +542,7 @@ internal static class MemberComparison
         string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-            + "no properties or fields are visible to reflection under Native AOT. "
+            + WhatIsVisible(hidden.Type)
             + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
         string listAsAssignable =
             $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
@@ -520,8 +555,10 @@ internal static class MemberComparison
         return new InvalidOperationException(
             cannotList
                 + "Ways out: "
+                + OverrideEqualsWayOut(hidden.Type)
                 + listAsAssignable
-                + "if the type has members, preserve them, for example with "
+                + PreserveWhat(hidden.Type)
+                + ", preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
@@ -539,7 +576,7 @@ internal static class MemberComparison
         string path = $"{start}{hidden.PathBelowTopLevelMember}";
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-            + "no properties or fields are visible to reflection under Native AOT. "
+            + WhatIsVisible(hidden.Type)
             + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
         if (!CSharpTypeName.CanBeWritten(hidden.Type))
         {
@@ -548,7 +585,10 @@ internal static class MemberComparison
 
         return new InvalidOperationException(
             cannotList
-                + "Ways out: if the type has members, preserve them, for example with "
+                + "Ways out: "
+                + OverrideEqualsWayOut(hidden.Type)
+                + PreserveWhat(hidden.Type)
+                + ", preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );

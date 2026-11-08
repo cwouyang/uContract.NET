@@ -1956,10 +1956,26 @@ public static class Contract
 
     // [DynamicallyAccessedMembers] preserves the members of T, not of a runtime type other than T, so the
     // remedy differs.
+    // A type that lists properties of a byref-like type is preserved, so no annotation is missing; those properties
+    // do not count (see MemberComparison.MembersAreHidden).
     private static InvalidOperationException _NoMembersVisible(Type comparedType, Type declaredType)
     {
+        const string CheckWithEnsure =
+            "check each state member with Contract.Ensure and a value taken with Contract.Old; ";
+        bool listsByRefLikeProperty = MemberComparison.ListsByRefLikeProperty(comparedType);
         if (comparedType == declaredType)
         {
+            if (listsByRefLikeProperty)
+            {
+                return new InvalidOperationException(
+                    $"EnsureAssignable cannot compare {comparedType}: "
+                        + MemberComparison.WhatIsVisible(comparedType)
+                        + "Ways out: "
+                        + CheckWithEnsure
+                        + "or set DBC_POST=off (disables all postcondition checks)."
+                );
+            }
+
             return new InvalidOperationException(
                 $"EnsureAssignable cannot compare {comparedType}: no properties or fields are visible to reflection "
                     + "under Native AOT. If the type has members, the generic argument passed to EnsureAssignable "
@@ -1970,10 +1986,21 @@ public static class Contract
 
         string cannotSee =
             $"EnsureAssignable cannot compare {comparedType}, the runtime type of the values (T is {declaredType}): "
-            + "no properties or fields are visible to reflection under Native AOT. ";
+            + MemberComparison.WhatIsVisible(comparedType);
         if (!CSharpTypeName.CanBeWritten(comparedType))
         {
             return new InvalidOperationException(cannotSee + MemberComparison.WaysOutForAnUnnamedType(comparedType));
+        }
+
+        if (listsByRefLikeProperty)
+        {
+            return new InvalidOperationException(
+                cannotSee
+                    + "Ways out: if the type has fields, preserve them, for example with "
+                    + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(comparedType)}, or pass the values as that type; "
+                    + CheckWithEnsure
+                    + "or set DBC_POST=off (disables all postcondition checks)."
+            );
         }
 
         return new InvalidOperationException(

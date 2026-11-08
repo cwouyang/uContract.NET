@@ -26,10 +26,33 @@ public class EnsureAssignableByRefLikePropertyTests
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.StartsWith(
-            $"EnsureAssignable cannot compare {typeof(EmptySpanSource)}: no properties or fields are visible",
-            cannotCompare.Message,
-            StringComparison.Ordinal
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(EmptySpanSource)}: "
+                + OnlyByRefLikePropertiesVisible
+                + "Ways out: check each state member with Contract.Ensure and a value taken with Contract.Old; "
+                + "or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WithoutDynamicCode_WhenTIsObjectAndTheOnlyMemberIsASpanProperty_ThrowsCannotCompare()
+    {
+        object actual = new EmptySpanSource();
+        object expected = new EmptySpanSource();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(EmptySpanSource)}, the runtime type of the values (T is "
+                + $"{typeof(object)}): "
+                + OnlyByRefLikePropertiesVisible
+                + "Ways out: if the type has fields, preserve them, for example with "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({EmptySpanSourceInCSharp}))] on a "
+                + "method that runs, or pass the values as that type; check each state member with Contract.Ensure "
+                + "and a value taken with Contract.Old; or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
         );
     }
 
@@ -43,12 +66,73 @@ public class EnsureAssignableByRefLikePropertyTests
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.StartsWith(
-            $"EnsureAssignable cannot compare {typeof(EmptySpanSource)} (reached through 'EmptySpanSourceHolder.Source')",
-            cannotCompare.Message,
-            StringComparison.Ordinal
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(EmptySpanSource)} (reached through "
+                + "'EmptySpanSourceHolder.Source'): "
+                + OnlyByRefLikePropertiesVisible
+                + "Their Equals reports them unequal (without an Equals override this only means they are different "
+                + "instances), and their members cannot be listed. Ways out: override Equals so that it compares the "
+                + "state; list 'Source' as assignable (patterns are regular expressions matched against top-level "
+                + "member names, so use the plain member name); if the type has fields, preserve them, for example "
+                + $"with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({EmptySpanSourceInCSharp}))] "
+                + "on a method that runs; or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
         );
     }
+
+    // An array type as T is compared as a whole, element by element.
+    [Fact]
+    public void EnsureAssignable_WithoutDynamicCode_WhenArrayElementsHaveOnlyASpanProperty_ThrowsCannotCompare()
+    {
+        EmptySpanSource[] actual = [new()];
+        EmptySpanSource[] expected = [new()];
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(EmptySpanSource)} (reached through 'actual[]'): "
+                + OnlyByRefLikePropertiesVisible
+                + "Their Equals reports them unequal (without an Equals override this only means they are different "
+                + "instances), and their members cannot be listed. Ways out: override Equals so that it compares the "
+                + "state; if the type has fields, preserve them, for example with "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({EmptySpanSourceInCSharp}))] on a "
+                + "method that runs; or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    // The ways out the nested message names.
+    [Fact]
+    public void EnsureAssignable_WithoutDynamicCode_WhenANestedSpanOnlyTypeOverridesEquals_DoesNotThrow()
+    {
+        EqualSpanSourceHolder actual = new() { Source = new EqualSpanSource() };
+        EqualSpanSourceHolder expected = new() { Source = new EqualSpanSource() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WithoutDynamicCode_WhenTheMemberLeadingToASpanOnlyTypeIsAssignable_DoesNotThrow()
+    {
+        EmptySpanSourceHolder actual = new() { Source = new EmptySpanSource() };
+        EmptySpanSourceHolder expected = new() { Source = new EmptySpanSource() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() =>
+            Contract.EnsureAssignable(actual, expected, "^Source$")
+        );
+
+        Assert.Null(exception);
+    }
+
+    private const string OnlyByRefLikePropertiesVisible =
+        "under Native AOT the only properties or fields visible to reflection are properties of a byref-like type "
+        + "(Span<T>, ReadOnlySpan<T>, a ref struct), which are not compared and do not count as members. ";
+
+    private const string EmptySpanSourceInCSharp =
+        "uContract.Tests.EnsureAssignableByRefLikePropertyTests.EmptySpanSource";
 
     public sealed class EmptySpanSource
     {
@@ -63,6 +147,28 @@ public class EnsureAssignableByRefLikePropertyTests
     public sealed class EmptySpanSourceHolder
     {
         public EmptySpanSource Source { get; set; } = new();
+    }
+
+    // Stateless, so any two instances are equal.
+    public sealed class EqualSpanSource : IEquatable<EqualSpanSource>
+    {
+        [SuppressMessage(
+            "Performance",
+            "CA1822:Mark members as static",
+            Justification = "An instance property is what EnsureAssignable lists."
+        )]
+        public ReadOnlySpan<byte> Bytes => ReadOnlySpan<byte>.Empty;
+
+        public bool Equals(EqualSpanSource? other) => other is not null;
+
+        public override bool Equals(object? obj) => obj is EqualSpanSource;
+
+        public override int GetHashCode() => 0;
+    }
+
+    public sealed class EqualSpanSourceHolder
+    {
+        public EqualSpanSource Source { get; set; } = new();
     }
 
     // ---- A sequence of yours that declares a span property ----
