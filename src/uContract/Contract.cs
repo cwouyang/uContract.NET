@@ -1210,7 +1210,8 @@ public static class Contract
     ///     that nothing preserves (a subclass that declares nothing) throws too; the same fix removes it. Below the
     ///     top level the rule for a class with no visible members above applies instead (see the remarks).
     ///     Also thrown, in any build, when a public property that is reached by the comparison has no get method:
-    ///     a write-only property, or one whose getter was removed by trimming.
+    ///     a write-only property, or one whose getter was removed by trimming. A property of a byref-like type is
+    ///     not reached, with or without a get method (see the remarks).
     ///     This applies to properties of <typeparamref name="T" />, of nested members, of collection elements and
     ///     of base classes. A property whose getter is non-public is compared as usual when the getter is declared
     ///     on the compared type. A property whose getter is not visible through the compared type — a private
@@ -1226,7 +1227,8 @@ public static class Contract
     ///     enumerated.
     /// </exception>
     /// <remarks>
-    ///     This method uses reflection to compare the public instance properties (indexers excluded)
+    ///     This method uses reflection to compare the public instance properties (indexers and properties of a
+    ///     byref-like type excluded)
     ///     and the instance fields of each compared type, non-public fields included, and the private instance
     ///     fields declared on its base classes. This holds for <typeparamref name="T" />, for each nested object
     ///     that is compared by its members, whose members are listed from its runtime type, and for each element
@@ -1243,6 +1245,14 @@ public static class Contract
     ///     as a sequence (see below). A change of such a field, for example raising a domain event that a
     ///     base aggregate class keeps in a private list, is a violation unless the member is listed as
     ///     assignable.
+    ///     A property of a byref-like type (<c>Span&lt;T&gt;</c>, <c>ReadOnlySpan&lt;T&gt;</c>, a <c>ref struct</c>
+    ///     of yours; <c>Encoding.Preamble</c>, for example) cannot be read through reflection, so it is not
+    ///     compared and its getter does not run, at every level, with no message. The fields of the type are
+    ///     compared as above, so a change of a field that such a property shows is a violation named by the
+    ///     field. A property that returns by reference (<c>ref int</c>, <c>ref readonly int</c>) is not of a
+    ///     byref-like type and is compared as any other property. Under Native AOT a property of a byref-like type
+    ///     that reflection lists counts as a visible member for the rule "no members visible", so a type whose only
+    ///     visible member is such a property is not reported by that rule.
     ///     Native AOT: the private fields declared on a base class are not preserved, so they are not compared,
     ///     and <see cref="Old{T}" /> shares the objects they refer to. To compare them, preserve the base class,
     ///     for example with <c>[DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(Base))]</c>

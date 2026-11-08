@@ -509,6 +509,15 @@ AOT](README.md#trimming-and-native-aot) in the README.
   caches held each type they looked up, so a type from a collectible assembly, and the assembly, could
   not be collected; a constructed generic type over such a type, such as a `List<T>` of it, is
   covered too. Results do not change (#48; ADR-0024).
+- `EnsureAssignable<T>()` no longer throws `NotSupportedException` when a compared type has a public
+  property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`), for example an
+  object that holds an `Encoding`, whose `Preamble` is a `ReadOnlySpan<byte>`. Reflection cannot read
+  such a property, so it is not compared, at any level, and nothing reports that it was left out; a
+  write-only one does not throw "cannot read property" either. The
+  fields of the type are still compared, so a change of a field that such a property shows is still a
+  violation, named by the field. A property that returns by reference (`ref int`) is compared as
+  before. Under Native AOT such a property counts as a visible member, so a type whose only visible
+  member is one does not throw "cannot compare" (#40; ADR-0022).
 
 ### Removed
 
