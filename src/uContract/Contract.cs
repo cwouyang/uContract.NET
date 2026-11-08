@@ -1165,16 +1165,18 @@ public static class Contract
     ///     element.
     ///     The contract could not be checked, so this is not a contract violation. <see cref="object" /> is exempt
     ///     from this rule (no members visible) only, not from the rule for one shared instance above.
-    ///     When reflection lists properties of a byref-like type for the type (see the remarks), the message says
-    ///     that these are the only properties or fields visible, that they are not compared and do not count as
-    ///     members, and names no missing annotation. Its ways out: for <typeparamref name="T" />, check each state
-    ///     member with <c>Contract.Ensure</c> and a value taken with <c>Contract.Old</c>, or set
-    ///     <c>DBC_POST=off</c>; for a runtime type other than <typeparamref name="T" />, also preserve the fields of
-    ///     the type if it has any, or pass the values as that type; below the top level, override <c>Equals</c> so
+    ///     When this rule fired for a type of which reflection lists properties of a byref-like type (see the
+    ///     remarks), the message says that these are the only properties or fields visible, that they are not
+    ///     compared and do not count as members, and names no missing annotation. Its ways out: for
+    ///     <typeparamref name="T" />, check each state member with <c>Contract.Ensure</c> and a value taken with
+    ///     <c>Contract.Old</c>, or set <c>DBC_POST=off</c>; for a runtime type other than
+    ///     <typeparamref name="T" />, if the type has fields, also preserve them or pass the values as that type,
+    ///     which preserves them; below the top level, override <c>Equals</c> so
     ///     that it compares the state, list the top-level member that leads to it as assignable (where there is
     ///     one), preserve its fields if it has any, or set <c>DBC_POST=off</c>. At the top level an assignable
     ///     pattern does not avoid it, also one that names the property: the rule is decided before the patterns
-    ///     are applied.
+    ///     are applied. Below the top level, a type that shows no declared member (nothing preserves it) while
+    ///     the members it inherits stay visible gets the general message, whose way out is to preserve its members.
     ///     Also thrown under Native AOT when at the top level the runtime type of the values is not
     ///     <typeparamref name="T" />, they are not compared as a whole, and that runtime type shows no declared
     ///     member to reflection: for a class also when the two values are equal; for a value type only when its
@@ -1972,8 +1974,9 @@ public static class Contract
 
     // [DynamicallyAccessedMembers] preserves the members of T, not of a runtime type other than T, so the
     // remedy differs.
-    // A type that lists properties of a byref-like type is preserved, so no annotation is missing; those properties
-    // do not count (see MemberComparison.MembersAreHidden).
+    // This is the rule "no members visible" (see MemberComparison.MembersAreHidden). A type that lists properties of a
+    // byref-like type had its properties preserved, so no annotation is missing; those properties do not count. Passed
+    // as T, such a type has its fields preserved too, so passing the values as that type helps only if it has fields.
     private static InvalidOperationException _NoMembersVisible(Type comparedType, Type declaredType)
     {
         const string CheckWithEnsure =
@@ -1985,7 +1988,7 @@ public static class Contract
             {
                 return new InvalidOperationException(
                     $"EnsureAssignable cannot compare {comparedType}: "
-                        + MemberComparison.WhatIsVisible(comparedType)
+                        + MemberComparison.WhatIsVisible(onlyByRefLikePropertiesVisible: true)
                         + "Ways out: "
                         + CheckWithEnsure
                         + "or set DBC_POST=off (disables all postcondition checks)."
@@ -2002,7 +2005,7 @@ public static class Contract
 
         string cannotSee =
             $"EnsureAssignable cannot compare {comparedType}, the runtime type of the values (T is {declaredType}): "
-            + MemberComparison.WhatIsVisible(comparedType);
+            + MemberComparison.WhatIsVisible(listsByRefLikeProperty);
         if (!CSharpTypeName.CanBeWritten(comparedType))
         {
             return new InvalidOperationException(cannotSee + MemberComparison.WaysOutForAnUnnamedType(comparedType));
@@ -2012,8 +2015,9 @@ public static class Contract
         {
             return new InvalidOperationException(
                 cannotSee
-                    + "Ways out: if the type has fields, preserve them, for example with "
-                    + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(comparedType)}, or pass the values as that type; "
+                    + "Ways out: if the type has fields, either preserve them, for example with "
+                    + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(comparedType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(comparedType)}, or pass the values as that type, which preserves them; "
+                    + "otherwise "
                     + CheckWithEnsure
                     + "or set DBC_POST=off (disables all postcondition checks)."
             );

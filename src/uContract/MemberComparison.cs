@@ -487,28 +487,29 @@ internal static class MemberComparison
             + "or set DBC_POST=off (disables all postcondition checks).";
     }
 
-    // The sentence of a "cannot compare" message that says what reflection shows of type under Native AOT. A
-    // type that lists properties of a byref-like type is preserved; those properties are not compared and do not
-    // count for the rule "no members visible" (see MembersAreHidden), so no annotation is missing.
-    internal static string WhatIsVisible(Type type)
+    // The sentence of a "cannot compare" message that says what reflection shows of a type under Native AOT.
+    // onlyByRefLikePropertiesVisible: the rule "no members visible" fired (see MembersAreHidden) for a type that
+    // lists properties of a byref-like type. Its properties are visible, so they were preserved; those properties
+    // are not compared and do not count for the rule.
+    internal static string WhatIsVisible(bool onlyByRefLikePropertiesVisible)
     {
-        return ListsByRefLikeProperty(type)
+        return onlyByRefLikePropertiesVisible
             ? "under Native AOT the only properties or fields visible to reflection are properties of a byref-like "
                 + "type (Span<T>, ReadOnlySpan<T>, a ref struct), which are not compared and do not count as members. "
             : "no properties or fields are visible to reflection under Native AOT. ";
     }
 
     // What preserving the type would bring: its fields, when its properties are visible already.
-    internal static string PreserveWhat(Type type)
+    private static string PreserveWhat(bool onlyByRefLikePropertiesVisible)
     {
-        return ListsByRefLikeProperty(type) ? "if the type has fields" : "if the type has members";
+        return onlyByRefLikePropertiesVisible ? "if the type has fields" : "if the type has members";
     }
 
     // Below the top level the Equals of the type decides before its members are listed; an override that compares
-    // the state of a type that lists byref-like properties lets two equal values pass.
-    private static string OverrideEqualsWayOut(Type type)
+    // the state of a type whose only visible properties are byref-like lets two equal values pass.
+    private static string OverrideEqualsWayOut(bool onlyByRefLikePropertiesVisible)
     {
-        return ListsByRefLikeProperty(type) ? "override Equals so that it compares the state; " : "";
+        return onlyByRefLikePropertiesVisible ? "override Equals so that it compares the state; " : "";
     }
 
     internal static bool ListsByRefLikeProperty(Type type)
@@ -541,7 +542,7 @@ internal static class MemberComparison
         string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-            + WhatIsVisible(hidden.Type)
+            + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
             + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
         string listAsAssignable =
             $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
@@ -554,9 +555,9 @@ internal static class MemberComparison
         return new InvalidOperationException(
             cannotList
                 + "Ways out: "
-                + OverrideEqualsWayOut(hidden.Type)
+                + OverrideEqualsWayOut(hidden.OnlyByRefLikePropertiesVisible)
                 + listAsAssignable
-                + PreserveWhat(hidden.Type)
+                + PreserveWhat(hidden.OnlyByRefLikePropertiesVisible)
                 + ", preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
@@ -575,7 +576,7 @@ internal static class MemberComparison
         string path = $"{start}{hidden.PathBelowTopLevelMember}";
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
-            + WhatIsVisible(hidden.Type)
+            + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
             + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
         if (!CSharpTypeName.CanBeWritten(hidden.Type))
         {
@@ -585,8 +586,8 @@ internal static class MemberComparison
         return new InvalidOperationException(
             cannotList
                 + "Ways out: "
-                + OverrideEqualsWayOut(hidden.Type)
-                + PreserveWhat(hidden.Type)
+                + OverrideEqualsWayOut(hidden.OnlyByRefLikePropertiesVisible)
+                + PreserveWhat(hidden.OnlyByRefLikePropertiesVisible)
                 + ", preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
@@ -1229,7 +1230,10 @@ internal static class MemberComparison
             if (!equalWithoutWalk)
             {
                 // CannotCompareNested's wording relies on Equals having returned false here.
-                context.Hidden = new HiddenMembers(type);
+                context.Hidden = new HiddenMembers(type)
+                {
+                    OnlyByRefLikePropertiesVisible = MembersAreHidden(type, metadata) && ListsByRefLikeProperty(type),
+                };
             }
 
             return null;
@@ -1422,6 +1426,11 @@ internal static class MemberComparison
     internal sealed class HiddenMembers(Type type)
     {
         public Type Type { get; } = type;
+
+        // The rule "no members visible" fired (see MembersAreHidden), and the only properties the type lists are of
+        // a byref-like type. False for a type that shows no declared member while the members it inherits stay
+        // visible (see ShowsNoDeclaredMember).
+        public bool OnlyByRefLikePropertiesVisible { get; init; }
 
         public string PathBelowTopLevelMember { get; private set; } = "";
 

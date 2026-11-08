@@ -48,12 +48,59 @@ public class EnsureAssignableByRefLikePropertyTests
             $"EnsureAssignable cannot compare {typeof(EmptySpanSource)}, the runtime type of the values (T is "
                 + $"{typeof(object)}): "
                 + OnlyByRefLikePropertiesVisible
-                + "Ways out: if the type has fields, preserve them, for example with "
+                + "Ways out: if the type has fields, either preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({EmptySpanSourceInCSharp}))] on a "
-                + "method that runs, or pass the values as that type; check each state member with Contract.Ensure "
-                + "and a value taken with Contract.Old; or set DBC_POST=off (disables all postcondition checks).",
+                + "method that runs, or pass the values as that type, which preserves them; otherwise check each "
+                + "state member with Contract.Ensure and a value taken with Contract.Old; or set DBC_POST=off "
+                + "(disables all postcondition checks).",
             cannotCompare.Message
         );
+    }
+
+    // A runtime type that shows no declared member (nothing preserves it) while the members it inherits stay visible:
+    // the rule "no members visible" is not what fired, so the message keeps its general wording.
+    [Fact]
+    public void EnsureAssignable_WhenANestedUnseenTypeInheritsASpanPropertyAndAnotherProperty_AdvisesPreservingItsMembers()
+    {
+        SpanBaseHolder actual = new() { Item = new UnseenSpanDerived { Count = 1 } };
+        SpanBaseHolder expected = new() { Item = new UnseenSpanDerived { Count = 2 } };
+
+        Exception? exception = TestRuntime.WithUnseenTypes(
+            [typeof(UnseenSpanDerived)],
+            () => Contract.EnsureAssignable(actual, expected)
+        );
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(UnseenSpanDerived)} (reached through 'SpanBaseHolder.Item'): "
+                + "no properties or fields are visible to reflection under Native AOT. Their Equals reports them "
+                + "unequal (without an Equals override this only means they are different instances), and their "
+                + "members cannot be listed. Ways out: list 'Item' as assignable (patterns are regular expressions "
+                + "matched against top-level member names, so use the plain member name); if the type has members, "
+                + "preserve them, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + "typeof(uContract.Tests.EnsureAssignableByRefLikePropertyTests.UnseenSpanDerived))] on a method "
+                + "that runs; or set DBC_POST=off (disables all postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    public class SpanBase
+    {
+        public int Count { get; set; }
+
+        [SuppressMessage(
+            "Performance",
+            "CA1822:Mark members as static",
+            Justification = "An instance property is what EnsureAssignable lists."
+        )]
+        public ReadOnlySpan<byte> View => ReadOnlySpan<byte>.Empty;
+    }
+
+    public sealed class UnseenSpanDerived : SpanBase;
+
+    public sealed class SpanBaseHolder
+    {
+        public SpanBase Item { get; set; } = new();
     }
 
     // Below the top level, the type's Equals decides; two distinct instances are unequal.
