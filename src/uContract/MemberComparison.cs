@@ -108,12 +108,14 @@ internal static class MemberComparison
     {
         FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
-        List<MemberAccessor> members = properties
-            .Where(p =>
-                p.GetIndexParameters().Length == 0
-                && !p.PropertyType.IsByRefLike
-                && !IsOverriddenByAnother(p, properties)
-            )
+        // Indexers are not compared. A property of a byref-like type cannot be read through reflection, so it is
+        // not compared either; the fields behind it are. It is visible, though (see MembersAreHidden).
+        ILookup<bool, PropertyInfo> isByRefLike = properties
+            .Where(p => p.GetIndexParameters().Length == 0)
+            .ToLookup(p => p.PropertyType.IsByRefLike);
+
+        List<MemberAccessor> members = isByRefLike[false]
+            .Where(p => !IsOverriddenByAnother(p, properties))
             .Select(p => new MemberAccessor(p, ExistingGetter(p)))
             .Concat(fields.Select(f => new MemberAccessor(f)))
             .ToList();
@@ -132,9 +134,7 @@ internal static class MemberComparison
         {
             Members = members,
             OwnMemberCount = ownMemberCount,
-            ByRefLikePropertyCount = properties.Count(p =>
-                p.GetIndexParameters().Length == 0 && p.PropertyType.IsByRefLike
-            ),
+            ByRefLikePropertyCount = isByRefLike[true].Count(),
         };
     }
 
