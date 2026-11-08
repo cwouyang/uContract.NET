@@ -26,6 +26,30 @@ public class EnsureAssignableByRefLikePropertyTests
         Assert.Null(exception);
     }
 
+    // At the top level, T is a class of the user that the runtime type derives from: the property of the runtime type
+    // counts in the members that decide the rule for that T too.
+    [Fact]
+    public void EnsureAssignable_WithoutDynamicCode_WhenTIsABaseClassOfARuntimeTypeWithOnlyASpanProperty_DoesNotThrow()
+    {
+        SpanSourceBase actual = new DerivedEmptySpanSource();
+        SpanSourceBase expected = new DerivedEmptySpanSource();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WithoutDynamicCode_WhenANestedMemberHasOnlyASpanProperty_DoesNotThrow()
+    {
+        EmptySpanSourceHolder actual = new() { Source = new EmptySpanSource() };
+        EmptySpanSourceHolder expected = new() { Source = new EmptySpanSource() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     public sealed class EmptySpanSource
     {
         [SuppressMessage(
@@ -34,6 +58,60 @@ public class EnsureAssignableByRefLikePropertyTests
             Justification = "An instance property is what EnsureAssignable lists."
         )]
         public ReadOnlySpan<byte> Bytes => ReadOnlySpan<byte>.Empty;
+    }
+
+    public abstract class SpanSourceBase;
+
+    public sealed class DerivedEmptySpanSource : SpanSourceBase
+    {
+        [SuppressMessage(
+            "Performance",
+            "CA1822:Mark members as static",
+            Justification = "An instance property is what EnsureAssignable lists."
+        )]
+        public ReadOnlySpan<byte> Bytes => ReadOnlySpan<byte>.Empty;
+    }
+
+    public sealed class EmptySpanSourceHolder
+    {
+        public EmptySpanSource Source { get; set; } = new();
+    }
+
+    // ---- A write-only span property ----
+
+    [Fact]
+    public void EnsureAssignable_WhenAWriteOnlySpanPropertyAndTheFieldBehindItAreUnchanged_DoesNotThrow()
+    {
+        SpanSink original = new() { Bytes = [1, 2] };
+        SpanSink old = Contract.Old(() => original);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(original, old));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheFieldBehindAWriteOnlySpanPropertyChanges_ReportsTheField()
+    {
+        SpanSink original = new() { Bytes = [1, 2] };
+        SpanSink old = Contract.Old(() => original);
+        original.Bytes = [9];
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(original, old)
+        );
+
+        Assert.Equal(Violation + "  - _bytes", exception.Description);
+    }
+
+    public sealed class SpanSink
+    {
+        private byte[] _bytes = [];
+
+        public ReadOnlySpan<byte> Bytes
+        {
+            set => _bytes = value.ToArray();
+        }
     }
 
     // ---- A framework type with a byref-like property ----
