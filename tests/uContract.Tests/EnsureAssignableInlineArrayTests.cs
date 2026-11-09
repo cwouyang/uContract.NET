@@ -2045,6 +2045,103 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // Pointer and function-pointer elements are compared by address, as a pointer member is.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterPointerElementChanged_ReportsTheField()
+    {
+        Pointed actual = new() { Pointers = WithSecondAddress<PointerBuf2>(Changed) };
+        Pointed expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Pointers", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEveryPointerElementIsEqual_DoesNotReportIt()
+    {
+        Pointed actual = new() { Pointers = WithSecondAddress<PointerBuf2>(Changed) };
+        Pointed expected = new() { Pointers = WithSecondAddress<PointerBuf2>(Changed) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOnlyALaterPointerElementOfABoxedInlineArrayChanged_ReportsTheTwoAsNotEqual()
+    {
+        object actual = WithSecondAddress<PointerBuf2>(Changed);
+        object expected = new PointerBuf2();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<PointerBuf2>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedInlineArraysHoldEqualPointerElements_Passes()
+    {
+        object actual = WithSecondAddress<PointerBuf2>(Changed);
+        object expected = WithSecondAddress<PointerBuf2>(Changed);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterFunctionPointerElementChanged_ReportsTheField()
+    {
+        Called actual = new() { Functions = WithSecondAddress<FunctionPointerBuf2>(Changed) };
+        Called expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Functions", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEveryFunctionPointerElementIsEqual_DoesNotReportIt()
+    {
+        Called actual = new() { Functions = WithSecondAddress<FunctionPointerBuf2>(Changed) };
+        Called expected = new() { Functions = WithSecondAddress<FunctionPointerBuf2>(Changed) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOnlyALaterFunctionPointerElementOfABoxedInlineArrayChanged_ReportsTheTwoAsNotEqual()
+    {
+        object actual = WithSecondAddress<FunctionPointerBuf2>(Changed);
+        object expected = new FunctionPointerBuf2();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<FunctionPointerBuf2>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedInlineArraysHoldEqualFunctionPointerElements_Passes()
+    {
+        object actual = WithSecondAddress<FunctionPointerBuf2>(Changed);
+        object expected = WithSecondAddress<FunctionPointerBuf2>(Changed);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     [Fact]
     public void EnsureAssignable_WhenTIsANullableInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual()
     {
@@ -2171,6 +2268,16 @@ public class EnsureAssignableInlineArrayTests
             + "dynamic code, and dynamic code is not supported here (Native AOT). ";
     }
 
+    // An inline array of two pointer-sized elements with the second holding address, written without the C# indexer,
+    // which does not take pointer elements. The address is never dereferenced.
+    private static TBuffer WithSecondAddress<TBuffer>(nint address)
+        where TBuffer : struct
+    {
+        TBuffer buffer = default;
+        Unsafe.Add(ref Unsafe.As<TBuffer, nint>(ref buffer), 1) = address;
+        return buffer;
+    }
+
     private static BadgeSet3 WithLaterBadgeInSet(string name)
     {
         BadgeSet3 set = new();
@@ -2274,6 +2381,31 @@ public class EnsureAssignableInlineArrayTests
     private struct BadgeSet3 : IBadgeSet
     {
         private Badge _element;
+    }
+
+    // CS9184 warns that the C# inline-array features (indexer, spans) do not take pointer elements; the type is valid.
+#pragma warning disable CS9184
+    [InlineArray(2)]
+    private unsafe struct PointerBuf2
+    {
+        private int* _element;
+    }
+
+    [InlineArray(2)]
+    private unsafe struct FunctionPointerBuf2
+    {
+        private delegate* <void> _element;
+    }
+#pragma warning restore CS9184
+
+    private sealed class Pointed
+    {
+        public PointerBuf2 Pointers;
+    }
+
+    private sealed class Called
+    {
+        public FunctionPointerBuf2 Functions;
     }
 
     private sealed class BadgeGrid

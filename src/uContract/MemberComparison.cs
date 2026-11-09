@@ -1157,11 +1157,11 @@ internal static class MemberComparison
     // elements are compared pairwise, in index order, by the rules for two elements of an array. The built-in
     // ValueType.Equals is not asked: it sees only element 0, and the .NET 10 runtime throws for it. An inline
     // array of n elements of E is laid out as n consecutive values of E, so the elements are read from the
-    // memory of the box. Primitive and enum elements are compared in place (see TryCompareInPlace); reference
-    // and struct elements are walked, a struct element boxed (see StructElements.Read). Struct elements that this
-    // runtime cannot read leave the pair uncompared (context.Hidden is set), equal or not. False leaves the pair to
-    // the rules for other value types: an inline array of pointers, or one whose element field reflection does not
-    // list.
+    // memory of the box. Primitive, enum, pointer and function-pointer elements are compared in place (see
+    // TryCompareInPlace); reference and struct elements are walked, a struct element boxed (see StructElements.Read).
+    // Struct elements that this runtime cannot read leave the pair uncompared (context.Hidden is set), equal or not.
+    // False leaves the pair to the rules for other value types: an inline array whose element field reflection does
+    // not list (Native AOT).
     private static bool TryStartInlineArray(
         object actual,
         object expected,
@@ -1584,8 +1584,7 @@ internal static class MemberComparison
     {
         MemberAccessor[] fields = [.. GetOrCacheMetadata(type).Members.Where(member => member.IsField)];
         Type? elementType = fields.Length == 1 ? fields[0].MemberType : null;
-        bool isComparedInPlaceOrWalked =
-            elementType is not null && !(elementType.IsPointer || elementType.IsFunctionPointer);
+        bool isComparedInPlaceOrWalked = elementType is not null;
         return new InlineArrayShape(
             elementType,
             type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length,
@@ -1622,9 +1621,15 @@ internal static class MemberComparison
     }
 
     // How elements of elementType are compared in place: bool, char, an integer type (nint and nuint included), an
-    // enum, float or double are; any other type is not.
+    // enum, float or double are, and a pointer or a function pointer by the address it holds, as a pointer member and
+    // an array of pointers or of function pointers are (see Start, TryGetAddresses); any other type is not.
     private static InPlace InPlaceOf(Type elementType)
     {
+        if (elementType.IsPointer || elementType.IsFunctionPointer)
+        {
+            return InPlace.NativeBits;
+        }
+
         if (elementType == typeof(float))
         {
             return InPlace.Float;
@@ -1983,8 +1988,8 @@ internal static class MemberComparison
     }
 
     // What TryStartInlineArray needs of an inline-array type: its element type (null when reflection does not
-    // list its one element field), its length, and whether its elements are compared one by one (they are, except
-    // pointer elements, which C# cannot declare in an inline array, and an unknown element type).
+    // list its one element field), its length, and whether its elements are compared one by one (they are, unless
+    // the element type is unknown).
     private sealed record InlineArrayShape(Type? ElementType, int Length, bool IsComparedByElements);
 
     private enum InPlace
