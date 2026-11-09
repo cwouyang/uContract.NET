@@ -20,4 +20,13 @@ internal sealed class TypeMetadata
     ///     Properties of a byref-like type are not in <see cref="Members" /> and are not counted either.
     /// </summary>
     public int OwnMemberCount { get; set; }
+
+    /// <summary>
+    ///     True when the type declares a public typed <c>Equals(T)</c> that is not marked
+    ///     <see cref="System.Runtime.CompilerServices.CompilerGeneratedAttribute" />: a record's hand-written one, which
+    ///     its generated <c>Equals(object)</c> calls. A type marked
+    ///     <see cref="System.Runtime.CompilerServices.CompilerGeneratedAttribute" /> (an anonymous type) declares none.
+    ///     Set only in the cached metadata.
+    /// </summary>
+    public bool DeclaresHandWrittenTypedEquals { get; set; }
 }

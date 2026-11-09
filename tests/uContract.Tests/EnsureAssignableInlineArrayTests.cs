@@ -901,6 +901,38 @@ public class EnsureAssignableInlineArrayTests
         Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
+    // ---- A record with a hand-written typed Equals ----
+
+    // A record's [CompilerGenerated] Equals(object) calls its typed Equals; one written by hand is a hand-written
+    // Equals, and it decides.
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenTypedEqualsOfARecordStructCallsItsInlineArraysEqual_DoesNotReportIt()
+    {
+        TolerantRecordHolding actual = new() { Value = new TolerantRecord(WithLaterElementChanged(), 1) };
+        TolerantRecordHolding expected = new() { Value = new TolerantRecord(new IntBuf3(), 1) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenTypedEqualsOfARecordClassInAStructCallsItsInlineArraysEqual_DoesNotReportIt()
+    {
+        TolerantRecordClassOwnerHolding actual = new()
+        {
+            Value = new TolerantRecordClassOwner { Item = new TolerantBufRecord(WithLaterElementChanged(), 1) },
+        };
+        TolerantRecordClassOwnerHolding expected = new()
+        {
+            Value = new TolerantRecordClassOwner { Item = new TolerantBufRecord(new IntBuf3(), 1) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- A deep graph without an inline array ----
 
     // Looking at run-time values does not use the stack for each level: a struct holding a long chain of records keeps
@@ -1299,6 +1331,37 @@ public class EnsureAssignableInlineArrayTests
     }
 
     private sealed record ChainNode(int Value, ChainNode? Next);
+
+    // Equal when the totals are: the inline arrays do not count.
+    private record struct TolerantRecord(IntBuf3 Counts, int Total)
+    {
+        public readonly bool Equals(TolerantRecord other) => Total == other.Total;
+
+        public override readonly int GetHashCode() => Total;
+    }
+
+    private sealed class TolerantRecordHolding
+    {
+        public TolerantRecord Value;
+    }
+
+    // Equal when the totals are: the inline arrays do not count.
+    private sealed record TolerantBufRecord(IntBuf3 Counts, int Total)
+    {
+        public bool Equals(TolerantBufRecord? other) => other is not null && Total == other.Total;
+
+        public override int GetHashCode() => Total;
+    }
+
+    private struct TolerantRecordClassOwner
+    {
+        public TolerantBufRecord Item;
+    }
+
+    private sealed class TolerantRecordClassOwnerHolding
+    {
+        public TolerantRecordClassOwner Value;
+    }
 
     private struct ChainOwner
     {

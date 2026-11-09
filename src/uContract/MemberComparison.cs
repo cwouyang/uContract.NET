@@ -72,16 +72,26 @@ internal static class MemberComparison
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule, and a typed Equals the trimmer hides from reflection is not found, so a record's hand-written one is treated as generated."
     )]
     internal static TypeMetadata GetOrCacheMetadata(Type type)
     {
         // These binding flags must stay within what ComparedMembers preserves. Members are lost silently under
         // Native AOT if the flags are widened beyond ComparedMembers, or if the constant is narrowed; widening
-        // the constant alone loses nothing.
+        // the constant alone loses nothing. The typed Equals is not a compared member (see
+        // DeclaresHandWrittenTypedEquals).
         return MetadataCache.GetOrAdd(
             type,
-            t => CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            t =>
+            {
+                TypeMetadata metadata = CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance));
+                metadata.DeclaresHandWrittenTypedEquals =
+                    t.GetMethod("Equals", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly, [t])
+                        is { } typedEquals
+                    && !typedEquals.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                    && !t.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false);
+                return metadata;
+            }
         );
     }
 
@@ -1141,12 +1151,15 @@ internal static class MemberComparison
     // True when type overrides Equals(object) by hand. A delegate bound to the virtual object.Equals on the box
     // resolves to the method the box dispatches to: an override declared on type, or else the built-in
     // ValueType.Equals, also when type hides it with an Equals declared with "new". An override marked
-    // [CompilerGenerated] is not written by hand.
+    // [CompilerGenerated] is not written by hand, unless it is a record's that calls a typed Equals written by hand.
     private static bool OverridesEquals(object box, Type type)
     {
         Func<object?, bool> equals = box.Equals;
         return equals.Method.DeclaringType == type
-            && !equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false);
+            && (
+                !equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                || GetOrCacheMetadata(type).DeclaresHandWrittenTypedEquals
+            );
     }
 
     // True when the Equals type dispatches to is written by hand (see OverridesEquals), a fact of the type that box,
@@ -1351,8 +1364,10 @@ internal static class MemberComparison
                 }
 
                 return
-                    equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                    || declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                    (
+                        equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                        || declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                    ) && !GetOrCacheMetadata(declaring).DeclaresHandWrittenTypedEquals
                     ? ClassEquals.CompilerGenerated
                     : ClassEquals.NotFollowed;
             },
