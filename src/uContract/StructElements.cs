@@ -28,10 +28,10 @@ internal static class StructElements
     // RuntimeHelpers.Box(ref byte, RuntimeTypeHandle) of the .NET 9+ runtime.
     private delegate object? BoxFunction(ref byte data, RuntimeTypeHandle type);
 
-    // Reads length struct elements at data, boxed (see CreateReader).
+    // Reads length struct elements at data, boxed (see Instantiate).
     private delegate object?[] Reader(ref byte data, int length);
 
-    // Writes boxed struct elements over as many elements at data (see CreateWriter).
+    // Writes boxed struct elements over as many elements at data (see Instantiate).
     private delegate void Writer(ref byte data, object?[] elements);
 
     // Whether Write is available: neither runtime writes a struct element of a type known at run time without a
@@ -56,7 +56,7 @@ internal static class StructElements
         }
 
         return RuntimeFacts.IsDynamicCodeSupported
-            ? ReaderCache.GetOrAdd(elementType, CreateReader)(ref data, length)
+            ? ReaderCache.GetOrAdd(elementType, Instantiate<Reader>)(ref data, length)
             : null;
     }
 
@@ -64,7 +64,7 @@ internal static class StructElements
     // typed references, so that the references they hold stay visible to the GC. Called only when CanWrite.
     internal static void Write(Type elementType, ref byte data, object?[] elements)
     {
-        WriterCache.GetOrAdd(elementType, CreateWriter)(ref data, elements);
+        WriterCache.GetOrAdd(elementType, Instantiate<Writer>)(ref data, elements);
     }
 
     private static Func<RuntimeTypeHandle, int>? BindSizeOf()
@@ -85,34 +85,22 @@ internal static class StructElements
             ?.CreateDelegate<BoxFunction>();
     }
 
-    // Reached only where dynamic code is supported (see Read): on the .NET 8 runtime under the JIT.
-    private static Reader CreateReader(Type elementType)
-    {
-        return Instantiate<Reader>(
-            typeof(StructElements).GetMethod(nameof(BoxElements), BindingFlags.NonPublic | BindingFlags.Static)!,
-            elementType
-        );
-    }
-
-    // Reached only where dynamic code is supported (see CanWrite).
-    private static Writer CreateWriter(Type elementType)
-    {
-        return Instantiate<Writer>(
-            typeof(StructElements).GetMethod(nameof(UnboxElements), BindingFlags.NonPublic | BindingFlags.Static)!,
-            elementType
-        );
-    }
-
-    // The generic method definition of this class instantiated over elementType, as a TDelegate. The only place that
-    // needs dynamic code: every caller is reached only where it is supported.
+    // The generic method of this class that a TDelegate stands for (UnboxElements for a Writer, BoxElements for a
+    // Reader) instantiated over elementType. The only place that needs dynamic code: every caller is reached only where
+    // it is supported: Read asks for a Reader on the .NET 8 runtime under the JIT, and Write is called only when
+    // CanWrite. Both methods are looked up here by name, so the trimmer sees which one is instantiated.
     [UnconditionalSuppressMessage(
         "AOT",
         "IL3050",
         Justification = "Called only when RuntimeFeature.IsDynamicCodeSupported is true (through RuntimeFacts), so the instantiation over the element type can be compiled at run time. Without dynamic code the elements are boxed by the .NET 9+ RuntimeHelpers.Box, or the comparison reports that it cannot compare them; an Old copy leaves them as the field walk copies them."
     )]
-    private static TDelegate Instantiate<TDelegate>(MethodInfo definition, Type elementType)
+    private static TDelegate Instantiate<TDelegate>(Type elementType)
         where TDelegate : Delegate
     {
+        MethodInfo definition =
+            typeof(TDelegate) == typeof(Writer)
+                ? typeof(StructElements).GetMethod(nameof(UnboxElements), BindingFlags.NonPublic | BindingFlags.Static)!
+                : typeof(StructElements).GetMethod(nameof(BoxElements), BindingFlags.NonPublic | BindingFlags.Static)!;
         return definition.MakeGenericMethod(elementType).CreateDelegate<TDelegate>();
     }
 
