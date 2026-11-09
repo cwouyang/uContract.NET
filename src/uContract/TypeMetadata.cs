@@ -28,9 +28,9 @@ internal sealed class TypeMetadata
     ///     <c>Equals(T)</c>, which its generated <c>Equals(object)</c> calls. An <c>Equals</c> that takes
     ///     <c>object</c>, a base class or an interface of <c>T</c> does not count. The <c>Equals</c> an anonymous type
     ///     declares is not marked (only the type is), so anonymous types are left out by name (see IsAnonymousType).
-    ///     Also true when a base class below the framework classes has the fact and the type declares no field that can
-    ///     lead to an inline array's <c>Equals</c>: a derived record's generated typed <c>Equals</c> calls that of its
-    ///     base record, then compares the fields the record declares. Set only in the cached metadata.
+    ///     Also true when a base class below the framework classes has the fact, whatever fields the type declares: a
+    ///     derived record's generated typed <c>Equals</c> calls that of its base record, then compares the fields the
+    ///     record declares with their own <c>Equals</c>. Set only in the cached metadata.
     /// </summary>
     public bool HasHandWrittenTypedEquals { get; set; }
 }

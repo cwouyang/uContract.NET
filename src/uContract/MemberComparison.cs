@@ -99,7 +99,6 @@ internal static class MemberComparison
                         t.BaseType is { } baseType
                         && !IsFrameworkClass(baseType)
                         && GetOrCacheMetadata(baseType).HasHandWrittenTypedEquals
-                        && !DeclaresFieldReachingInlineArray(t, metadata)
                     );
                 return metadata;
             }
@@ -1396,16 +1395,6 @@ internal static class MemberComparison
                 type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal)
                 || type.Name.StartsWith("VB$AnonymousType_", StringComparison.Ordinal)
             );
-    }
-
-    // True when a field declared on type itself (in metadata, its members) can lead to an inline array's Equals, as a
-    // field CreateValueRoutes keeps does: a derived record's generated typed Equals compares the fields the record
-    // declares after it calls that of its base record.
-    private static bool DeclaresFieldReachingInlineArray(Type type, TypeMetadata metadata)
-    {
-        return metadata.Members.Any(member =>
-            member.IsField && member.DeclaringType == type && RouteOf(member.MemberType) != Route.None
-        );
     }
 
     // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's (see RouteOf). An
