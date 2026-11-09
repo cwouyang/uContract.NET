@@ -1172,7 +1172,7 @@ internal static class MemberComparison
     )
     {
         elements = null;
-        InlineArrayShape shape = InlineArrayShapeCache.GetOrAdd(type, CreateInlineArrayShape);
+        InlineArrayShape shape = InlineArrayShapeOf(type);
         if (OverridesEquals(actual, type) && Equals(actual, expected))
         {
             equal = true;
@@ -1568,8 +1568,14 @@ internal static class MemberComparison
     // InlineArrayShape.ElementType), a fact of the type that is cached.
     internal static bool IsInlineArrayComparedByElements(Type type)
     {
-        return IsInlineArray(type)
-            && InlineArrayShapeCache.GetOrAdd(type, CreateInlineArrayShape).ElementType is not null;
+        return IsInlineArray(type) && InlineArrayShapeOf(type).ElementType is not null;
+    }
+
+    // The element type and length of the inline-array type type (see InlineArrayShape), a fact of the type that is
+    // cached.
+    internal static InlineArrayShape InlineArrayShapeOf(Type type)
+    {
+        return InlineArrayShapeCache.GetOrAdd(type, CreateInlineArrayShape);
     }
 
     // True when type is marked [InlineArray], a fact of the type that is cached.
@@ -1985,7 +1991,7 @@ internal static class MemberComparison
 
     // What TryStartInlineArray needs of an inline-array type: its element type (null when reflection does not
     // list its one element field; its elements are then not compared one by one) and its length.
-    private sealed record InlineArrayShape(Type? ElementType, int Length);
+    internal sealed record InlineArrayShape(Type? ElementType, int Length);
 
     private enum InPlace
     {
