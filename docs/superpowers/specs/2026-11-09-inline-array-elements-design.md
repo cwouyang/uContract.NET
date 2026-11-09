@@ -165,8 +165,10 @@ compare" messages (ADR-0021), only the ways out that work for its case:
 - Element field not visible: preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All,
   typeof(X))]`, list the member that holds it as assignable, or set `DBC_POST=off`.
 - Struct element without dynamic code on the .NET 8 runtime: list the member that holds it as assignable, set
-  `DBC_POST=off`, or run on the .NET 9 runtime or later. Preserving the type does not help here and is not offered. **[author's call]**: if `Contract.Old`
-cannot copy the elements in these cases it does not throw itself; the comparison that follows throws as above.
+  `DBC_POST=off`, or run on the .NET 9 runtime or later. Preserving the type does not help here and is not offered.
+
+**[author's call]**: if `Contract.Old` cannot copy the elements in these cases it does not throw itself; the
+comparison that follows throws as above.
 
 **B8. Dynamic code.** Where reading or writing elements needs a generic instantiation that is not known at compile
 time (struct elements on the .NET 8 runtime, measured), the library may use `MakeGenericMethod`, only when
