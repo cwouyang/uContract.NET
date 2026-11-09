@@ -1328,6 +1328,23 @@ public class EnsureAssignableInlineArrayTests
         Assert.Throws<NotSupportedException>(() => Contract.EnsureAssignable(actual, expected));
     }
 
+    // ---- A class that declares Equals for two interfaces ----
+
+    // Neither Equals(IFirstKey) nor Equals(ISecondKey) is an Equals of the class's own type; asking for that one does
+    // not pick between them.
+    [Fact]
+    public void EnsureAssignable_WhenAMemberClassDeclaresEqualsForTwoInterfacesAndItsFieldChanged_ReportsTheMember()
+    {
+        TwoKeysHolding actual = new() { Item = new TwoKeys { Key = 1 } };
+        TwoKeysHolding expected = new() { Item = new TwoKeys { Key = 2 } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Item", exception.Description);
+    }
+
     // ---- A C# fixed-size buffer is not an inline array ----
 
     // Pins today's behavior: ValueType.Equals and reflection see only the first element of a fixed-size buffer.
@@ -2008,6 +2025,30 @@ public class EnsureAssignableInlineArrayTests
     private sealed class TupleHolding
     {
         public (IntBuf3 Counts, int Total) Value;
+    }
+
+    private interface IFirstKey
+    {
+        int Key { get; }
+    }
+
+    private interface ISecondKey
+    {
+        int Key { get; }
+    }
+
+    private sealed class TwoKeys : IFirstKey, ISecondKey
+    {
+        public int Key { get; init; }
+
+        public bool Equals(IFirstKey? other) => other is not null && Key == other.Key;
+
+        public bool Equals(ISecondKey? other) => other is not null && Key == other.Key;
+    }
+
+    private sealed class TwoKeysHolding
+    {
+        public TwoKeys? Item;
     }
 
     private unsafe struct FixedInts

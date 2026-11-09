@@ -87,14 +87,13 @@ internal static class MemberComparison
                 TypeMetadata metadata = CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance));
                 metadata.HasHandWrittenTypedEquals =
                     (
-                        t.GetMethod(
-                            "Equals",
-                            BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly,
-                            [t]
-                        )
-                            is { } typedEquals
-                        && !typedEquals.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                        && !IsAnonymousType(t)
+                        t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                            .Any(method =>
+                                string.Equals(method.Name, nameof(Equals), StringComparison.Ordinal)
+                                && method.GetParameters() is [{ } parameter]
+                                && parameter.ParameterType == t
+                                && !method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                            ) && !IsAnonymousType(t)
                     )
                     || (
                         t.BaseType is { } baseType
