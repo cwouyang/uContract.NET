@@ -53,6 +53,11 @@ the work is done).
 10. Revision during Act (Task 2 fix round 4 reviews; measured by both reviewers on both runtimes: a derived record
    whose base record declares a hand-written `Equals(Base)` lost that equality): "基底手寫的也算 (Recommended)"
    (Terms, User `Equals`).
+11. Return to Decide at Task 2's fix-round cap (round 5 re-review, measured on copies of both commits: a derived record
+   that declares its own inline array under a base with a hand-written typed `Equals` throws `NotSupportedException` on
+   .NET 10 and misses the change on .NET 8 under revision 10's wording; Visual Basic anonymous types were no longer
+   followed): "回 Decide，補兩條規則 (Recommended)" (Terms, User `Equals`: the limit of the base exception, and VB
+   anonymous types).
 
 ## Terms
 
@@ -69,8 +74,13 @@ the work is done).
   `System.Tuple<…>` (they only call the `Equals` of the values they hold). Exception: when a record (struct or class),
   or any record class it derives from, declares a typed `Equals(R)` written by hand, its `[CompilerGenerated]`
   `Equals(object)` reaches that method, so the record has a user `Equals` (it decides first; its exceptions propagate).
-  The anonymous types the look follows are recognised as such, not by `[CompilerGenerated]` alone: a class a user or a
-  source generator marks `[CompilerGenerated]` but whose `Equals` is written by hand keeps its user `Equals`.
+  Limit of that exception: when a record class between the record and the base whose typed `Equals` is written by hand
+  (the record itself included) declares a field that can hold an inline array or a holder struct, the record's generated
+  `Equals` still compares that field, so the record does not count as having a user `Equals`; the look follows its
+  fields as for any record class.
+  The anonymous types the look follows are recognised as such, not by `[CompilerGenerated]` alone: C# anonymous types
+  and Visual Basic anonymous types, by their compiler-given names. A class a user or a source generator marks
+  `[CompilerGenerated]` but whose `Equals` is written by hand keeps its user `Equals`.
 - **Element rules**: the rules by which two elements of an array are compared today (ADR-0022 R1–R7 as applied to
   array elements: `Equals` for primitives and enums, R3 for value types, references walked by members, sequences by
   elements, and so on).
