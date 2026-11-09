@@ -21,6 +21,19 @@ internal static class MemberComparison
     private static readonly TypeCache<SequenceRule> SequenceRuleCache = new();
     private static readonly TypeCache<bool> NoDeclaredMemberCache = new();
     private static readonly TypeCache<InlineArrayShape> InlineArrayShapeCache = new();
+    private static readonly TypeCache<bool> HolderCache = new();
+
+    private static readonly Type[] ValueTupleDefinitions =
+    [
+        typeof(ValueTuple<>),
+        typeof(ValueTuple<,>),
+        typeof(ValueTuple<,,>),
+        typeof(ValueTuple<,,,>),
+        typeof(ValueTuple<,,,,>),
+        typeof(ValueTuple<,,,,,>),
+        typeof(ValueTuple<,,,,,,>),
+        typeof(ValueTuple<,,,,,,,>),
+    ];
 
     // The public key tokens the assemblies of the .NET runtime and libraries are signed with: every token that
     // occurs in the .NET 8 shared frameworks (Microsoft.NETCore.App, Microsoft.AspNetCore.App and
@@ -1007,7 +1020,9 @@ internal static class MemberComparison
     // A value type decides equality first; when it says "unequal", its elements (for ArraySegment<T> or
     // ImmutableArray<T>) or its fields are compared, because ValueType.Equals calls each field's own
     // Equals, which for most classes (List<T>, arrays) compares by reference. An inline array is compared by
-    // its elements instead (see TryStartInlineArray).
+    // its elements instead (see TryStartInlineArray), and a struct that holds one without a hand-written Equals
+    // (see IsHolder) by its fields: its built-in Equals reaches the inline array's, which sees only element 0
+    // and throws on the .NET 10 runtime.
     private static Walk? StartValues(object actual, object expected, Type type, out bool equal)
     {
         if (
@@ -1018,7 +1033,26 @@ internal static class MemberComparison
             return elements;
         }
 
-        equal = Equals(actual, expected);
+        if (HolderCache.GetOrAdd(type, t => IsHolder(t, actual)) && !HasUserEquals(actual, type))
+        {
+            equal = false;
+            return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
+        }
+
+        // A field whose declared type does not show it (object, an interface, ValueType) can still hold an inline
+        // array, whose built-in Equals the .NET 10 runtime throws for; the pair is then compared by its fields. On
+        // .NET 8 that Equals does not throw and sees only element 0 of such an inline array. An exception thrown by
+        // a hand-written Equals, or by an inline array's own Equals, propagates.
+        try
+        {
+            equal = Equals(actual, expected);
+        }
+        catch (NotSupportedException)
+            when (!type.IsDefined(typeof(InlineArrayAttribute), inherit: false) && !HasUserEquals(actual, type))
+        {
+            equal = false;
+        }
+
         if (equal || type.IsPrimitive || type.IsEnum)
         {
             return null;
@@ -1107,6 +1141,45 @@ internal static class MemberComparison
         Func<object?, bool> equals = box.Equals;
         return equals.Method.DeclaringType == type
             && !equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false);
+    }
+
+    // True when the Equals type dispatches to is written by hand (see OverridesEquals). The Equals of a
+    // System.ValueTuple<…> only calls the Equals of each item, so it counts as built-in.
+    private static bool HasUserEquals(object box, Type type)
+    {
+        return OverridesEquals(box, type)
+            && !(type.IsGenericType && ValueTupleDefinitions.Contains(type.GetGenericTypeDefinition()));
+    }
+
+    // True when type, a struct that is not an inline array, has an instance field whose declared type is an inline
+    // array, directly or through a field of a nested struct that itself holds one and has no hand-written Equals
+    // (a tuple item and a record struct's backing field count as fields). It is a fact of the type: box, a value
+    // of type, serves only to ask a nested struct whether its Equals is written by hand.
+    private static bool IsHolder(Type type, object box)
+    {
+        return !type.IsDefined(typeof(InlineArrayAttribute), inherit: false)
+            && GetOrCacheMetadata(type).Members.Any(member => member.IsField && HoldsInlineArray(member, box));
+    }
+
+    // A field declared as Nullable<T> holds a T or nothing, never a value of its declared type, so it is not read
+    // as a nested struct.
+    private static bool HoldsInlineArray(MemberAccessor field, object box)
+    {
+        Type fieldType = field.MemberType;
+        if (fieldType.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        {
+            return true;
+        }
+
+        if (!fieldType.IsValueType || fieldType.IsPrimitive || fieldType.IsEnum)
+        {
+            return false;
+        }
+
+        return field.GetValue(box) is { } nested
+            && nested.GetType() == fieldType
+            && HolderCache.GetOrAdd(fieldType, t => IsHolder(t, nested))
+            && !HasUserEquals(nested, fieldType);
     }
 
     // An inline array declares exactly one instance field, whose type is the element type. The field is read from

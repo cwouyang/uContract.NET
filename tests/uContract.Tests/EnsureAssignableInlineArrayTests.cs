@@ -278,6 +278,257 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // ---- A struct that holds an inline array ----
+
+    // A struct without a hand-written Equals that holds an inline array is compared by its fields; its built-in
+    // Equals, which reaches the inline array's (and throws on .NET 10), is not asked.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAStructMemberChanged_ReportsTheMember()
+    {
+        Holding actual = new()
+        {
+            Value = new Holder { Counts = WithLaterElementChanged(), Total = 1 },
+        };
+        Holding expected = new()
+        {
+            Value = new Holder { Counts = new IntBuf3(), Total = 1 },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAStructMemberHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        Holding actual = new()
+        {
+            Value = new Holder { Counts = WithLaterElementChanged(), Total = 1 },
+        };
+        Holding expected = new()
+        {
+            Value = new Holder { Counts = WithLaterElementChanged(), Total = 1 },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAStructMemberHoldsDistinctListsWithEqualContents_DoesNotReportIt()
+    {
+        ListHolding actual = new() { Value = new ListHolder { Lists = WithLists([1], [2, 3]) } };
+        ListHolding expected = new() { Value = new ListHolder { Lists = WithLists([1], [2, 3]) } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInARecordStructMemberChanged_ReportsTheMember()
+    {
+        RecordHolding actual = new() { Value = new HolderRecord(WithLaterElementChanged(), 1) };
+        RecordHolding expected = new() { Value = new HolderRecord(new IntBuf3(), 1) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenARecordStructMemberHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        RecordHolding actual = new() { Value = new HolderRecord(WithLaterElementChanged(), 1) };
+        RecordHolding expected = new() { Value = new HolderRecord(WithLaterElementChanged(), 1) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInATupleMemberChanged_ReportsTheMember()
+    {
+        TupleHolding actual = new() { Value = (WithLaterElementChanged(), 1) };
+        TupleHolding expected = new() { Value = (new IntBuf3(), 1) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenATupleMemberHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        TupleHolding actual = new() { Value = (WithLaterElementChanged(), 1) };
+        TupleHolding expected = new() { Value = (WithLaterElementChanged(), 1) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // A struct with a hand-written Equals keeps today's rule: its Equals decides first.
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenEqualsCallsStructsHoldingDifferentInlineArraysEqual_DoesNotReportIt()
+    {
+        TolerantHolding actual = new() { Value = new TolerantHolder { Counts = WithLaterElementChanged() } };
+        TolerantHolding expected = new() { Value = new TolerantHolder { Counts = new IntBuf3() } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenEqualsOfAStructHoldingAnInlineArrayThrowsNotSupported_LetsItPropagate()
+    {
+        ThrowingHolding actual = new() { Value = new ThrowingHolder { Counts = WithLaterElementChanged() } };
+        ThrowingHolding expected = new() { Value = new ThrowingHolder { Counts = new IntBuf3() } };
+
+        Assert.Throws<NotSupportedException>(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayTwoStructsDeepChanged_ReportsTheMember()
+    {
+        DeepHolding actual = new()
+        {
+            Value = new OuterHolder { Inner = new Holder { Counts = WithLaterElementChanged() } },
+        };
+        DeepHolding expected = new() { Value = new OuterHolder { Inner = new Holder { Counts = new IntBuf3() } } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenInlineArraysTwoStructsDeepHaveEqualElements_DoesNotReportThem()
+    {
+        DeepHolding actual = new()
+        {
+            Value = new OuterHolder { Inner = new Holder { Counts = WithLaterElementChanged() } },
+        };
+        DeepHolding expected = new()
+        {
+            Value = new OuterHolder { Inner = new Holder { Counts = WithLaterElementChanged() } },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInATupleInAStructChanged_ReportsTheMember()
+    {
+        TupleHolderHolding actual = new() { Value = new TupleHolder { Pair = (WithLaterElementChanged(), 1) } };
+        TupleHolderHolding expected = new() { Value = new TupleHolder { Pair = (new IntBuf3(), 1) } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenATupleInAStructHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        TupleHolderHolding actual = new() { Value = new TupleHolder { Pair = (WithLaterElementChanged(), 1) } };
+        TupleHolderHolding expected = new() { Value = new TupleHolder { Pair = (WithLaterElementChanged(), 1) } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAStructInAnArrayChanged_ReportsTheField()
+    {
+        HolderArray actual = new() { Values = [new Holder(), new Holder { Counts = WithLaterElementChanged() }] };
+        HolderArray expected = new() { Values = [new Holder(), new Holder()] };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Values", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAStructInAListChanged_ReportsTheField()
+    {
+        HolderList actual = new() { Values = [new Holder { Counts = WithLaterElementChanged() }] };
+        HolderList expected = new() { Values = [new Holder()] };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Values", exception.Description);
+    }
+
+    // ---- An inline array found only at run time ----
+
+    // A struct whose object field holds an inline array: on .NET 10 its built-in Equals throws, and the pair is
+    // compared by its fields; on .NET 8 the built-in Equals sees only element 0 and decides "equal" (a documented
+    // difference between the runtimes).
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAStructsObjectFieldChanged_ReportsItFromNet10On()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = WithLaterElementChanged() } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = new IntBuf3() } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        if (Environment.Version.Major >= 10)
+        {
+            PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+            Assert.Equal(Violation + "  - Value", violation.Description);
+        }
+        else
+        {
+            Assert.Null(exception);
+        }
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAStructsObjectFieldHoldsAChangedInt_ReportsTheMember()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = Changed } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = 0 } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAStructsObjectFieldHoldsEqualInts_DoesNotReportIt()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = Changed } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = Changed } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- A C# fixed-size buffer is not an inline array ----
 
     // Pins today's behavior: ValueType.Equals and reflection see only the first element of a fixed-size buffer.
@@ -300,6 +551,14 @@ public class EnsureAssignableInlineArrayTests
     {
         IntBuf3 buffer = new();
         buffer[2] = Changed;
+        return buffer;
+    }
+
+    private static ListBuf2 WithLists(List<int> first, List<int> second)
+    {
+        ListBuf2 buffer = new();
+        buffer[0] = first;
+        buffer[1] = second;
         return buffer;
     }
 
@@ -456,6 +715,114 @@ public class EnsureAssignableInlineArrayTests
     private sealed class Generated
     {
         public GeneratedEqualsBuf2 Readings;
+    }
+
+    private struct Holder
+    {
+        public IntBuf3 Counts;
+        public int Total;
+    }
+
+    private sealed class Holding
+    {
+        public Holder Value;
+    }
+
+    // Equal by its hand-written Equals whatever its inline array holds.
+    private struct TolerantHolder
+    {
+        public IntBuf3 Counts;
+
+        public override readonly bool Equals(object? obj) => obj is TolerantHolder;
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    private sealed class TolerantHolding
+    {
+        public TolerantHolder Value;
+    }
+
+    private struct ThrowingHolder
+    {
+        public IntBuf3 Counts;
+
+        public override readonly bool Equals(object? obj) => throw new NotSupportedException();
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    private sealed class ThrowingHolding
+    {
+        public ThrowingHolder Value;
+    }
+
+    private struct OuterHolder
+    {
+        public Holder Inner;
+    }
+
+    private sealed class DeepHolding
+    {
+        public OuterHolder Value;
+    }
+
+    private struct TupleHolder
+    {
+        public (IntBuf3 Counts, int Total) Pair;
+    }
+
+    private sealed class TupleHolderHolding
+    {
+        public TupleHolder Value;
+    }
+
+    private sealed class HolderArray
+    {
+        public Holder[] Values = [];
+    }
+
+    private sealed class HolderList
+    {
+        public List<Holder> Values = [];
+    }
+
+    private struct BoxHolder
+    {
+        public object? Value;
+    }
+
+    private sealed class BoxHolding
+    {
+        public BoxHolder Value;
+    }
+
+    [InlineArray(2)]
+    private struct ListBuf2
+    {
+        private List<int>? _element;
+    }
+
+    private struct ListHolder
+    {
+        public ListBuf2 Lists;
+    }
+
+    private sealed class ListHolding
+    {
+        public ListHolder Value;
+    }
+
+    private record struct HolderRecord(IntBuf3 Counts, int Total);
+
+    private sealed class RecordHolding
+    {
+        public HolderRecord Value;
+    }
+
+    private sealed class TupleHolding
+    {
+        public (IntBuf3 Counts, int Total) Value;
     }
 
     private unsafe struct FixedInts
