@@ -144,6 +144,8 @@ reflection that the existing per-type metadata caches avoid.
 | same struct, `object` field holds an `int` | unchanged from today |
 | struct field of type `Holder?` / `Buf?`, later element differs / equal | violation / passes, both runtimes |
 | struct holding a class whose hand-written `Equals` throws `NotSupportedException` | the exception propagates |
+| struct field of a record class / `System.Tuple<Buf, int>` holding a `Buf`; struct `object` field holding such a record class; later element differs / equal | violation / passes, both runtimes |
+| a boxed struct whose `object` field refers back to itself (one side, both sides) | no stack overflow; result as without the inline-array rules |
 
 **Exclusions:** top level (Task 3), struct elements (Task 4), `Old` (Task 5), AOT (Task 6). Do not catch
 `NotSupportedException` thrown by a user `Equals`.

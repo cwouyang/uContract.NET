@@ -42,6 +42,11 @@ the work is done).
    `Nullable<Holder>` field still reached the holder's built-in `Equals` on .NET 8, so .NET 8 and .NET 10 differed):
    - B2a: "改成先看執行期值，不接例外 (Recommended)" — replaces the catch of decision 6.
    - `Nullable<T>`: "把 Nullable 當成像 ValueTuple (Recommended)".
+8. Revision during Act (Task 2 re-review; measured by the controller on both runtimes: a struct field of a
+   `record class` holding an inline array, a struct field of `System.Tuple<Buf, int>`, and a struct `object` field
+   holding such a record class all throw `NotSupportedException` on .NET 10, equal values included, and pass on .NET 8
+   with only element 2 changed; a record class as a class member is walked by members and is fine):
+   "也沿著這類類別追 (Recommended)" (B2a, routes through classes whose `Equals` is not a user `Equals`).
 
 ## Terms
 
@@ -54,8 +59,8 @@ the work is done).
   a holder struct. Its `Equals` reaches the inline array's built-in `Equals` and throws on .NET 10 (measured).
 - **User `Equals`**: an `Equals(object)` override written by hand in the type (of the inline array, or of a struct).
   Not a user `Equals`: the built-in `ValueType.Equals`, an override marked `[CompilerGenerated]` (as a record
-  struct's is, measured), and the `Equals` of `System.ValueTuple<…>` and of `System.Nullable<T>` (both only call the
-  `Equals` of the values they hold).
+  struct's is, measured; a record class's too), and the `Equals` of `System.ValueTuple<…>`, `System.Nullable<T>` and
+  `System.Tuple<…>` (they only call the `Equals` of the values they hold).
 - **Element rules**: the rules by which two elements of an array are compared today (ADR-0022 R1–R7 as applied to
   array elements: `Equals` for primitives and enums, R3 for value types, references walked by members, sequences by
   elements, and so on).
@@ -90,6 +95,13 @@ is a per-type fact; only their values are read per call). When either side holds
 there, the built-in `Equals` is not called and the pair is compared by its fields, as in B2. The result is the same
 on .NET 8 and .NET 10. No `NotSupportedException` is caught: an exception thrown by a user `Equals`, at any depth,
 propagates as today (ADR-0022 R3).
+The look also follows a field (declared or held at run time) whose type is a **class** whose `Equals` compares its
+values but is not a user `Equals` (a record class, `System.Tuple<…>`), as it follows a nested struct: when such a class
+holds an inline array or a holder struct (directly, or further along such routes), the outer struct is compared by its
+fields as above. A class with no `Equals` override (reference equality) or with a user `Equals` is not followed. The
+look terminates on cyclic values (a box or an object that refers back to itself): a value already being looked at is
+not looked at again, so a self-referencing value never overflows the stack or loops, and a cycle alone does not make a
+pair be compared by its fields.
 
 **B3. Top level.** When `T` is an inline-array type, or `T` is another type and the runtime type of the two values is
 one inline-array type (for example a boxed inline array with `T` = `object`), the two values are compared as a whole
