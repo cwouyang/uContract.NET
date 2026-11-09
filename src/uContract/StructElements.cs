@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -64,6 +65,7 @@ internal static class StructElements
     // typed references, so that the references they hold stay visible to the GC. Called only when CanWrite.
     internal static void Write(Type elementType, ref byte data, object?[] elements)
     {
+        Debug.Assert(CanWrite, "StructElements.Write is called only when CanWrite.");
         WriterCache.GetOrAdd(elementType, Instantiate<Writer>)(ref data, elements);
     }
 
