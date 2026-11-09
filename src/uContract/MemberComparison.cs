@@ -655,7 +655,8 @@ internal static class MemberComparison
     }
 
     // The comparison met an inline array of struct elements, reached through path, that this runtime reads only with
-    // dynamic code (see StructElements.Read). firstWayOut is empty, or a way out that ends with "; ".
+    // dynamic code (see StructElements.Read). firstWayOut is empty, or a way out that ends with "; ". Preserving the
+    // type is not offered: the elements stay unreadable whatever is preserved, so no way out names a type in C#.
     private static InvalidOperationException CannotReadStructElements(
         Type inlineArrayType,
         Type elementType,
@@ -668,9 +669,8 @@ internal static class MemberComparison
                 + $"{elementType}, a struct, whose elements this runtime reads only with dynamic code, and dynamic code "
                 + "is not supported here (Native AOT). Ways out: "
                 + firstWayOut
-                + "preserve the type, for example with "
-                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(inlineArrayType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(inlineArrayType)}; "
-                + "or set DBC_POST=off (disables all postcondition checks)."
+                + "run on the .NET 9 runtime or later, which reads struct elements without dynamic code; or set "
+                + "DBC_POST=off (disables all postcondition checks)."
         );
     }
 

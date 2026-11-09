@@ -27,11 +27,11 @@ public class EnsureAssignableInlineArrayTests
 
     private static readonly Lazy<Type> VisualBasicAnonymousType = new(DefineVisualBasicAnonymousType);
 
-    // The last ways out of a "cannot compare" message for BadgeBuf3, named in C# so the attribute can be copied.
-    private const string PreserveBadgeBuf3 =
-        "preserve the type, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
-        + "typeof(uContract.Tests.EnsureAssignableInlineArrayTests.BadgeBuf3))] on a method that runs; or set "
-        + "DBC_POST=off (disables all postcondition checks).";
+    // The last ways out of a "cannot compare" message for struct elements that need dynamic code: preserving the type
+    // would not help, so it is not offered.
+    private const string RunOnNet9OrSetPostOff =
+        "run on the .NET 9 runtime or later, which reads struct elements without dynamic code; or set DBC_POST=off "
+        + "(disables all postcondition checks).";
 
     // ---- Primitive and enum elements ----
 
@@ -368,7 +368,7 @@ public class EnsureAssignableInlineArrayTests
                 + StructElementsNeedDynamicCode<Badge>()
                 + "Ways out: list 'Badges' as assignable (patterns are regular expressions matched against top-level "
                 + "member names, so use the plain member name); "
-                + PreserveBadgeBuf3,
+                + RunOnNet9OrSetPostOff,
             cannotCompare.Message
         );
     }
@@ -397,7 +397,7 @@ public class EnsureAssignableInlineArrayTests
             $"EnsureAssignable cannot compare {typeof(BadgeBuf3)} (reached through 'BadgeBuf3'): "
                 + StructElementsNeedDynamicCode<Badge>()
                 + "Ways out: "
-                + PreserveBadgeBuf3,
+                + RunOnNet9OrSetPostOff,
             cannotCompare.Message
         );
     }
