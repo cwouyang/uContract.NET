@@ -1039,6 +1039,73 @@ internal static class MemberComparison
         return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
     }
 
+    // True for elements of a type that is compared in place: bool, char, an integer type (nint and nuint
+    // included), an enum, float or double; equal then tells whether the length elements at actualData and at
+    // expectedData are the same. A float or a double is compared by its own Equals, as a boxed one is: NaN
+    // equals NaN, and 0.0 equals -0.0. Each of the other types is equal by its Equals exactly when its bits are
+    // equal (an enum compares its underlying integers), so the memory is compared as integers of the element's
+    // size.
+    private static bool TryCompareInPlace(
+        Type elementType,
+        ref byte actualData,
+        ref byte expectedData,
+        int length,
+        out bool equal
+    )
+    {
+        equal = false;
+        if (elementType == typeof(float))
+        {
+            equal = HaveSameElements<float>(ref actualData, ref expectedData, length);
+            return true;
+        }
+
+        if (elementType == typeof(double))
+        {
+            equal = HaveSameElements<double>(ref actualData, ref expectedData, length);
+            return true;
+        }
+
+        Type bitsType = elementType.IsEnum ? elementType.GetEnumUnderlyingType() : elementType;
+        if (bitsType == typeof(bool) || bitsType == typeof(byte) || bitsType == typeof(sbyte))
+        {
+            equal = HaveSameElements<byte>(ref actualData, ref expectedData, length);
+        }
+        else if (bitsType == typeof(char) || bitsType == typeof(short) || bitsType == typeof(ushort))
+        {
+            equal = HaveSameElements<ushort>(ref actualData, ref expectedData, length);
+        }
+        else if (bitsType == typeof(int) || bitsType == typeof(uint))
+        {
+            equal = HaveSameElements<uint>(ref actualData, ref expectedData, length);
+        }
+        else if (bitsType == typeof(long) || bitsType == typeof(ulong))
+        {
+            equal = HaveSameElements<ulong>(ref actualData, ref expectedData, length);
+        }
+        else if (bitsType == typeof(nint) || bitsType == typeof(nuint))
+        {
+            equal = HaveSameElements<nuint>(ref actualData, ref expectedData, length);
+        }
+        else
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    // The memory at each reference is read as length elements of T, which is in bounds only when T has the
+    // size of the element type; TryCompareInPlace picks T so. SequenceEqual compares the elements with
+    // IEquatable<T>.Equals.
+    private static bool HaveSameElements<T>(ref byte actualData, ref byte expectedData, int length)
+        where T : unmanaged, IEquatable<T>
+    {
+        return MemoryMarshal
+            .CreateReadOnlySpan(ref Unsafe.As<byte, T>(ref actualData), length)
+            .SequenceEqual(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, T>(ref expectedData), length));
+    }
+
     private static bool IsComparedByElements(Type type)
     {
         if (!type.IsGenericType)
@@ -1118,13 +1185,10 @@ internal static class MemberComparison
         return true;
     }
 
-    // True for two arrays of one runtime type, of any rank, whose element type is bool, char, an integer type
-    // (nint and nuint included), an enum, float or double; equal then tells whether they hold the same
-    // elements. A float or a double is compared by its own Equals, as a boxed one is: NaN equals NaN, and 0.0
-    // equals -0.0. Each of the other types is equal by its Equals exactly when its bits are equal (an enum
-    // compares its underlying integers), so the memory of the two arrays is compared as integers of the
-    // element's size. Both arrays have the same rank, and the same length and lower bound in every dimension
-    // (see StartReferences), so they hold the same number of elements in the same order.
+    // True for two arrays of one runtime type, of any rank, whose elements are compared in place (see the
+    // overload that takes the element type); equal then tells whether they hold the same elements. Both arrays
+    // have the same rank, and the same length and lower bound in every dimension (see StartReferences), so they
+    // hold the same number of elements in the same order.
     private static bool TryCompareInPlace(object actual, object expected, out bool equal)
     {
         equal = false;
@@ -1139,62 +1203,13 @@ internal static class MemberComparison
             return false;
         }
 
-        Type? elementType = arrayType.GetElementType();
-        if (elementType == typeof(float))
-        {
-            equal = HaveSameElements<float>(actualArray, expectedArray);
-            return true;
-        }
-
-        if (elementType == typeof(double))
-        {
-            equal = HaveSameElements<double>(actualArray, expectedArray);
-            return true;
-        }
-
-        Type? bitsType = elementType is { IsEnum: true } ? elementType.GetEnumUnderlyingType() : elementType;
-        if (bitsType == typeof(bool) || bitsType == typeof(byte) || bitsType == typeof(sbyte))
-        {
-            equal = HaveSameElements<byte>(actualArray, expectedArray);
-        }
-        else if (bitsType == typeof(char) || bitsType == typeof(short) || bitsType == typeof(ushort))
-        {
-            equal = HaveSameElements<ushort>(actualArray, expectedArray);
-        }
-        else if (bitsType == typeof(int) || bitsType == typeof(uint))
-        {
-            equal = HaveSameElements<uint>(actualArray, expectedArray);
-        }
-        else if (bitsType == typeof(long) || bitsType == typeof(ulong))
-        {
-            equal = HaveSameElements<ulong>(actualArray, expectedArray);
-        }
-        else if (bitsType == typeof(nint) || bitsType == typeof(nuint))
-        {
-            equal = HaveSameElements<nuint>(actualArray, expectedArray);
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    // The memory of each array is read as elements of T, which is in bounds only when T has the size of the
-    // array's element type; TryCompareInPlace picks T so. SequenceEqual compares the elements with
-    // IEquatable<T>.Equals.
-    private static bool HaveSameElements<T>(Array actual, Array expected)
-        where T : unmanaged, IEquatable<T>
-    {
-        return AsSpan<T>(actual).SequenceEqual(AsSpan<T>(expected));
-    }
-
-    private static ReadOnlySpan<T> AsSpan<T>(Array array)
-        where T : unmanaged
-    {
-        ref byte first = ref MemoryMarshal.GetArrayDataReference(array);
-        return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, T>(ref first), array.Length);
+        return TryCompareInPlace(
+            arrayType.GetElementType()!,
+            ref MemoryMarshal.GetArrayDataReference(actualArray),
+            ref MemoryMarshal.GetArrayDataReference(expectedArray),
+            actualArray.Length,
+            out equal
+        );
     }
 
     private static bool AreSequencesComparedByElementsOnly(object actual, object expected)
