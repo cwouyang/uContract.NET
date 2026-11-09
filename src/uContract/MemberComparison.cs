@@ -1400,42 +1400,13 @@ internal static class MemberComparison
     // declares after it calls that of its base record.
     private static bool DeclaresFieldReachingInlineArray(Type type, TypeMetadata metadata)
     {
-        foreach (MemberAccessor field in metadata.Members)
-        {
-            if (!field.IsField || field.DeclaringType != type)
-            {
-                continue;
-            }
-
-            Type declared = Nullable.GetUnderlyingType(field.MemberType) ?? field.MemberType;
-            if (
-                declared.IsDefined(typeof(InlineArrayAttribute), inherit: false)
-                || declared == typeof(object)
-                || declared == typeof(ValueType)
-                || declared.IsInterface
-                || (
-                    declared.IsClass
-                    && declared != typeof(string)
-                    && !declared.IsArray
-                    && !typeof(Delegate).IsAssignableFrom(declared)
-                )
-                || (
-                    declared.IsValueType
-                    && !declared.IsPrimitive
-                    && !declared.IsEnum
-                    && !ValueRoutesCache.GetOrAdd(declared, CreateValueRoutes).IsEmpty
-                )
-            )
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return metadata.Members.Any(member =>
+            member.IsField && member.DeclaringType == type && RouteOf(member.MemberType) != Route.None
+        );
     }
 
-    // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's. A field declared
-    // Nullable<X> counts as declared X. An inline array has none: its elements are compared by TryStartInlineArray.
+    // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's (see RouteOf). An
+    // inline array has none: its elements are compared by TryStartInlineArray.
     private static ValueRoutes CreateValueRoutes(Type type)
     {
         if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
@@ -1448,39 +1419,58 @@ internal static class MemberComparison
         List<MemberAccessor> runTime = [];
         foreach (MemberAccessor field in FieldsEqualsCompares(type))
         {
-            Type declared = Nullable.GetUnderlyingType(field.MemberType) ?? field.MemberType;
-            if (declared.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+            switch (RouteOf(field.MemberType))
             {
-                inlineArrays.Add(field);
-            }
-            else if (
-                declared == typeof(object)
-                || declared == typeof(ValueType)
-                || declared.IsInterface
-                || (
-                    declared.IsClass
-                    && declared != typeof(string)
-                    && !declared.IsArray
-                    && !typeof(Delegate).IsAssignableFrom(declared)
-                )
-            )
-            {
-                runTime.Add(field);
-            }
-            else if (
-                declared.IsValueType
-                && !declared.IsPrimitive
-                && !declared.IsEnum
-                && !ValueRoutesCache.GetOrAdd(declared, CreateValueRoutes).IsEmpty
-            )
-            {
-                nested.Add(field);
+                case Route.InlineArray:
+                    inlineArrays.Add(field);
+                    break;
+                case Route.RunTime:
+                    runTime.Add(field);
+                    break;
+                case Route.Nested:
+                    nested.Add(field);
+                    break;
             }
         }
 
         return inlineArrays.Count + nested.Count + runTime.Count == 0
             ? ValueRoutes.None
             : new ValueRoutes([.. inlineArrays], [.. nested], [.. runTime]);
+    }
+
+    // How a field declared fieldType can lead an Equals to an inline array's: it is (a Nullable<> of) an inline array;
+    // it is declared object, ValueType, an interface or a class other than string, an array or a delegate, so only
+    // its run-time value tells; or it is (a Nullable<> of) a struct that has routes of its own.
+    private static Route RouteOf(Type fieldType)
+    {
+        Type declared = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
+        if (declared.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        {
+            return Route.InlineArray;
+        }
+
+        if (
+            declared == typeof(object)
+            || declared == typeof(ValueType)
+            || declared.IsInterface
+            || (
+                declared.IsClass
+                && declared != typeof(string)
+                && !declared.IsArray
+                && !typeof(Delegate).IsAssignableFrom(declared)
+            )
+        )
+        {
+            return Route.RunTime;
+        }
+
+        return
+            declared.IsValueType
+            && !declared.IsPrimitive
+            && !declared.IsEnum
+            && !ValueRoutesCache.GetOrAdd(declared, CreateValueRoutes).IsEmpty
+            ? Route.Nested
+            : Route.None;
     }
 
     // The fields of type in its cached members, and the fields declared on each base class up to the first framework
@@ -1913,6 +1903,15 @@ internal static class MemberComparison
         Unknown,
         Yes,
         No,
+    }
+
+    // How a field can lead an Equals to an inline array's (see RouteOf).
+    private enum Route
+    {
+        None,
+        InlineArray,
+        Nested,
+        RunTime,
     }
 
     // How the Equals of a class compares (see ClassEqualsOf): only CompilerGenerated and Tuple are followed.
