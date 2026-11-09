@@ -1394,8 +1394,8 @@ internal static class MemberComparison
             && type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal);
     }
 
-    // The fields of a struct that can lead its built-in Equals to an inline array's. A field declared Nullable<X>
-    // counts as declared X. An inline array has none: its elements are compared by TryStartInlineArray.
+    // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's. A field declared
+    // Nullable<X> counts as declared X. An inline array has none: its elements are compared by TryStartInlineArray.
     private static ValueRoutes CreateValueRoutes(Type type)
     {
         if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
@@ -1406,7 +1406,7 @@ internal static class MemberComparison
         List<MemberAccessor> inlineArrays = [];
         List<MemberAccessor> nested = [];
         List<MemberAccessor> runTime = [];
-        foreach (MemberAccessor field in GetOrCacheMetadata(type).Members.Where(member => member.IsField))
+        foreach (MemberAccessor field in FieldsEqualsCompares(type))
         {
             Type declared = Nullable.GetUnderlyingType(field.MemberType) ?? field.MemberType;
             if (declared.IsDefined(typeof(InlineArrayAttribute), inherit: false))
@@ -1441,6 +1441,36 @@ internal static class MemberComparison
         return inlineArrays.Count + nested.Count + runTime.Count == 0
             ? ValueRoutes.None
             : new ValueRoutes([.. inlineArrays], [.. nested], [.. runTime]);
+    }
+
+    // The fields of type in its cached members, and the fields declared on each base class up to the first framework
+    // class that those members leave out: a derived record's members leave out the backing field, declared on a base
+    // record, of a positional property it compares as a property, yet the base record's Equals compares that field.
+    private static IEnumerable<MemberAccessor> FieldsEqualsCompares(Type type)
+    {
+        MemberAccessor[] fields = [.. GetOrCacheMetadata(type).Members.Where(member => member.IsField)];
+        IEnumerable<MemberAccessor> result = fields;
+        for (
+            Type? baseType = type.BaseType;
+            baseType is not null && !IsFrameworkClass(baseType);
+            baseType = baseType.BaseType
+        )
+        {
+            Type declaring = baseType;
+            result = result.Concat(
+                GetOrCacheMetadata(declaring)
+                    .Members.Where(member =>
+                        member.IsField
+                        && member.DeclaringType == declaring
+                        && !fields.Any(listed =>
+                            listed.DeclaringType == declaring
+                            && string.Equals(listed.RawName, member.RawName, StringComparison.Ordinal)
+                        )
+                    )
+            );
+        }
+
+        return result;
     }
 
     // An inline array declares exactly one instance field, whose type is the element type. The field is read from

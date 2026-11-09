@@ -1008,6 +1008,85 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // ---- An inline array held through a base record ----
+
+    // A derived record's Equals calls its base record's, which compares the backing field of a positional property
+    // declared on the base: an inline array there is found like one the derived record declares.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInABaseRecordsPropertyInAStructChanged_ReportsTheMember()
+    {
+        CountsBaseOwnerHolding actual = new()
+        {
+            Value = new CountsBaseOwner { Item = new CountsDerived(WithLaterElementChanged()) },
+        };
+        CountsBaseOwnerHolding expected = new()
+        {
+            Value = new CountsBaseOwner { Item = new CountsDerived(new IntBuf3()) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenABaseRecordsPropertyInAStructHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        CountsBaseOwnerHolding actual = new()
+        {
+            Value = new CountsBaseOwner { Item = new CountsDerived(WithLaterElementChanged()) },
+        };
+        CountsBaseOwnerHolding expected = new()
+        {
+            Value = new CountsBaseOwner { Item = new CountsDerived(WithLaterElementChanged()) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAGenericBaseRecordsPropertyInAStructChanged_ReportsTheMember()
+    {
+        GenericCountsBaseOwnerHolding actual = new()
+        {
+            Value = new GenericCountsBaseOwner { Item = new GenericCountsDerived(1, WithLaterElementChanged()) },
+        };
+        GenericCountsBaseOwnerHolding expected = new()
+        {
+            Value = new GenericCountsBaseOwner { Item = new GenericCountsDerived(1, new IntBuf3()) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    // The derived record also declares an inline array of its own; only the one on the base differs.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfTheBaseRecordsInlineArrayOfARecordHoldingTwoInAStructChanged_ReportsTheMember()
+    {
+        CountsBaseOwnerHolding actual = new()
+        {
+            Value = new CountsBaseOwner { Item = new ExtendedCounts(WithLaterElementChanged(), new IntBuf3()) },
+        };
+        CountsBaseOwnerHolding expected = new()
+        {
+            Value = new CountsBaseOwner { Item = new ExtendedCounts(new IntBuf3(), new IntBuf3()) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
     // ---- A deep graph without an inline array ----
 
     // Looking at run-time values does not use the stack for each level: a struct holding a long chain of records keeps
@@ -1515,6 +1594,37 @@ public class EnsureAssignableInlineArrayTests
     private sealed class MarkedRecordOwnerHolding
     {
         public MarkedRecordOwner Value;
+    }
+
+    private record CountsBase(IntBuf3 Counts);
+
+    // Counts is the base record's property: its backing field is declared on CountsBase.
+    private sealed record CountsDerived(IntBuf3 Counts) : CountsBase(Counts);
+
+    private sealed record ExtendedCounts(IntBuf3 Counts, IntBuf3 Extra) : CountsBase(Counts);
+
+    private struct CountsBaseOwner
+    {
+        public CountsBase Item;
+    }
+
+    private sealed class CountsBaseOwnerHolding
+    {
+        public CountsBaseOwner Value;
+    }
+
+    private record GenericCountsBase<TValue>(TValue Value, IntBuf3 Counts);
+
+    private sealed record GenericCountsDerived(int Value, IntBuf3 Counts) : GenericCountsBase<int>(Value, Counts);
+
+    private struct GenericCountsBaseOwner
+    {
+        public GenericCountsBase<int> Item;
+    }
+
+    private sealed class GenericCountsBaseOwnerHolding
+    {
+        public GenericCountsBaseOwner Value;
     }
 
     private struct ChainOwner
