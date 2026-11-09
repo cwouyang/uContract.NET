@@ -1109,24 +1109,15 @@ internal static class MemberComparison
             && !equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false);
     }
 
-    [UnconditionalSuppressMessage(
-        "Trimming",
-        "IL2070",
-        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT an element field that the trimmer hides leaves the inline array to the rules for other value types, and a hidden Equals override is not asked first."
-    )]
+    // An inline array declares exactly one instance field, whose type is the element type. The field is read from
+    // the cached members of the type (see GetOrCacheMetadata); under Native AOT the trimmer may hide it, which
+    // leaves the element type unknown.
     private static InlineArrayShape CreateInlineArrayShape(Type type)
     {
-        // An inline array declares exactly one instance field, whose type is the element type.
-        FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-        MethodInfo? handWrittenEquals = type.GetMethod(
-            nameof(Equals),
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly,
-            [typeof(object)]
-        );
+        MemberAccessor[] fields = [.. GetOrCacheMetadata(type).Members.Where(member => member.IsField)];
         return new InlineArrayShape(
-            fields.Length == 1 ? fields[0].FieldType : null,
-            type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length,
-            handWrittenEquals is not null
+            fields.Length == 1 ? fields[0].MemberType : null,
+            type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length
         );
     }
 
@@ -1509,11 +1500,11 @@ internal static class MemberComparison
         }
     }
 
-    // OwnMembers is cached for every caller, so it is read-only.
     // What TryStartInlineArray needs of an inline-array type: its element type (null when reflection does not
-    // list its one element field), its length, and whether the type declares its own Equals(object).
-    private sealed record InlineArrayShape(Type? ElementType, int Length, bool HasHandWrittenEquals);
+    // list its one element field) and its length.
+    private sealed record InlineArrayShape(Type? ElementType, int Length);
 
+    // OwnMembers is cached for every caller, so it is read-only.
     internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers)
     {
         // A compiler-generated sequence of yours (a yield iterator, a collection expression): compared by its

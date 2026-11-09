@@ -81,6 +81,11 @@ internal sealed class MemberAccessor
     public Type DeclaringType { get; }
 
     /// <summary>
+    ///     Gets the type of the field or of the property.
+    /// </summary>
+    public Type MemberType => _field?.FieldType ?? _property!.PropertyType;
+
+    /// <summary>
     ///     Names the member with the given declaring type name in <see cref="Name" /> and
     ///     <see cref="PathName" />.
     /// </summary>
