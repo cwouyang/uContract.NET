@@ -1390,11 +1390,17 @@ internal static class MemberComparison
     // [CompilerGenerated] alone does not tell it: a user or a source generator may mark a class of theirs with it.
     private static bool IsAnonymousType(Type type)
     {
+        return (
+                type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                && type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal)
+            ) || IsVisualBasicAnonymousType(type);
+    }
+
+    // An anonymous type of Visual Basic (see IsAnonymousType).
+    private static bool IsVisualBasicAnonymousType(Type type)
+    {
         return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-            && (
-                type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal)
-                || type.Name.StartsWith("VB$AnonymousType_", StringComparison.Ordinal)
-            );
+            && type.Name.StartsWith("VB$AnonymousType_", StringComparison.Ordinal);
     }
 
     // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's (see RouteOf). An
