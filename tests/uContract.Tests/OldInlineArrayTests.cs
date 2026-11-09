@@ -169,7 +169,16 @@ public class OldInlineArrayTests
 
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bagged, old));
 
-        Assert.IsType<InvalidOperationException>(exception);
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(BagBuf3)} (reached through 'Bagged.Bags'): it is an inline array "
+                + $"of {typeof(Bag)}, a struct, whose elements this runtime reads only with dynamic code, and dynamic "
+                + "code is not supported here (Native AOT). Ways out: list 'Bags' as assignable (patterns are regular "
+                + "expressions matched against top-level member names, so use the plain member name); run on the "
+                + ".NET 9 runtime or later, which reads struct elements without dynamic code; or set DBC_POST=off "
+                + "(disables all postcondition checks).",
+            cannotCompare.Message
+        );
     }
 
     // The .NET 9+ runtime reads a struct element without dynamic code.
