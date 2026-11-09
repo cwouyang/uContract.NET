@@ -5,9 +5,12 @@ using uContract.Exceptions;
 
 namespace uContract.Tests;
 
-// Below the top level, two values of one inline-array type are compared element by element, by the rules for
-// two elements of an array. The built-in ValueType.Equals, which sees only element 0 (and throws on .NET 10),
-// is never asked.
+// EnsureAssignable with inline arrays. Wherever two values of one inline-array type meet (a member, an element, a
+// field of a holder struct, an object-typed field, and at the top level as T, as object or as an interface they
+// implement), they are compared element by element, by the rules for two elements of an array, whatever their
+// element type. The comparison never asks the built-in ValueType.Equals of an inline array, which sees only element 0
+// (and throws on .NET 10); a hand-written Equals of yours that reaches it still does. A struct that holds an inline
+// array is compared by its fields, and a C# fixed-size buffer is not an inline array.
 public class EnsureAssignableInlineArrayTests
 {
     private const string Violation = "Fields were modified that are not marked as assignable:\n";
@@ -351,6 +354,40 @@ public class EnsureAssignableInlineArrayTests
         );
 
         Assert.Equal(Violation + "  - Entries", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterInnerElementOfAnInlineArrayOfStructElementInlineArraysChanged_ReportsTheField()
+    {
+        BadgeLayered actual = new();
+        actual.Layers[1] = WithLaterBadge("before");
+        BadgeLayered expected = new();
+        expected.Layers[1] = WithLaterBadge("after");
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Layers", exception.Description);
+    }
+
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenAnArrayElementsStructElementsCannotBeReadWithoutDynamicCode_NamesThePathThroughTheElement()
+    {
+        BadgeGrid actual = new() { Rows = [WithLaterBadge("before")] };
+        BadgeGrid expected = new() { Rows = [WithLaterBadge("after")] };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(BadgeBuf3)} (reached through 'BadgeGrid.Rows[]'): "
+                + StructElementsNeedDynamicCode<Badge>()
+                + "Ways out: list 'Rows' as assignable (patterns are regular expressions matched against top-level "
+                + "member names, so use the plain member name); "
+                + RunOnNet9OrSetPostOff,
+            cannotCompare.Message
+        );
     }
 
     // The .NET 8 runtime reads a struct element only with dynamic code, which Native AOT does not support.
@@ -1974,6 +2011,30 @@ public class EnsureAssignableInlineArrayTests
     }
 
     [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAStructElementInlineArrayImplementsAndALaterElementChanged_ReportsTheTwoAsNotEqual()
+    {
+        IBadgeSet actual = WithLaterBadgeInSet("before");
+        IBadgeSet expected = WithLaterBadgeInSet("after");
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<BadgeSet3>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAStructElementInlineArrayImplementsAndEveryElementIsEqual_Passes()
+    {
+        IBadgeSet actual = WithLaterBadgeInSet("same");
+        IBadgeSet expected = WithLaterBadgeInSet("same");
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void EnsureAssignable_WhenTIsObjectAndTwoBoxedInlineArraysHoldEqualStructElements_Passes()
     {
         object actual = WithLaterBadge("same");
@@ -2110,6 +2171,13 @@ public class EnsureAssignableInlineArrayTests
             + "dynamic code, and dynamic code is not supported here (Native AOT). ";
     }
 
+    private static BadgeSet3 WithLaterBadgeInSet(string name)
+    {
+        BadgeSet3 set = new();
+        set[2] = new Badge { Tag = 1, Name = name };
+        return set;
+    }
+
     private static BadgeBuf3 WithLaterBadge(string name)
     {
         BadgeBuf3 buffer = new();
@@ -2187,6 +2255,25 @@ public class EnsureAssignableInlineArrayTests
     private sealed class BadgeHolding
     {
         public BadgeHolder Value;
+    }
+
+    [InlineArray(2)]
+    private struct BadgeBuf3Buf2
+    {
+        private BadgeBuf3 _element;
+    }
+
+    private sealed class BadgeLayered
+    {
+        public BadgeBuf3Buf2 Layers;
+    }
+
+    private interface IBadgeSet { }
+
+    [InlineArray(3)]
+    private struct BadgeSet3 : IBadgeSet
+    {
+        private Badge _element;
     }
 
     private sealed class BadgeGrid
