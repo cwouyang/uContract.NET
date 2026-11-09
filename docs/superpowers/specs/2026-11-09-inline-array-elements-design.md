@@ -68,6 +68,9 @@ the work is done).
    `SizeOf` and `Box` but no way to write a struct element back, so without dynamic code `Old` cannot deep-copy struct
    elements that hold references, while the comparison reads every element — a silent pass): "Old 沒複製完就丟
    cannot compare (Recommended)" — B6 gains a third case.
+15. Revision during Act (Task 5 fix round 1, confirmed by the re-reviewer: when `T` is a struct, `Old` returns an
+   unboxed value, so nothing can be recorded on it and revision 14's case still passes silently there): "struct T
+   時比較端一律拒絕 (Recommended)" — B6's third case covers a struct `T` by a rule on the comparison side.
 
 ## Terms
 
@@ -167,7 +170,11 @@ struct element that holds references, and an element type that is itself an inli
   back, so references inside elements would stay shared with the original): when the comparison meets that inline
   array of that copy, it throws instead of comparing. `Old` records which inline arrays of its copy it could not copy
   fully; a pair that does not involve such a copy is compared normally. Struct elements that `Old` copies fully (for
-  example ones that hold no references) are not affected.
+  example ones that hold no references) are not affected. When `T` is a struct, `Old` returns a value on which
+  nothing can be recorded; so, without dynamic code on the .NET 9 runtime or later, an inline array that `T` holds by
+  value (directly or through struct fields, or `T` itself), whose struct elements `Old` could not deep-copy, is not
+  compared: the comparison throws as above, whether or not the values came from `Old`. Inline arrays that `T` reaches
+  through a reference are covered by the record on the copy as above.
 
 The message names the inline-array type and the member path, and gives, in the style of the existing "cannot
 compare" messages (ADR-0021), only the ways out that work for its case:
