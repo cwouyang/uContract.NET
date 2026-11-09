@@ -70,17 +70,25 @@ internal static class StructElements
     }
 
     // Reached only where dynamic code is supported (see Read): on the .NET 8 runtime under the JIT.
+    private static Reader CreateReader(Type elementType)
+    {
+        return Instantiate<Reader>(
+            typeof(StructElements).GetMethod(nameof(BoxElements), BindingFlags.NonPublic | BindingFlags.Static)!,
+            elementType
+        );
+    }
+
+    // The generic method definition of this class instantiated over elementType, as a TDelegate. The only place that
+    // needs dynamic code: every caller is reached only where it is supported.
     [UnconditionalSuppressMessage(
         "AOT",
         "IL3050",
         Justification = "Called only when RuntimeFeature.IsDynamicCodeSupported is true (through RuntimeFacts), so the instantiation over the element type can be compiled at run time. Without dynamic code the elements are boxed by the .NET 9+ RuntimeHelpers.Box, or the comparison reports that it cannot compare them."
     )]
-    private static Reader CreateReader(Type elementType)
+    private static TDelegate Instantiate<TDelegate>(MethodInfo definition, Type elementType)
+        where TDelegate : Delegate
     {
-        return typeof(StructElements)
-            .GetMethod(nameof(BoxElements), BindingFlags.NonPublic | BindingFlags.Static)!
-            .MakeGenericMethod(elementType)
-            .CreateDelegate<Reader>();
+        return definition.MakeGenericMethod(elementType).CreateDelegate<TDelegate>();
     }
 
     // The memory at data is read as length elements of TElement, which is in bounds: TElement is the element type of
