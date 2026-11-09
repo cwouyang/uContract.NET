@@ -15,26 +15,28 @@ namespace uContract;
 /// </remarks>
 internal static class UncopiedInlineArrays
 {
-    private static readonly ConditionalWeakTable<object, IReadOnlySet<Type>> ByObject = [];
+    private static readonly ConditionalWeakTable<object, Func<Type, bool>> ByObject = [];
 
     private static volatile bool _anyRecorded;
 
     // Records types on each object of one copy.
     internal static void Record(IEnumerable<object> copies, IReadOnlySet<Type> types)
     {
+        Func<Type, bool> isUncopied = types.Contains;
         foreach (object copy in copies)
         {
-            ByObject.AddOrUpdate(copy, types);
+            ByObject.AddOrUpdate(copy, isUncopied);
         }
 
         _anyRecorded = true;
     }
 
-    // The types recorded on value, or null when value is not an object of a copy that could not copy them all.
-    internal static IReadOnlySet<Type>? Of(object? value)
+    // Tells which types are recorded on value; null when value is not an object of a copy that could not copy them
+    // all.
+    internal static Func<Type, bool>? Of(object? value)
     {
-        return _anyRecorded && value is not null && ByObject.TryGetValue(value, out IReadOnlySet<Type>? types)
-            ? types
+        return _anyRecorded && value is not null && ByObject.TryGetValue(value, out Func<Type, bool>? isUncopied)
+            ? isUncopied
             : null;
     }
 }

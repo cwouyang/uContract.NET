@@ -855,7 +855,7 @@ internal static class MemberComparison
     private static Walk? StartHeld(
         object? actual,
         object? expected,
-        IReadOnlySet<Type>? uncopiedInHolder,
+        Func<Type, bool>? uncopiedInHolder,
         ComparisonContext context,
         out bool equal
     )
@@ -1247,7 +1247,7 @@ internal static class MemberComparison
             return false;
         }
 
-        if (context.Uncopied?.Contains(type) == true)
+        if (context.Uncopied?.Invoke(type) == true)
         {
             context.Hidden = new HiddenMembers(type) { ElementsNotCopied = elementType };
             return true;
@@ -1918,8 +1918,8 @@ internal static class MemberComparison
 
         public object? ChildActual { get; private set; }
 
-        // The inline-array types that the Old copy holding this pair could not copy (see StartHeld).
-        public IReadOnlySet<Type>? Uncopied { get; set; }
+        // Tells which inline-array types the Old copy holding this pair could not copy (see StartHeld).
+        public Func<Type, bool>? Uncopied { get; set; }
 
         public object? ChildExpected { get; private set; }
 
