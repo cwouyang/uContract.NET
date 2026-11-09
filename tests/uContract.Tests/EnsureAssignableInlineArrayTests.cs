@@ -933,6 +933,50 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // A derived record's generated Equals calls the typed Equals of its base record; one written by hand there decides.
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenTypedEqualsOfABaseRecordInAStructCallsItsInlineArraysEqual_DoesNotReportIt()
+    {
+        TolerantBaseOwnerHolding actual = new()
+        {
+            Value = new TolerantBaseOwner
+            {
+                Item = new TolerantDerived { Raw = WithLaterElementChanged(), Total = 1 },
+            },
+        };
+        TolerantBaseOwnerHolding expected = new()
+        {
+            Value = new TolerantBaseOwner
+            {
+                Item = new TolerantDerived { Raw = new IntBuf3(), Total = 1 },
+            },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenTypedEqualsOfAGenericBaseRecordInAStructCallsItsInlineArraysEqual_DoesNotReportIt()
+    {
+        TolerantGenericBaseOwnerHolding actual = new()
+        {
+            Value = new TolerantGenericBaseOwner
+            {
+                Item = new TolerantGenericDerived(1) { Raw = WithLaterElementChanged() },
+            },
+        };
+        TolerantGenericBaseOwnerHolding expected = new()
+        {
+            Value = new TolerantGenericBaseOwner { Item = new TolerantGenericDerived(1) { Raw = new IntBuf3() } },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- A deep graph without an inline array ----
 
     // Looking at run-time values does not use the stack for each level: a struct holding a long chain of records keeps
@@ -1361,6 +1405,53 @@ public class EnsureAssignableInlineArrayTests
     private sealed class TolerantRecordClassOwnerHolding
     {
         public TolerantRecordClassOwner Value;
+    }
+
+    // Equal when the totals are: the inline array does not count.
+    private record TolerantBase
+    {
+        public IntBuf3 Raw;
+
+        public int Total { get; init; }
+
+        public virtual bool Equals(TolerantBase? other) => other is not null && Total == other.Total;
+
+        public override int GetHashCode() => Total;
+    }
+
+    private sealed record TolerantDerived : TolerantBase;
+
+    private struct TolerantBaseOwner
+    {
+        public TolerantBase Item;
+    }
+
+    private sealed class TolerantBaseOwnerHolding
+    {
+        public TolerantBaseOwner Value;
+    }
+
+    // Equal when the totals are: the inline array does not count.
+    private record TolerantGenericBase<TTotal>(TTotal Total)
+    {
+        public IntBuf3 Raw;
+
+        public virtual bool Equals(TolerantGenericBase<TTotal>? other) =>
+            other is not null && EqualityComparer<TTotal>.Default.Equals(Total, other.Total);
+
+        public override int GetHashCode() => EqualityComparer<TTotal>.Default.GetHashCode(Total!);
+    }
+
+    private sealed record TolerantGenericDerived(int Total) : TolerantGenericBase<int>(Total);
+
+    private struct TolerantGenericBaseOwner
+    {
+        public TolerantGenericBase<int> Item;
+    }
+
+    private sealed class TolerantGenericBaseOwnerHolding
+    {
+        public TolerantGenericBaseOwner Value;
     }
 
     private struct ChainOwner

@@ -86,10 +86,21 @@ internal static class MemberComparison
             {
                 TypeMetadata metadata = CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance));
                 metadata.DeclaresHandWrittenTypedEquals =
-                    t.GetMethod("Equals", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly, [t])
-                        is { } typedEquals
-                    && !typedEquals.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                    && !t.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false);
+                    (
+                        t.GetMethod(
+                            "Equals",
+                            BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly,
+                            [t]
+                        )
+                            is { } typedEquals
+                        && !typedEquals.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                        && !t.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                    )
+                    || (
+                        t.BaseType is { } baseType
+                        && !IsFrameworkClass(baseType)
+                        && GetOrCacheMetadata(baseType).DeclaresHandWrittenTypedEquals
+                    );
                 return metadata;
             }
         );
