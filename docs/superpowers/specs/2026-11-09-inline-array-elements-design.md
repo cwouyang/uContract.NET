@@ -62,6 +62,8 @@ the work is done).
    with an unused class-typed field under a tolerant hand-written base report the base's ignored inline array, where it
    passed before; a real Visual Basic build showed non-`Key` fields being compared): "改回簡單規則，記一個限制
    (Recommended)" — revision 11's limit is removed and its case becomes a known limitation; "只追 Key 欄位 (Recommended)".
+13. Revision during Act (Task 4 implementer: preserving the type does not let the .NET 8 runtime read a struct element
+   without dynamic code): "依情況列解法 (Recommended)" — B6 lists, per case, only the ways out that work.
 
 ## Terms
 
@@ -157,9 +159,13 @@ struct element that holds references, and an element type that is itself an inli
 - Native AOT on the .NET 8 runtime, the element type is a struct: there is no AOT-safe way on .NET 8 to get the
   element size (the .NET 9+ `RuntimeHelpers.SizeOf`/`Box` exist from the .NET 9 runtime on).
 
-The message names the inline-array type and the member path, and gives the ways out, in the style of the existing
-"cannot compare" messages (ADR-0021): preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All,
-typeof(X))]`, list the member that holds it as assignable, or set `DBC_POST=off`. **[author's call]**: if `Contract.Old`
+The message names the inline-array type and the member path, and gives, in the style of the existing "cannot
+compare" messages (ADR-0021), only the ways out that work for its case:
+
+- Element field not visible: preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All,
+  typeof(X))]`, list the member that holds it as assignable, or set `DBC_POST=off`.
+- Struct element without dynamic code on the .NET 8 runtime: list the member that holds it as assignable, set
+  `DBC_POST=off`, or run on the .NET 9 runtime or later. Preserving the type does not help here and is not offered. **[author's call]**: if `Contract.Old`
 cannot copy the elements in these cases it does not throw itself; the comparison that follows throws as above.
 
 **B8. Dynamic code.** Where reading or writing elements needs a generic instantiation that is not known at compile
