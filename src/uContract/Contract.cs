@@ -1569,7 +1569,7 @@ public static class Contract
 
             if (_IsComparedAsWhole(typeof(T)))
             {
-                _CompareAsWhole(typeof(T), actual, expected);
+                _CompareAsWhole(typeof(T), typeof(T), actual, expected);
                 return;
             }
 
@@ -1667,7 +1667,7 @@ public static class Contract
         Type publicActualType = SharedTypes.PublicFrozenType(actualType);
         if (publicActualType != actualType && publicActualType == SharedTypes.PublicFrozenType(expectedType))
         {
-            _CompareAsWhole(publicActualType, actual, expected);
+            _CompareAsWhole(publicActualType, declaredType, actual, expected);
             return true;
         }
 
@@ -1688,7 +1688,7 @@ public static class Contract
             || MemberComparison.IsInlineArrayComparedByElements(actualType)
         )
         {
-            _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), actual, expected);
+            _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), declaredType, actual, expected);
             return true;
         }
 
@@ -1792,6 +1792,7 @@ public static class Contract
 
         List<string> differences = _FindDifferences(
             declaredType,
+            declaredType,
             [.. MemberComparison.GetOrCacheMetadata(declaredType).Members],
             actual,
             expected,
@@ -1848,6 +1849,7 @@ public static class Contract
 
         List<string> differences = _FindDifferences(
             comparedType,
+            declaredType,
             members,
             actual,
             expected,
@@ -1963,9 +1965,18 @@ public static class Contract
             || SharedTypes.IsShared(runtimeType);
     }
 
-    private static void _CompareAsWhole(Type type, object? actual, object? expected)
+    // Tells which inline-array types the comparison refuses among those a struct T holds by value. An Old copy of a
+    // struct T is an unboxed value with no record (see UncopiedInlineArrays), so every inline array whose struct
+    // elements a copy leaves uncopied (see DeepCopier.LeavesStructElementsUncopied) is refused there, whether or not
+    // the values came from Old. Null when T is not a struct, or where this runtime writes struct elements.
+    private static Func<Type, bool>? _UncopiedHeldByValue(Type declaredType)
     {
-        ComparisonContext context = new();
+        return declaredType.IsValueType && !StructElements.CanWrite ? DeepCopier.LeavesStructElementsUncopied : null;
+    }
+
+    private static void _CompareAsWhole(Type type, Type declaredType, object? actual, object? expected)
+    {
+        ComparisonContext context = new() { UncopiedInTopLevel = _UncopiedHeldByValue(declaredType) };
 
         if (MemberComparison.AreEqual(actual, expected, context))
         {
@@ -2177,6 +2188,7 @@ public static class Contract
 
     private static List<string> _FindDifferences(
         Type type,
+        Type declaredType,
         List<MemberAccessor> members,
         object actual,
         object expected,
@@ -2192,7 +2204,8 @@ public static class Contract
         // are the top-level pair here only when T is neither an array type nor System.Array (object, an
         // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
         context.EnterTopLevel(new ReferencePair(actual, expected));
-        context.UncopiedInTopLevel = UncopiedInlineArrays.Of(actual) ?? UncopiedInlineArrays.Of(expected);
+        context.UncopiedInTopLevel =
+            UncopiedInlineArrays.Of(actual) ?? UncopiedInlineArrays.Of(expected) ?? _UncopiedHeldByValue(declaredType);
 
         // A property of an interface T is compared even when a member of comparedType has its name: its getter
         // may be another implementation (an explicit one). It is not reported when a member of that name was

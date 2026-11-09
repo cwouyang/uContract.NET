@@ -333,6 +333,132 @@ public class OldInlineArrayTests
         Assert.Same(old.Lists[0], old.Lists[2]);
     }
 
+    // When T is a struct, an Old copy is an unboxed value with no record, so an inline array that T holds by value and
+    // whose struct elements Old could not copy is refused whether or not the values came from Old.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAnInlineArrayOfStructElementsHoldingReferencesWithoutDynamicCode_CannotCompareIt()
+    {
+        BagBuf3 actual = WithBags();
+        BagBuf3 expected = WithBags();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopyAtTheTopLevel<BagBuf3, Bag>(), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAnInlineArrayAndExpectedIsItsOldCopyWithoutDynamicCode_CannotCompareIt()
+    {
+        BagBuf3 bags = WithBags();
+        BagBuf3 old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bags));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bags, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopyAtTheTopLevel<BagBuf3, Bag>(), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructHoldingSuchAnInlineArrayByValueWithoutDynamicCode_CannotCompareTheMember()
+    {
+        BagHolder actual = new() { Bags = WithBags() };
+        BagHolder expected = new() { Bags = WithBags() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("BagHolder.Bags", "Bags"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAnInlineArrayOfStructElementsWithoutReferencesWithoutDynamicCode_ComparesIt()
+    {
+        PointBuf3 actual = WithPoints();
+        PointBuf3 expected = WithPoints();
+        expected[2] = new Point { X = Added };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(
+            $"actual and expected are not equal. {typeof(PointBuf3)} is an inline array, compared as a whole element "
+                + "by element, so assignable patterns do not apply.",
+            violation.Description
+        );
+    }
+
+    // An inline array that a struct T reaches through a reference keeps the rule for Old copies: refused in a copy
+    // that recorded it, compared otherwise.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructHoldingAClassWhoseInlineArrayOldCouldNotCopy_CannotCompareIt()
+    {
+        BaggedHolder held = new() { Inner = new Bagged { Bags = WithBags() } };
+        BaggedHolder old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => held));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(held, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("BaggedHolder.Inner.Bags", "Inner"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructHoldingAClassWithSuchAnInlineArrayNotFromOldWithoutDynamicCode_ReportsTheMember()
+    {
+        BaggedHolder actual = new() { Inner = new Bagged { Bags = WithBags() } };
+        BaggedHolder expected = new() { Inner = new Bagged { Bags = WithBags() } };
+        expected.Inner.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(Violation + "  - Inner", violation.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInlineArrayOfStructElementsHoldingListsAndUnchangedAfterOld_DoesNotReportIt()
+    {
+        BagBuf3 bags = WithBags();
+        BagBuf3 old = Contract.Old(() => bags);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(bags, old));
+
+        Assert.Null(exception);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldCouldNotCopyAnInlineArrayTwoStructsDeepInAClassWithoutDynamicCode_CannotCompareIt()
+    {
+        Deep deep = new() { Value = new Outer { Inner = new BagHolder { Bags = WithBags() } } };
+        Deep old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => deep));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(deep, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("Deep.Value.Inner.Bags", "Value"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldCouldNotCopyTheInlineArraysInAnArrayWithoutDynamicCode_CannotCompareThem()
+    {
+        BagRows rows = new() { Rows = [WithBags(), WithBags()] };
+        BagRows old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => rows));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(rows, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("BagRows.Rows[]", "Rows"), cannotCompare.Message);
+    }
+
+    private static string OldCouldNotCopyAtTheTopLevel<TInlineArray, TElement>()
+    {
+        return $"EnsureAssignable cannot compare {typeof(TInlineArray)} (reached through '{typeof(TInlineArray).Name}'): "
+            + $"it is an inline array of {typeof(TElement)}, a struct, whose elements Contract.Old could not copy: this "
+            + "runtime writes struct elements only with dynamic code, and dynamic code is not supported here (Native "
+            + "AOT), so the copy shares what they refer to with the original. Ways out: set DBC_POST=off (disables all "
+            + "postcondition checks).";
+    }
+
     private static string OldCouldNotCopy<TInlineArray, TElement>(string path, string member)
     {
         return $"EnsureAssignable cannot compare {typeof(TInlineArray)} (reached through '{path}'): it is an inline "
@@ -447,6 +573,31 @@ public class OldInlineArrayTests
     private sealed class ListedProperty
     {
         public ListBuf3 Lists { get; set; }
+    }
+
+    private struct BagHolder
+    {
+        public BagBuf3 Bags;
+    }
+
+    private struct BaggedHolder
+    {
+        public Bagged Inner;
+    }
+
+    private struct Outer
+    {
+        public BagHolder Inner;
+    }
+
+    private sealed class Deep
+    {
+        public Outer Value;
+    }
+
+    private sealed class BagRows
+    {
+        public BagBuf3[] Rows = [];
     }
 
     private sealed class BaggedEntries
