@@ -977,6 +977,37 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // ---- A class marked [CompilerGenerated] by hand ----
+
+    // A user or a source generator may mark a class [CompilerGenerated]; an Equals written by hand in it still decides.
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenEqualsOfAClassMarkedCompilerGeneratedInAStructsObjectFieldCallsItsInlineArraysEqual_DoesNotReportIt()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = new Marked(WithLaterElementChanged(), 1) } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = new Marked(new IntBuf3(), 1) } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenTypedEqualsOfARecordMarkedCompilerGeneratedInAStructCallsItsInlineArraysEqual_DoesNotReportIt()
+    {
+        MarkedRecordOwnerHolding actual = new()
+        {
+            Value = new MarkedRecordOwner { Item = new MarkedRecord(WithLaterElementChanged(), 1) },
+        };
+        MarkedRecordOwnerHolding expected = new()
+        {
+            Value = new MarkedRecordOwner { Item = new MarkedRecord(new IntBuf3(), 1) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- A deep graph without an inline array ----
 
     // Looking at run-time values does not use the stack for each level: a struct holding a long chain of records keeps
@@ -1452,6 +1483,38 @@ public class EnsureAssignableInlineArrayTests
     private sealed class TolerantGenericBaseOwnerHolding
     {
         public TolerantGenericBaseOwner Value;
+    }
+
+    // Marked as a source generator may mark it. Equal when the totals are: the inline array does not count.
+    [CompilerGenerated]
+    private sealed class Marked(IntBuf3 counts, int total)
+    {
+        public IntBuf3 Counts = counts;
+
+        public int Total = total;
+
+        public override bool Equals(object? obj) => obj is Marked other && Total == other.Total;
+
+        public override int GetHashCode() => Total;
+    }
+
+    // Marked as a source generator may mark it. Equal when the totals are: the inline array does not count.
+    [CompilerGenerated]
+    private sealed record MarkedRecord(IntBuf3 Counts, int Total)
+    {
+        public bool Equals(MarkedRecord? other) => other is not null && Total == other.Total;
+
+        public override int GetHashCode() => Total;
+    }
+
+    private struct MarkedRecordOwner
+    {
+        public MarkedRecord Item;
+    }
+
+    private sealed class MarkedRecordOwnerHolding
+    {
+        public MarkedRecordOwner Value;
     }
 
     private struct ChainOwner

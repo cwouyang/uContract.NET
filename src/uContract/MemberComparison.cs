@@ -94,7 +94,7 @@ internal static class MemberComparison
                         )
                             is { } typedEquals
                         && !typedEquals.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                        && !t.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                        && !IsAnonymousType(t)
                     )
                     || (
                         t.BaseType is { } baseType
@@ -1354,8 +1354,8 @@ internal static class MemberComparison
     }
 
     // Which Equals the class of box dispatches to, when it compares values but is not written by hand: a record
-    // class's [CompilerGenerated] Equals, the Equals of an anonymous type (the type is [CompilerGenerated], its Equals
-    // is not marked), or the Equals of a System.Tuple<…>. A fact of the type, cached.
+    // class's [CompilerGenerated] Equals, the Equals of an anonymous type (see IsAnonymousType; its Equals is not
+    // marked), or the Equals of a System.Tuple<…>. A fact of the type, cached.
     private static ClassEquals ClassEqualsOf(object box, Type type)
     {
         return ClassEqualsCache.GetOrAdd(
@@ -1377,13 +1377,21 @@ internal static class MemberComparison
                 return
                     (
                         equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                        || declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                        || IsAnonymousType(declaring)
                     ) && !GetOrCacheMetadata(declaring).HasHandWrittenTypedEquals
                     ? ClassEquals.CompilerGenerated
                     : ClassEquals.NotFollowed;
             },
             box
         );
+    }
+
+    // An anonymous type of C#: marked [CompilerGenerated] and named by the compiler with a name no source can declare.
+    // [CompilerGenerated] alone does not tell it: a user or a source generator may mark a class of theirs with it.
+    private static bool IsAnonymousType(Type type)
+    {
+        return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+            && type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal);
     }
 
     // The fields of a struct that can lead its built-in Equals to an inline array's. A field declared Nullable<X>

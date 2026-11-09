@@ -24,8 +24,8 @@ internal sealed class TypeMetadata
     /// <summary>
     ///     True when the type declares a public typed <c>Equals(T)</c> that is not marked
     ///     <see cref="System.Runtime.CompilerServices.CompilerGeneratedAttribute" />: a record's hand-written one, which
-    ///     its generated <c>Equals(object)</c> calls. A type marked
-    ///     <see cref="System.Runtime.CompilerServices.CompilerGeneratedAttribute" /> (an anonymous type) declares none.
+    ///     its generated <c>Equals(object)</c> calls. An anonymous type declares none: the type is marked, its typed
+    ///     <c>Equals</c> is not.
     ///     Also true when a base class below the framework classes has one: a derived record's generated typed
     ///     <c>Equals</c> calls that of its base record. Set only in the cached metadata.
     /// </summary>
