@@ -2133,7 +2133,7 @@ public static class Contract
                 );
             }
 
-            // Its Equals said "unequal", and its fields cannot be listed when it shows no declared member.
+            // Its Equals said "unequal" or was not asked; its fields cannot be listed when it shows no declared member.
             if (asAMember && MemberComparison.ShowsNoDeclaredMember(comparedType))
             {
                 throw _ShowsNoDeclaredMember(comparedType, declaredType);
@@ -2149,6 +2149,7 @@ public static class Contract
             }
 
             members.AddRange(asAMember ? metadata.Members.Where(m => m.IsField) : metadata.Members);
+            // Reached only after its Equals said "unequal": a struct compared without it has a field.
             if (asAMember && members.Count == 0)
             {
                 throw new PostconditionViolationException(

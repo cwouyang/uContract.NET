@@ -1608,6 +1608,66 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // Under an interface T the inline array is still compared as a whole, element by element, not by the rules
+    // for a sequence.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAnInlineArrayImplementsAndALaterListChanged_ReportsTheTwoAsNotEqual()
+    {
+        IEnumerable<List<int>?> actual = WithEnumerableLists([1, 2], [3]);
+        IEnumerable<List<int>?> expected = WithEnumerableLists([1, 2], [Changed]);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<EnumerableListBuf2>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAnInlineArrayImplementsAndItHoldsDistinctListsWithEqualContents_Passes()
+    {
+        IEnumerable<List<int>?> actual = WithEnumerableLists([1, 2], [3]);
+        IEnumerable<List<int>?> expected = WithEnumerableLists([1, 2], [3]);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // Pins today's outcome: an inline array and a sequence of another runtime type are left to the rules for two
+    // sequences of different runtime types, which do not enumerate a sequence that is not a collection.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAnEnumerableInlineArrayMeetsAListWithTheSameContents_CannotCompareIt()
+    {
+        object actual = WithEnumerableLists([1, 2], [3]);
+        object expected = new List<List<int>?>
+        {
+            new() { 1, 2 },
+            new() { 3 },
+        };
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(EnumerableListBuf2)} as T ({typeof(object)}): it is a sequence "
+                + "that is not a collection (it implements none of ICollection, ICollection<T> and "
+                + "IReadOnlyCollection<T>), and enumerating it could run a query, consume its source or block. Pass a "
+                + "materialised collection (for example ToList()), or pass the value as its own type as T.",
+            exception.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheHandWrittenEqualsOfABoxedHolderStructThrows_LetsItPropagate()
+    {
+        object actual = new ThrowingHolder { Counts = WithLaterElementChanged() };
+        object expected = new ThrowingHolder();
+
+        Assert.Throws<NotSupportedException>(() => Contract.EnsureAssignable(actual, expected));
+    }
+
     [Fact]
     public void EnsureAssignable_WhenTIsANullableInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual()
     {
