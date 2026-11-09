@@ -58,6 +58,10 @@ the work is done).
    .NET 10 and misses the change on .NET 8 under revision 10's wording; Visual Basic anonymous types were no longer
    followed): "回 Decide，補兩條規則 (Recommended)" (Terms, User `Equals`: the limit of the base exception, and VB
    anonymous types).
+12. Revision after Task 2 fix round 6 (risk review, measured on both runtimes: revision 11's limit made a derived record
+   with an unused class-typed field under a tolerant hand-written base report the base's ignored inline array, where it
+   passed before; a real Visual Basic build showed non-`Key` fields being compared): "改回簡單規則，記一個限制
+   (Recommended)" — revision 11's limit is removed and its case becomes a known limitation; "只追 Key 欄位 (Recommended)".
 
 ## Terms
 
@@ -74,12 +78,14 @@ the work is done).
   `System.Tuple<…>` (they only call the `Equals` of the values they hold). Exception: when a record (struct or class),
   or any record class it derives from, declares a typed `Equals(R)` written by hand, its `[CompilerGenerated]`
   `Equals(object)` reaches that method, so the record has a user `Equals` (it decides first; its exceptions propagate).
-  Limit of that exception: when a record class between the record and the base whose typed `Equals` is written by hand
-  (the record itself included) declares a field that can hold an inline array or a holder struct, the record's generated
-  `Equals` still compares that field, so the record does not count as having a user `Equals`; the look follows its
-  fields as for any record class.
+  This holds whatever fields the derived records declare. Known limitation (accepted by the user): when a record
+  declares its own field that holds an inline array (or reaches one) and a base record's typed `Equals` is written by
+  hand, the record's compiler-generated part of `Equals` still compares that field with the built-in `Equals`: on
+  .NET 10 it throws `NotSupportedException` (propagated like any exception from a user `Equals`), on .NET 8 it sees
+  only element 0. The way out is to write the derived record's own typed `Equals`, or to list the member as assignable.
   The anonymous types the look follows are recognised as such, not by `[CompilerGenerated]` alone: C# anonymous types
-  and Visual Basic anonymous types, by their compiler-given names. A class a user or a source generator marks
+  and Visual Basic anonymous types, by their compiler-given names. For a Visual Basic anonymous type, whose `Equals`
+  compares only its `Key` properties, the look follows only the fields behind its `Key` properties. A class a user or a source generator marks
   `[CompilerGenerated]` but whose `Equals` is written by hand keeps its user `Equals`.
 - **Element rules**: the rules by which two elements of an array are compared today (ADR-0022 R1–R7 as applied to
   array elements: `Equals` for primitives and enums, R3 for value types, references walked by members, sequences by
@@ -229,10 +235,12 @@ installs `10.0.x` next to the SDK from `global.json`, and a second test step set
 ## Anti-goals
 
 - A silent pass where an element differs and the JIT would report it.
-- A different result on .NET 8 and .NET 10 for the same input, other than B6's "cannot compare" on .NET 8 Native AOT.
+- A different result on .NET 8 and .NET 10 for the same input, other than B6's "cannot compare" on .NET 8 Native AOT
+  and the known limitation under Terms (a record's own inline-array field under a hand-written base typed `Equals`).
 - A `NotSupportedException` thrown by a user `Equals` being swallowed.
 - Any remaining call of the built-in `Equals`/`GetHashCode` on an inline array or a holder struct.
-- A `NotSupportedException` from the built-in `Equals` escaping `EnsureAssignable` on .NET 10.
+- A `NotSupportedException` from the built-in `Equals` escaping `EnsureAssignable` on .NET 10, other than through a
+  user `Equals` (the known limitation under Terms).
 
 ## Left to the builder
 
