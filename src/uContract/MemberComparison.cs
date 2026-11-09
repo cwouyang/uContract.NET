@@ -1067,7 +1067,7 @@ internal static class MemberComparison
     {
         elements = null;
         InlineArrayShape shape = InlineArrayShapeCache.GetOrAdd(type, CreateInlineArrayShape);
-        if (shape.HasHandWrittenEquals && Equals(actual, expected))
+        if (OverridesEquals(actual, type) && Equals(actual, expected))
         {
             equal = true;
             return true;
@@ -1096,6 +1096,17 @@ internal static class MemberComparison
             MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref expectedData), shape.Length).ToArray()
         );
         return true;
+    }
+
+    // True when type overrides Equals(object) by hand. A delegate bound to the virtual object.Equals on the box
+    // resolves to the method the box dispatches to: an override declared on type, or else the built-in
+    // ValueType.Equals, also when type hides it with an Equals declared with "new". An override marked
+    // [CompilerGenerated] is not written by hand.
+    private static bool OverridesEquals(object box, Type type)
+    {
+        Func<object?, bool> equals = box.Equals;
+        return equals.Method.DeclaringType == type
+            && !equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false);
     }
 
     [UnconditionalSuppressMessage(

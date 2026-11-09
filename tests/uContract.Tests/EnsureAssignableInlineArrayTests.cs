@@ -234,6 +234,37 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // An Equals(object) declared with "new" hides ValueType.Equals instead of overriding it, so it is not the
+    // Equals the comparison calls: the elements decide.
+    [Fact]
+    public void EnsureAssignable_WhenAnEqualsDeclaredWithNewCallsInlineArraysEqual_ReportsALaterElementChange()
+    {
+        Hidden actual = new();
+        actual.Readings[1] = Changed;
+        Hidden expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Readings", exception.Description);
+    }
+
+    // An Equals override marked [CompilerGenerated] is not written by hand: the elements decide.
+    [Fact]
+    public void EnsureAssignable_WhenACompilerGeneratedEqualsCallsInlineArraysEqual_ReportsALaterElementChange()
+    {
+        Generated actual = new();
+        actual.Readings[1] = Changed;
+        Generated expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Readings", exception.Description);
+    }
+
     [Fact]
     public void EnsureAssignable_WhenAHandWrittenEqualsCallsInlineArraysWithEqualElementsUnequal_DoesNotReportIt()
     {
@@ -393,6 +424,38 @@ public class EnsureAssignableInlineArrayTests
     private sealed class Strict
     {
         public NeverEqualBuf2 Readings;
+    }
+
+    // Declares an Equals(object) that compares only element 0, but hides ValueType.Equals instead of
+    // overriding it.
+    [InlineArray(2)]
+    private struct HidingEqualsBuf2
+    {
+        private int _element;
+
+        public new readonly bool Equals(object? obj) => obj is HidingEqualsBuf2 other && other[0] == this[0];
+    }
+
+    private sealed class Hidden
+    {
+        public HidingEqualsBuf2 Readings;
+    }
+
+    // Equal by an Equals override marked [CompilerGenerated] whatever its elements hold.
+    [InlineArray(2)]
+    private struct GeneratedEqualsBuf2
+    {
+        private int _element;
+
+        [CompilerGenerated]
+        public override readonly bool Equals(object? obj) => obj is GeneratedEqualsBuf2;
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    private sealed class Generated
+    {
+        public GeneratedEqualsBuf2 Readings;
     }
 
     private unsafe struct FixedInts
