@@ -37,6 +37,11 @@ the work is done).
    - `object`/interface field holding an inline array at run time: "接住例外退回逐欄位，記下 .NET 8 差異 (Recommended)"
      (B2a).
    - dynamic code: "可以，只在支援動態程式碼時用 (Recommended)" (B8).
+7. Revision during Act (Task 2 review; measured by the reviewer on both runtimes: the catch of decision 6 also
+   swallowed a `NotSupportedException` thrown by a user `Equals` of a nested class, which propagated before; a
+   `Nullable<Holder>` field still reached the holder's built-in `Equals` on .NET 8, so .NET 8 and .NET 10 differed):
+   - B2a: "改成先看執行期值，不接例外 (Recommended)" — replaces the catch of decision 6.
+   - `Nullable<T>`: "把 Nullable 當成像 ValueTuple (Recommended)".
 
 ## Terms
 
@@ -44,11 +49,13 @@ the work is done).
   instance field; its length is `n` and its element type is that field's type.
 - **Holder struct**: a struct that is not an inline array, whose `Equals` is not a user `Equals`, and that has an
   instance field whose declared type is an inline array, directly or through a field of a nested struct that is
-  itself a holder struct. This includes a `ValueTuple<…>` with an inline-array item, and a `record struct` with an
-  inline-array field. Its `Equals` reaches the inline array's built-in `Equals` and throws on .NET 10 (measured).
+  itself a holder struct. A field declared as `Nullable<X>` counts as declared `X`. This includes a `ValueTuple<…>`
+  with an inline-array item, a `record struct` with an inline-array field, and a `Nullable<>` of an inline array or of
+  a holder struct. Its `Equals` reaches the inline array's built-in `Equals` and throws on .NET 10 (measured).
 - **User `Equals`**: an `Equals(object)` override written by hand in the type (of the inline array, or of a struct).
   Not a user `Equals`: the built-in `ValueType.Equals`, an override marked `[CompilerGenerated]` (as a record
-  struct's is, measured), and the `Equals` of `System.ValueTuple<…>`.
+  struct's is, measured), and the `Equals` of `System.ValueTuple<…>` and of `System.Nullable<T>` (both only call the
+  `Equals` of the values they hold).
 - **Element rules**: the rules by which two elements of an array are compared today (ADR-0022 R1–R7 as applied to
   array elements: `Equals` for primitives and enums, R3 for value types, references walked by members, sequences by
   elements, and so on).
@@ -76,12 +83,13 @@ step 3 does after `Equals` said "unequal"), and an inline-array field among them
 `Equals` keeps today's behaviour: its `Equals` decides first, and an exception it throws propagates (ADR-0022 R3).
 
 **B2a. Inline array found only at run time.** A struct that is not a holder struct and has no user `Equals` may
-still hold an inline array in a field whose declared type does not show it (`object`, an interface, `ValueType`).
-When its built-in `Equals` throws `NotSupportedException`, the comparison catches it and compares the pair by its
-fields instead, as in B2. This happens on .NET 10. On .NET 8 the built-in `Equals` does not throw and still sees only
-element 0 of such an inline array, so a change in a later element alone passes there; this difference between the
-runtimes is documented as a known limitation (ADR-0022 amendment, CHANGELOG). A `NotSupportedException` from a user
-`Equals` is not caught.
+still hold an inline array or a holder struct in a field whose declared type does not show it (`object`, an
+interface, `ValueType`), directly or in such a field of a nested struct whose `Equals` is not a user `Equals`. Before
+its built-in `Equals` is asked, the comparison looks at the run-time values of those fields (which fields to look at
+is a per-type fact; only their values are read per call). When either side holds an inline array or a holder struct
+there, the built-in `Equals` is not called and the pair is compared by its fields, as in B2. The result is the same
+on .NET 8 and .NET 10. No `NotSupportedException` is caught: an exception thrown by a user `Equals`, at any depth,
+propagates as today (ADR-0022 R3).
 
 **B3. Top level.** When `T` is an inline-array type, or `T` is another type and the runtime type of the two values is
 one inline-array type (for example a boxed inline array with `T` = `object`), the two values are compared as a whole
@@ -142,7 +150,8 @@ Measured with a prototype of A on both runtimes, unit suite of 1491 tests:
   `T` = the struct and `T` = `object`, array and `List<>` element, nested in a holder struct, `Old` unchanged and
   changed in place, element 0 changed and only a later element changed, a user `Equals`), plus a `record struct`
   with an inline-array field, a `(Buf, int)` tuple member, a struct holding such a tuple, and a struct whose
-  `object` field holds an inline array (B2a, with its expected .NET 8 result). The B6 cases are covered
+  `object` field holds an inline array (B2a), a `Nullable<>` of a holder struct or of an inline array as a struct
+  field, and a nested class whose user `Equals` throws `NotSupportedException` (propagates). The B6 cases are covered
   in unit tests where the existing test seams can simulate them (for example `TestRuntime.WithoutDynamicCode`) and in
   the Native AOT smoke.
 - The whole unit suite passes on the .NET 8 runtime and on the .NET 10 runtime (`DOTNET_ROLL_FORWARD=LatestMajor`),
@@ -168,8 +177,8 @@ installs `10.0.x` next to the SDK from `global.json`, and a second test step set
 - ADR-0026: amendment (top level: an inline array is compared as a whole element by element, not by `Equals` alone).
 - ADR-0021: amendment (the new "cannot compare" cases of B6, and the guarded dynamic code and IL3050 suppression of
   B8 with its justification).
-- ADR-0022 also records B2/B2a: holder structs (including record structs and tuples) skip `Equals`; the B2a
-  .NET 8 difference as a known limitation.
+- ADR-0022 also records B2/B2a: holder structs (including record structs, tuples and `Nullable<>` of them) skip
+  `Equals`; a struct whose `object`/interface field holds an inline array at run time skips its built-in `Equals`.
 - README, `docs/examples/API_REFERENCE.md`, the XML docs of `EnsureAssignable` and `Old` where they name inline
   arrays or "decided by Equals alone".
 - CHANGELOG `[Unreleased]`: Fixed (#84, the .NET 10 exception, including holder structs) and Changed **BREAKING**
@@ -186,8 +195,8 @@ installs `10.0.x` next to the SDK from `global.json`, and a second test step set
 ## Anti-goals
 
 - A silent pass where an element differs and the JIT would report it.
-- A different result on .NET 8 and .NET 10 for the same input, other than B6's "cannot compare" on .NET 8 Native AOT
-  and the documented B2a case.
+- A different result on .NET 8 and .NET 10 for the same input, other than B6's "cannot compare" on .NET 8 Native AOT.
+- A `NotSupportedException` thrown by a user `Equals` being swallowed.
 - Any remaining call of the built-in `Equals`/`GetHashCode` on an inline array or a holder struct.
 - A `NotSupportedException` from the built-in `Equals` escaping `EnsureAssignable` on .NET 10.
 

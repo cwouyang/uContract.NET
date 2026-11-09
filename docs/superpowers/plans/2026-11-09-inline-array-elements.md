@@ -22,7 +22,8 @@ Spike evidence: `C:\Users\cwouyang\Desktop\Dev\personal\sdd-work\uContract.NET-8
 
 - Library target stays `net8.0`; `TreatWarningsAsErrors` stays on; `global.json` stays SDK `8.0.427` / `latestPatch`.
 - Same result on the .NET 8 and .NET 10 runtimes for the same input, except B6 (".NET 8 Native AOT, struct
-  element") and the documented B2a case.
+  element").
+- No `NotSupportedException` is caught; an exception thrown by a user `Equals` propagates (spec B2a, revision 7).
 - The built-in `ValueType.Equals`/`GetHashCode` is never called on an inline array or a holder struct (Terms).
 - No new IL2xxx/IL3xxx diagnostic in the library build. The only new suppression is B8's IL3050, at one place,
   with a written justification, and the dynamic code runs only when `RuntimeFacts.IsDynamicCodeSupported` is true.
@@ -120,9 +121,10 @@ structural commit before it.
 ### Task 2: Holder structs and inline arrays found only at run time (B2, B2a)  — behavioral
 
 **Observable behavior:** a holder struct (Terms) is compared by its fields without calling its `Equals`; an
-inline-array field among them is compared element by element. A struct without a user `Equals` whose built-in
-`Equals` throws `NotSupportedException` (an inline array held in an `object`/interface/`ValueType` field) is compared
-by its fields instead. A user `Equals` still decides first and its exceptions propagate.
+inline-array field among them is compared element by element. A struct without a user `Equals` whose
+`object`/interface/`ValueType` field (directly or in a nested struct) holds an inline array or a holder struct at run
+time is compared by its fields without calling its built-in `Equals`. A user `Equals` still decides first and its
+exceptions propagate; no `NotSupportedException` is caught.
 
 **Files:** `src/uContract/MemberComparison.cs`; tests as in Task 1. Constraint (spec Non-goals): no per-call
 reflection that the existing per-type metadata caches avoid.
@@ -138,8 +140,10 @@ reflection that the existing per-type metadata caches avoid.
 | `(Buf, int)` tuple member; a struct holding such a tuple | violation / passes, both runtimes |
 | struct with a hand-written `Equals` holding a `Buf`, `Equals` returns `true` | passes (its `Equals` decides) |
 | struct with a hand-written `Equals` that throws `NotSupportedException` | the exception propagates |
-| struct whose `object` field holds a `Buf`, later element differs | .NET 10: violation; .NET 8: passes (documented B2a difference) |
+| struct whose `object` field holds a `Buf`, later element differs | violation, both runtimes |
 | same struct, `object` field holds an `int` | unchanged from today |
+| struct field of type `Holder?` / `Buf?`, later element differs / equal | violation / passes, both runtimes |
+| struct holding a class whose hand-written `Equals` throws `NotSupportedException` | the exception propagates |
 
 **Exclusions:** top level (Task 3), struct elements (Task 4), `Old` (Task 5), AOT (Task 6). Do not catch
 `NotSupportedException` thrown by a user `Equals`.
@@ -304,15 +308,13 @@ diagnostics; the executable with `--assert` exits 0 with contracts on and with `
 `src/uContract/Contract.cs` (`EnsureAssignable`, `Old`), `CHANGELOG.md`.
 
 - [ ] **Step 1:** Add a dated three-part amendment (the ADRs' existing amendment convention) to ADR-0022 (R3 step 3
-  without the `[InlineArray]` exclusion; B1, B2, B2a, B4; limitations narrowed to fixed-size buffers plus the B2a
-  .NET 8 difference), ADR-0026 (B3), ADR-0021 (B6 cases; B8 guarded dynamic code and the IL3050 justification).
+  without the `[InlineArray]` exclusion; B1, B2, B2a, B4; limitations narrowed to fixed-size buffers), ADR-0026 (B3), ADR-0021 (B6 cases; B8 guarded dynamic code and the IL3050 justification).
   Accepted ADR text is never edited; only amendments are added. State measured facts with their source.
 - [ ] **Step 2:** Update README, API_REFERENCE and the XML docs wherever they say an inline array is "decided by
   Equals alone" or that only element 0 is seen.
 - [ ] **Step 3:** CHANGELOG `[Unreleased]`: Fixed (#84: the .NET 10 `NotSupportedException`, including holder
   structs, record structs and tuples); Changed **BREAKING** (element by element; top level compared as a whole;
-  `Old` copies every element; B6 "cannot compare" cases); the known-limitation line keeps only fixed-size buffers
-  and adds the B2a difference.
+  `Old` copies every element; B6 "cannot compare" cases); the known-limitation line keeps only fixed-size buffers.
 - [ ] **Step 4:** Check every number and claim against the code, the tests or the spike measurements; mark what was
   not measured. `rg -n -i "inline"` over `docs/`, `README.md`, `CHANGELOG.md` and `src/` to find stale sentences.
 - [ ] **Step 5:** Commit `docs(adr): Record element-by-element comparison of inline arrays` and
