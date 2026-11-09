@@ -79,13 +79,13 @@ internal static class MemberComparison
         // These binding flags must stay within what ComparedMembers preserves. Members are lost silently under
         // Native AOT if the flags are widened beyond ComparedMembers, or if the constant is narrowed; widening
         // the constant alone loses nothing. The typed Equals is not a compared member (see
-        // DeclaresHandWrittenTypedEquals).
+        // HasHandWrittenTypedEquals).
         return MetadataCache.GetOrAdd(
             type,
             t =>
             {
                 TypeMetadata metadata = CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance));
-                metadata.DeclaresHandWrittenTypedEquals =
+                metadata.HasHandWrittenTypedEquals =
                     (
                         t.GetMethod(
                             "Equals",
@@ -99,7 +99,7 @@ internal static class MemberComparison
                     || (
                         t.BaseType is { } baseType
                         && !IsFrameworkClass(baseType)
-                        && GetOrCacheMetadata(baseType).DeclaresHandWrittenTypedEquals
+                        && GetOrCacheMetadata(baseType).HasHandWrittenTypedEquals
                     );
                 return metadata;
             }
@@ -1169,7 +1169,7 @@ internal static class MemberComparison
         return equals.Method.DeclaringType == type
             && (
                 !equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                || GetOrCacheMetadata(type).DeclaresHandWrittenTypedEquals
+                || GetOrCacheMetadata(type).HasHandWrittenTypedEquals
             );
     }
 
@@ -1378,7 +1378,7 @@ internal static class MemberComparison
                     (
                         equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
                         || declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                    ) && !GetOrCacheMetadata(declaring).DeclaresHandWrittenTypedEquals
+                    ) && !GetOrCacheMetadata(declaring).HasHandWrittenTypedEquals
                     ? ClassEquals.CompilerGenerated
                     : ClassEquals.NotFollowed;
             },

@@ -29,5 +29,5 @@ internal sealed class TypeMetadata
     ///     Also true when a base class below the framework classes has one: a derived record's generated typed
     ///     <c>Equals</c> calls that of its base record. Set only in the cached metadata.
     /// </summary>
-    public bool DeclaresHandWrittenTypedEquals { get; set; }
+    public bool HasHandWrittenTypedEquals { get; set; }
 }
