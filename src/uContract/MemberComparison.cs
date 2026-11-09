@@ -1533,12 +1533,11 @@ internal static class MemberComparison
         );
     }
 
-    // True for elements of a type that is compared in place: bool, char, an integer type (nint and nuint
-    // included), an enum, float or double; equal then tells whether the length elements at actualData and at
-    // expectedData are the same. A float or a double is compared by its own Equals, as a boxed one is: NaN
-    // equals NaN, and 0.0 equals -0.0. Each of the other types is equal by its Equals exactly when its bits are
-    // equal (an enum compares its underlying integers), so the memory is compared as integers of the element's
-    // size.
+    // True for elements of a type that is compared in place (see InPlaceOf); equal then tells whether the length
+    // elements at actualData and at expectedData are the same. A float or a double is compared by its own Equals,
+    // as a boxed one is: NaN equals NaN, and 0.0 equals -0.0. Each of the other types is equal by its Equals exactly
+    // when its bits are equal (an enum compares its underlying integers), so the memory is compared as integers of
+    // the element's size.
     private static bool TryCompareInPlace(
         Type elementType,
         ref byte actualData,
@@ -1547,46 +1546,57 @@ internal static class MemberComparison
         out bool equal
     )
     {
-        equal = false;
+        InPlace inPlace = InPlaceOf(elementType);
+        equal = inPlace switch
+        {
+            InPlace.Float => HaveSameElements<float>(ref actualData, ref expectedData, length),
+            InPlace.Double => HaveSameElements<double>(ref actualData, ref expectedData, length),
+            InPlace.Bits8 => HaveSameElements<byte>(ref actualData, ref expectedData, length),
+            InPlace.Bits16 => HaveSameElements<ushort>(ref actualData, ref expectedData, length),
+            InPlace.Bits32 => HaveSameElements<uint>(ref actualData, ref expectedData, length),
+            InPlace.Bits64 => HaveSameElements<ulong>(ref actualData, ref expectedData, length),
+            InPlace.NativeBits => HaveSameElements<nuint>(ref actualData, ref expectedData, length),
+            _ => false,
+        };
+        return inPlace != InPlace.No;
+    }
+
+    // How elements of elementType are compared in place: bool, char, an integer type (nint and nuint included), an
+    // enum, float or double are; any other type is not.
+    private static InPlace InPlaceOf(Type elementType)
+    {
         if (elementType == typeof(float))
         {
-            equal = HaveSameElements<float>(ref actualData, ref expectedData, length);
-            return true;
+            return InPlace.Float;
         }
 
         if (elementType == typeof(double))
         {
-            equal = HaveSameElements<double>(ref actualData, ref expectedData, length);
-            return true;
+            return InPlace.Double;
         }
 
         Type bitsType = elementType.IsEnum ? elementType.GetEnumUnderlyingType() : elementType;
         if (bitsType == typeof(bool) || bitsType == typeof(byte) || bitsType == typeof(sbyte))
         {
-            equal = HaveSameElements<byte>(ref actualData, ref expectedData, length);
-        }
-        else if (bitsType == typeof(char) || bitsType == typeof(short) || bitsType == typeof(ushort))
-        {
-            equal = HaveSameElements<ushort>(ref actualData, ref expectedData, length);
-        }
-        else if (bitsType == typeof(int) || bitsType == typeof(uint))
-        {
-            equal = HaveSameElements<uint>(ref actualData, ref expectedData, length);
-        }
-        else if (bitsType == typeof(long) || bitsType == typeof(ulong))
-        {
-            equal = HaveSameElements<ulong>(ref actualData, ref expectedData, length);
-        }
-        else if (bitsType == typeof(nint) || bitsType == typeof(nuint))
-        {
-            equal = HaveSameElements<nuint>(ref actualData, ref expectedData, length);
-        }
-        else
-        {
-            return false;
+            return InPlace.Bits8;
         }
 
-        return true;
+        if (bitsType == typeof(char) || bitsType == typeof(short) || bitsType == typeof(ushort))
+        {
+            return InPlace.Bits16;
+        }
+
+        if (bitsType == typeof(int) || bitsType == typeof(uint))
+        {
+            return InPlace.Bits32;
+        }
+
+        if (bitsType == typeof(long) || bitsType == typeof(ulong))
+        {
+            return InPlace.Bits64;
+        }
+
+        return bitsType == typeof(nint) || bitsType == typeof(nuint) ? InPlace.NativeBits : InPlace.No;
     }
 
     // The memory at each reference is read as length elements of T, which is in bounds only when T has the
@@ -1915,6 +1925,18 @@ internal static class MemberComparison
     // What TryStartInlineArray needs of an inline-array type: its element type (null when reflection does not
     // list its one element field) and its length.
     private sealed record InlineArrayShape(Type? ElementType, int Length);
+
+    private enum InPlace
+    {
+        No,
+        Float,
+        Double,
+        Bits8,
+        Bits16,
+        Bits32,
+        Bits64,
+        NativeBits,
+    }
 
     private enum Holder
     {
