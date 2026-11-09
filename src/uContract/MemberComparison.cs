@@ -1141,21 +1141,16 @@ internal static class MemberComparison
         }
 
         equal = false;
-        if (shape.ElementType is not { } elementType)
+        if (!shape.IsComparedByElements)
         {
             return false;
         }
 
         ref byte actualData = ref Unsafe.As<StrongBox<byte>>(actual).Value;
         ref byte expectedData = ref Unsafe.As<StrongBox<byte>>(expected).Value;
-        if (TryCompareInPlace(elementType, ref actualData, ref expectedData, shape.Length, out equal))
+        if (TryCompareInPlace(shape.ElementType!, ref actualData, ref expectedData, shape.Length, out equal))
         {
             return true;
-        }
-
-        if (elementType.IsValueType || elementType.IsPointer || elementType.IsFunctionPointer)
-        {
-            return false;
         }
 
         elements = new CollectionWalk(
