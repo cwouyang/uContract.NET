@@ -50,6 +50,9 @@ the work is done).
 9. Revision during Act (Task 2 risk review; measured by the reviewer on both runtimes: a `record struct` / `record
    class` with a hand-written typed `Equals(R)` lost its equality, because its `[CompilerGenerated]` `Equals(object)`
    forwards to it): "手寫 Equals(R) 算使用者 Equals (Recommended)" (Terms, User `Equals`).
+10. Revision during Act (Task 2 fix round 4 reviews; measured by both reviewers on both runtimes: a derived record
+   whose base record declares a hand-written `Equals(Base)` lost that equality): "基底手寫的也算 (Recommended)"
+   (Terms, User `Equals`).
 
 ## Terms
 
@@ -63,9 +66,11 @@ the work is done).
 - **User `Equals`**: an `Equals(object)` override written by hand in the type (of the inline array, or of a struct).
   Not a user `Equals`: the built-in `ValueType.Equals`, an override marked `[CompilerGenerated]` (as a record
   struct's is, measured; a record class's too), and the `Equals` of `System.ValueTuple<…>`, `System.Nullable<T>` and
-  `System.Tuple<…>` (they only call the `Equals` of the values they hold). Exception: when a record (struct or class)
-  declares a typed `Equals(R)` written by hand, its `[CompilerGenerated]` `Equals(object)` forwards to that method, so
-  the record has a user `Equals` (it decides first; its exceptions propagate).
+  `System.Tuple<…>` (they only call the `Equals` of the values they hold). Exception: when a record (struct or class),
+  or any record class it derives from, declares a typed `Equals(R)` written by hand, its `[CompilerGenerated]`
+  `Equals(object)` reaches that method, so the record has a user `Equals` (it decides first; its exceptions propagate).
+  The anonymous types the look follows are recognised as such, not by `[CompilerGenerated]` alone: a class a user or a
+  source generator marks `[CompilerGenerated]` but whose `Equals` is written by hand keeps its user `Equals`.
 - **Element rules**: the rules by which two elements of an array are compared today (ADR-0022 R1–R7 as applied to
   array elements: `Equals` for primitives and enums, R3 for value types, references walked by members, sequences by
   elements, and so on).
