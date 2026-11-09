@@ -17,7 +17,11 @@ public class EnsureAssignableInlineArrayTests
     // Long enough that a look using the stack for each node overflows it (measured at about 2400 nodes).
     private const int LongChainLength = 3000;
 
-    private const string VisualBasicCountsField = "Counts";
+    // The fields behind a Visual Basic anonymous type's Key property and non-Key property, named as the compiler
+    // names them.
+    private const string VisualBasicKeyField = "$Key";
+
+    private const string VisualBasicNonKeyField = "$Extra";
 
     private static readonly Lazy<Type> VisualBasicAnonymousType = new(DefineVisualBasicAnonymousType);
 
@@ -798,15 +802,19 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
-    // A Visual Basic anonymous type is recognised by its compiler-given name, as a C# one is.
+    // A Visual Basic anonymous type is recognised by its compiler-given name, as a C# one is; its Equals compares
+    // only its Key properties, so only the fields behind them are looked at.
     [Fact]
-    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAVisualBasicAnonymousObjectInAStructsObjectFieldChanged_ReportsTheMember()
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAVisualBasicAnonymousObjectsKeyPropertyInAStructsObjectFieldChanged_ReportsTheMember()
     {
         BoxHolding actual = new()
         {
-            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(WithLaterElementChanged()) },
+            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(WithLaterElementChanged(), extra: 1) },
         };
-        BoxHolding expected = new() { Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(new IntBuf3()) } };
+        BoxHolding expected = new()
+        {
+            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(new IntBuf3(), extra: 1) },
+        };
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
@@ -816,15 +824,33 @@ public class EnsureAssignableInlineArrayTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenAVisualBasicAnonymousObjectInAStructsObjectFieldHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    public void EnsureAssignable_WhenAVisualBasicAnonymousObjectsKeyPropertyInAStructsObjectFieldHoldsInlineArraysWithEqualElements_DoesNotReportIt()
     {
         BoxHolding actual = new()
         {
-            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(WithLaterElementChanged()) },
+            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(WithLaterElementChanged(), extra: 1) },
         };
         BoxHolding expected = new()
         {
-            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(WithLaterElementChanged()) },
+            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(WithLaterElementChanged(), extra: 1) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // The Equals of the anonymous object ignores its non-Key property, and decides.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAVisualBasicAnonymousObjectsNonKeyPropertyInAStructsObjectFieldChanged_DoesNotReportIt()
+    {
+        BoxHolding actual = new()
+        {
+            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(key: 1, WithLaterElementChanged()) },
+        };
+        BoxHolding expected = new()
+        {
+            Value = new BoxHolder { Value = NewVisualBasicAnonymousObject(key: 1, new IntBuf3()) },
         };
 
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
@@ -1466,17 +1492,22 @@ public class EnsureAssignableInlineArrayTests
         return buffer;
     }
 
-    private static object NewVisualBasicAnonymousObject(IntBuf3 counts)
+    private static object NewVisualBasicAnonymousObject(object key, object extra)
     {
-        object anonymous = Activator.CreateInstance(VisualBasicAnonymousType.Value)!;
-        VisualBasicAnonymousType.Value.GetField(VisualBasicCountsField)!.SetValue(anonymous, counts);
+        Type type = VisualBasicAnonymousType.Value;
+        object anonymous = Activator.CreateInstance(type)!;
+        type.GetField(VisualBasicKeyField, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(anonymous, key);
+        type.GetField(VisualBasicNonKeyField, BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(anonymous, extra);
         return anonymous;
     }
 
-    // C# cannot declare a Visual Basic anonymous type, so one is emitted in its shape: a [CompilerGenerated] class
-    // named VB$AnonymousType_0 with a Counts field, whose Equals compares the Counts of both (see
-    // EqualsAsAVisualBasicAnonymousTypeDoes). The field is declared object: an emitted type cannot declare a field of
-    // the private IntBuf3.
+    // C# cannot declare a Visual Basic anonymous type, so one is emitted in the shape the Visual Basic compiler gives
+    // New With {Key .Key = key, .Extra = extra} (measured on a Visual Basic build): a [CompilerGenerated] class named
+    // VB$AnonymousType_0 with a private read-only field $Key behind the Key property and a private writable field
+    // $Extra behind the non-Key one, whose Equals compares only the $Key of both (see
+    // EqualsAsAVisualBasicAnonymousTypeDoes). The properties are left out, and the fields are declared object: an
+    // emitted type cannot declare a field of the private IntBuf3.
     private static Type DefineVisualBasicAnonymousType()
     {
         string name = $"Emitted{Guid.NewGuid():N}";
@@ -1487,7 +1518,8 @@ public class EnsureAssignableInlineArrayTests
         builder.SetCustomAttribute(
             new CustomAttributeBuilder(typeof(CompilerGeneratedAttribute).GetConstructor(Type.EmptyTypes)!, [])
         );
-        builder.DefineField(VisualBasicCountsField, typeof(object), FieldAttributes.Public);
+        builder.DefineField(VisualBasicKeyField, typeof(object), FieldAttributes.Private | FieldAttributes.InitOnly);
+        builder.DefineField(VisualBasicNonKeyField, typeof(object), FieldAttributes.Private);
         builder.DefineDefaultConstructor(MethodAttributes.Public);
         ILGenerator equals = builder
             .DefineMethod(
@@ -1507,13 +1539,13 @@ public class EnsureAssignableInlineArrayTests
         return builder.CreateType();
     }
 
-    // As the Equals of a Visual Basic anonymous type with a Key field: the Equals of the field's values.
+    // As the Equals of a Visual Basic anonymous type: the Equals of the values of its Key field only.
     public static bool EqualsAsAVisualBasicAnonymousTypeDoes(object self, object? other)
     {
-        FieldInfo counts = self.GetType().GetField(VisualBasicCountsField)!;
+        FieldInfo key = self.GetType().GetField(VisualBasicKeyField, BindingFlags.NonPublic | BindingFlags.Instance)!;
         return other is not null
             && other.GetType() == self.GetType()
-            && Equals(counts.GetValue(self), counts.GetValue(other));
+            && Equals(key.GetValue(self), key.GetValue(other));
     }
 
     private static ListBuf2 WithLists(List<int> first, List<int> second)

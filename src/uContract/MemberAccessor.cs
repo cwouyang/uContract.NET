@@ -108,6 +108,11 @@ internal sealed class MemberAccessor
     public bool IsNonPublicField => _field is { IsPublic: false };
 
     /// <summary>
+    ///     True when the member is a read-only field (<c>readonly</c> in C#, <c>ReadOnly</c> in Visual Basic).
+    /// </summary>
+    public bool IsReadOnlyField => _field is { IsInitOnly: true };
+
+    /// <summary>
     ///     True when the member is a property without a getter to read it with.
     /// </summary>
     public bool IsWriteOnlyProperty => _property is not null && _getter is null;

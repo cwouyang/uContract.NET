@@ -1474,9 +1474,16 @@ internal static class MemberComparison
     // The fields of type in its cached members, and the fields declared on each base class up to the first framework
     // class that those members leave out: a derived record's members leave out the backing field, declared on a base
     // record, of a positional property it compares as a property, yet the base record's Equals compares that field.
+    // The Equals of a Visual Basic anonymous type compares only its Key properties: their fields are its only read-only
+    // ones (a non-Key property has a setter, and its field is writable).
     private static IEnumerable<MemberAccessor> FieldsEqualsCompares(Type type)
     {
-        MemberAccessor[] fields = [.. GetOrCacheMetadata(type).Members.Where(member => member.IsField)];
+        bool keyFieldsOnly = IsVisualBasicAnonymousType(type);
+        MemberAccessor[] fields =
+        [
+            .. GetOrCacheMetadata(type)
+                .Members.Where(member => member.IsField && (!keyFieldsOnly || member.IsReadOnlyField)),
+        ];
         IEnumerable<MemberAccessor> result = fields;
         for (
             Type? baseType = type.BaseType;
