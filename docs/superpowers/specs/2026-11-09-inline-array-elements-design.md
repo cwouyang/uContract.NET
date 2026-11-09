@@ -64,6 +64,10 @@ the work is done).
    (Recommended)" — revision 11's limit is removed and its case becomes a known limitation; "只追 Key 欄位 (Recommended)".
 13. Revision during Act (Task 4 implementer: preserving the type does not let the .NET 8 runtime read a struct element
    without dynamic code): "依情況列解法 (Recommended)" — B6 lists, per case, only the ways out that work.
+14. Revision during Act (Task 5 implementer, checked in the .NET 10 reference pack: the .NET 9+ `RuntimeHelpers` offer
+   `SizeOf` and `Box` but no way to write a struct element back, so without dynamic code `Old` cannot deep-copy struct
+   elements that hold references, while the comparison reads every element — a silent pass): "Old 沒複製完就丟
+   cannot compare (Recommended)" — B6 gains a third case.
 
 ## Terms
 
@@ -153,11 +157,17 @@ element after `Old` (for example `buf[2].Add(1)` on a `List<int>` element) is re
 struct element that holds references, and an element type that is itself an inline array.
 
 **B6. Cannot compare (loud failure).** When the elements of an inline array cannot be read, the call throws
-`InvalidOperationException` and does not pass. Two cases are known (measured):
+`InvalidOperationException` and does not pass. Three cases are known (measured):
 
 - Native AOT, the inline-array type's element field is not visible to reflection because nothing preserves the type.
 - Native AOT on the .NET 8 runtime, the element type is a struct: there is no AOT-safe way on .NET 8 to get the
   element size (the .NET 9+ `RuntimeHelpers.SizeOf`/`Box` exist from the .NET 9 runtime on).
+- Without dynamic code (Native AOT) on the .NET 9 runtime or later, an `Old` copy whose inline array has struct
+  elements that `Old` could not deep-copy as B4 requires (the runtime offers no AOT-safe way to write a struct element
+  back, so references inside elements would stay shared with the original): when the comparison meets that inline
+  array of that copy, it throws instead of comparing. `Old` records which inline arrays of its copy it could not copy
+  fully; a pair that does not involve such a copy is compared normally. Struct elements that `Old` copies fully (for
+  example ones that hold no references) are not affected.
 
 The message names the inline-array type and the member path, and gives, in the style of the existing "cannot
 compare" messages (ADR-0021), only the ways out that work for its case:
@@ -166,6 +176,8 @@ compare" messages (ADR-0021), only the ways out that work for its case:
   typeof(X))]`, list the member that holds it as assignable, or set `DBC_POST=off`.
 - Struct element without dynamic code on the .NET 8 runtime: list the member that holds it as assignable, set
   `DBC_POST=off`, or run on the .NET 9 runtime or later. Preserving the type does not help here and is not offered.
+- `Old` could not copy struct elements without dynamic code: list the member that holds it as assignable, or set
+  `DBC_POST=off`. Preserving the type does not help here and is not offered.
 
 **[author's call]**: if `Contract.Old` cannot copy the elements in these cases it does not throw itself; the
 comparison that follows throws as above.
