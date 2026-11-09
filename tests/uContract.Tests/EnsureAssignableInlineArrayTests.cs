@@ -664,6 +664,106 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // ---- A class whose Equals compares values, held by a struct ----
+
+    // A record class's compiler-generated Equals and System.Tuple's Equals compare values, so a struct's built-in
+    // Equals reaches the inline array they hold: the struct is compared by its fields.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInARecordClassInAStructChanged_ReportsTheMember()
+    {
+        RecordClassOwnerHolding actual = new()
+        {
+            Value = new RecordClassOwner { Item = new BufRecord(WithLaterElementChanged()) },
+        };
+        RecordClassOwnerHolding expected = new()
+        {
+            Value = new RecordClassOwner { Item = new BufRecord(new IntBuf3()) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenARecordClassInAStructHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        RecordClassOwnerHolding actual = new()
+        {
+            Value = new RecordClassOwner { Item = new BufRecord(WithLaterElementChanged()) },
+        };
+        RecordClassOwnerHolding expected = new()
+        {
+            Value = new RecordClassOwner { Item = new BufRecord(WithLaterElementChanged()) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInASystemTupleInAStructChanged_ReportsTheMember()
+    {
+        SystemTupleOwnerHolding actual = new()
+        {
+            Value = new SystemTupleOwner { Item = Tuple.Create(WithLaterElementChanged(), 1) },
+        };
+        SystemTupleOwnerHolding expected = new()
+        {
+            Value = new SystemTupleOwner { Item = Tuple.Create(new IntBuf3(), 1) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenASystemTupleInAStructHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        SystemTupleOwnerHolding actual = new()
+        {
+            Value = new SystemTupleOwner { Item = Tuple.Create(WithLaterElementChanged(), 1) },
+        };
+        SystemTupleOwnerHolding expected = new()
+        {
+            Value = new SystemTupleOwner { Item = Tuple.Create(WithLaterElementChanged(), 1) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInARecordClassInAStructsObjectFieldChanged_ReportsTheMember()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = new BufRecord(WithLaterElementChanged()) } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = new BufRecord(new IntBuf3()) } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenARecordClassInAStructsObjectFieldHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = new BufRecord(WithLaterElementChanged()) } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = new BufRecord(WithLaterElementChanged()) } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- An exception from a hand-written Equals below a struct ----
 
     // No NotSupportedException is caught: one thrown by the hand-written Equals of a class a struct holds
@@ -991,6 +1091,28 @@ public class EnsureAssignableInlineArrayTests
     private sealed class TolerantOwnerHolding
     {
         public TolerantOwner Value;
+    }
+
+    private sealed record BufRecord(IntBuf3 Counts);
+
+    private struct RecordClassOwner
+    {
+        public BufRecord Item;
+    }
+
+    private sealed class RecordClassOwnerHolding
+    {
+        public RecordClassOwner Value;
+    }
+
+    private struct SystemTupleOwner
+    {
+        public Tuple<IntBuf3, int> Item;
+    }
+
+    private sealed class SystemTupleOwnerHolding
+    {
+        public SystemTupleOwner Value;
     }
 
     private sealed class Thrower

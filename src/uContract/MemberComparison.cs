@@ -24,6 +24,19 @@ internal static class MemberComparison
     private static readonly TypeCache<InlineArrayShape> InlineArrayShapeCache = new();
     private static readonly TypeCache<ValueRoutes> ValueRoutesCache = new();
     private static readonly TypeCache<bool> UserEqualsCache = new();
+    private static readonly TypeCache<bool> ValueEqualsClassCache = new();
+
+    private static readonly Type[] TupleDefinitions =
+    [
+        typeof(Tuple<>),
+        typeof(Tuple<,>),
+        typeof(Tuple<,,>),
+        typeof(Tuple<,,,>),
+        typeof(Tuple<,,,,>),
+        typeof(Tuple<,,,,,>),
+        typeof(Tuple<,,,,,,>),
+        typeof(Tuple<,,,,,,,>),
+    ];
 
     private static readonly Type[] ValueTupleDefinitions =
     [
@@ -1237,13 +1250,39 @@ internal static class MemberComparison
     private static bool NeedsFieldComparisonAsHeld(object held)
     {
         Type type = held.GetType();
-        if (!type.IsValueType || type.IsPrimitive || type.IsEnum)
+        if (!type.IsValueType)
+        {
+            return ComparesValues(held, type) && NeedsFieldComparison(held, type);
+        }
+
+        if (type.IsPrimitive || type.IsEnum)
         {
             return false;
         }
 
         return type.IsDefined(typeof(InlineArrayAttribute), inherit: false)
             || (!HasUserEquals(held, type) && NeedsFieldComparison(held, type));
+    }
+
+    // True when the Equals the class of box dispatches to compares values but is not written by hand: a record
+    // class's [CompilerGenerated] Equals, or the Equals of a System.Tuple<…>. A fact of the type, cached.
+    private static bool ComparesValues(object box, Type type)
+    {
+        return ValueEqualsClassCache.GetOrAdd(
+            type,
+            static (_, b) =>
+            {
+                Func<object?, bool> equals = b.Equals;
+                Type? declaring = equals.Method.DeclaringType;
+                return declaring is not null
+                    && declaring != typeof(object)
+                    && (
+                        equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                        || (declaring.IsGenericType && TupleDefinitions.Contains(declaring.GetGenericTypeDefinition()))
+                    );
+            },
+            box
+        );
     }
 
     // The fields of a struct that can lead its built-in Equals to an inline array's. A field declared Nullable<X>
@@ -1265,7 +1304,17 @@ internal static class MemberComparison
             {
                 inlineArrays.Add(field);
             }
-            else if (declared == typeof(object) || declared == typeof(ValueType) || declared.IsInterface)
+            else if (
+                declared == typeof(object)
+                || declared == typeof(ValueType)
+                || declared.IsInterface
+                || (
+                    declared.IsClass
+                    && declared != typeof(string)
+                    && !declared.IsArray
+                    && !typeof(Delegate).IsAssignableFrom(declared)
+                )
+            )
             {
                 runTime.Add(field);
             }
