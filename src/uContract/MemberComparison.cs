@@ -1387,12 +1387,16 @@ internal static class MemberComparison
         );
     }
 
-    // An anonymous type of C#: marked [CompilerGenerated] and named by the compiler with a name no source can declare.
+    // An anonymous type of C# or of Visual Basic: marked [CompilerGenerated] and named by the compiler with a name no
+    // source of that language can declare (<>f__AnonymousType… in C#, VB$AnonymousType_… in Visual Basic).
     // [CompilerGenerated] alone does not tell it: a user or a source generator may mark a class of theirs with it.
     private static bool IsAnonymousType(Type type)
     {
         return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-            && type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal);
+            && (
+                type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal)
+                || type.Name.StartsWith("VB$AnonymousType_", StringComparison.Ordinal)
+            );
     }
 
     // True when a field declared on type itself (in metadata, its members) can lead to an inline array's Equals, as a
