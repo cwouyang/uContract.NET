@@ -27,6 +27,12 @@ public class EnsureAssignableInlineArrayTests
 
     private static readonly Lazy<Type> VisualBasicAnonymousType = new(DefineVisualBasicAnonymousType);
 
+    // The last ways out of a "cannot compare" message for BadgeBuf3, named in C# so the attribute can be copied.
+    private const string PreserveBadgeBuf3 =
+        "preserve the type, for example with [DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+        + "typeof(uContract.Tests.EnsureAssignableInlineArrayTests.BadgeBuf3))] on a method that runs; or set "
+        + "DBC_POST=off (disables all postcondition checks).";
+
     // ---- Primitive and enum elements ----
 
     [Fact]
@@ -153,6 +159,260 @@ public class EnsureAssignableInlineArrayTests
         );
 
         Assert.Equal(Violation + "  - Tags", exception.Description);
+    }
+
+    // ---- Struct elements ----
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyTheNameOfALaterStructElementChanged_ReportsTheField()
+    {
+        Badged actual = new();
+        actual.Badges[2] = new Badge { Tag = 1, Name = "before" };
+        Badged expected = new();
+        expected.Badges[2] = new Badge { Tag = 1, Name = "after" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Badges", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenEveryStructElementIsEqual_DoesNotReportIt()
+    {
+        Badged actual = new();
+        actual.Badges[2] = new Badge { Tag = 1, Name = "same" };
+        Badged expected = new();
+        expected.Badges[2] = new Badge { Tag = 1, Name = "same" };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenStructElementsHoldDistinctListsWithEqualContents_DoesNotReportIt()
+    {
+        Bagged actual = new();
+        actual.Bags[1] = new Bag { Items = [1, 2] };
+        Bagged expected = new();
+        expected.Bags[1] = new Bag { Items = [1, 2] };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenEqualsOfAStructElementCallsDifferentElementsEqual_DoesNotReportIt()
+    {
+        Tolerated actual = new();
+        actual.Values[1] = new LenientValue { Value = Changed };
+        Tolerated expected = new();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAHandWrittenEqualsOfAStructElementThrows_LetsItPropagate()
+    {
+        Thrown actual = new();
+        actual.Values[1] = new ThrowingValue { Value = Changed };
+        Thrown expected = new();
+
+        NotSupportedException exception = Assert.Throws<NotSupportedException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        // Thrown by the element's hand-written Equals, not by the runtime for the built-in Equals of an inline array.
+        Assert.Equal(typeof(ThrowingValue), exception.TargetSite?.DeclaringType);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAGuidInlineArrayFieldChanged_ReportsTheField()
+    {
+        Identified actual = new() { Ids = WithSecondGuid(SecondGuid) };
+        Identified expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Ids", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfADecimalInlineArrayFieldChanged_ReportsTheField()
+    {
+        Priced actual = new();
+        actual.Prices[1] = Changed;
+        Priced expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Prices", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfANullableIntInlineArrayFieldChanged_ReportsTheField()
+    {
+        Optional actual = new();
+        actual.Values[1] = Changed;
+        Optional expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Values", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayOfInlineArraysChanged_ReportsTheField()
+    {
+        Layered actual = new();
+        actual.Layers[1] = WithLaterElementChanged();
+        Layered expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Layers", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAGenericInlineArrayOfStructsChanged_ReportsTheField()
+    {
+        GenericBadged actual = new();
+        actual.Badges[1] = new Badge { Tag = 1, Name = "before" };
+        GenericBadged expected = new();
+        expected.Badges[1] = new Badge { Tag = 1, Name = "after" };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Badges", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAStructElementInlineArrayInAStructMemberChanged_ReportsTheMember()
+    {
+        BadgeHolding actual = new() { Value = new BadgeHolder { Badges = WithLaterBadge("before") } };
+        BadgeHolding expected = new() { Value = new BadgeHolder { Badges = WithLaterBadge("after") } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAStructElementInlineArrayInAStructsObjectFieldChanged_ReportsTheMember()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = WithLaterBadge("before") } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = WithLaterBadge("after") } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAStructElementInlineArrayInAnArrayChanged_ReportsTheField()
+    {
+        BadgeGrid actual = new() { Rows = [WithLaterBadge("before")] };
+        BadgeGrid expected = new() { Rows = [WithLaterBadge("after")] };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Rows", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAStructElementInlineArrayInAListChanged_ReportsTheField()
+    {
+        BadgeJournal actual = new() { Entries = [WithLaterBadge("before")] };
+        BadgeJournal expected = new() { Entries = [WithLaterBadge("after")] };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Entries", exception.Description);
+    }
+
+    // The .NET 8 runtime reads a struct element only with dynamic code, which Native AOT does not support.
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenAStructElementCannotBeReadWithoutDynamicCode_CannotCompareTheMember()
+    {
+        Badged actual = new() { Badges = WithLaterBadge("before") };
+        Badged expected = new() { Badges = WithLaterBadge("after") };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(BadgeBuf3)} (reached through 'Badged.Badges'): "
+                + StructElementsNeedDynamicCode<Badge>()
+                + "Ways out: list 'Badges' as assignable (patterns are regular expressions matched against top-level "
+                + "member names, so use the plain member name); "
+                + PreserveBadgeBuf3,
+            cannotCompare.Message
+        );
+    }
+
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenStructElementsThatCannotBeReadWithoutDynamicCodeAreEqual_StillCannotCompareThem()
+    {
+        Badged actual = new() { Badges = WithLaterBadge("same") };
+        Badged expected = new() { Badges = WithLaterBadge("same") };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.IsType<InvalidOperationException>(exception);
+    }
+
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenTIsAnInlineArrayWhoseStructElementsCannotBeReadWithoutDynamicCode_CannotCompareIt()
+    {
+        BadgeBuf3 actual = WithLaterBadge("before");
+        BadgeBuf3 expected = WithLaterBadge("after");
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(BadgeBuf3)} (reached through 'BadgeBuf3'): "
+                + StructElementsNeedDynamicCode<Badge>()
+                + "Ways out: "
+                + PreserveBadgeBuf3,
+            cannotCompare.Message
+        );
+    }
+
+    // The .NET 9+ runtime boxes a struct element without dynamic code.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOnlyALaterStructElementChangedWithoutDynamicCode_ReportsTheField()
+    {
+        Badged actual = new() { Badges = WithLaterBadge("before") };
+        Badged expected = new() { Badges = WithLaterBadge("after") };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(Violation + "  - Badges", violation.Description);
     }
 
     // ---- Where the inline array is held ----
@@ -1675,8 +1935,7 @@ public class EnsureAssignableInlineArrayTests
         Assert.Equal(typeof(ThrowingHolder), exception.TargetSite?.DeclaringType);
     }
 
-    // An inline array of struct elements other than primitives and enums is not compared element by element
-    // yet: as T it is compared by its members, as before, and its built-in Equals is not asked.
+    // An inline array of struct elements is compared as a whole, element by element, as any other inline array.
     [Fact]
     public void EnsureAssignable_WhenTIsAnInlineArrayOfGuidsAndEveryElementIsEqual_Passes()
     {
@@ -1689,17 +1948,40 @@ public class EnsureAssignableInlineArrayTests
     }
 
     [Fact]
-    public void EnsureAssignable_WhenTIsAnInlineArrayOfGuidsAndTheFirstElementChanged_ReportsItsElementField()
+    public void EnsureAssignable_WhenTIsAnInlineArrayOfGuidsAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual()
     {
-        GuidBuf2 actual = new();
-        actual[0] = SecondGuid;
+        GuidBuf2 actual = WithSecondGuid(SecondGuid);
         GuidBuf2 expected = new();
 
         PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal(Violation + "  - _element", exception.Description);
+        Assert.Equal(ComparedAsAnInlineArray<GuidBuf2>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOnlyALaterStructElementOfABoxedInlineArrayChanged_ReportsTheTwoAsNotEqual()
+    {
+        object actual = WithLaterBadge("before");
+        object expected = WithLaterBadge("after");
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<BadgeBuf3>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedInlineArraysHoldEqualStructElements_Passes()
+    {
+        object actual = WithLaterBadge("same");
+        object expected = WithLaterBadge("same");
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -1822,6 +2104,19 @@ public class EnsureAssignableInlineArrayTests
             && Equals(key.GetValue(self), key.GetValue(other));
     }
 
+    private static string StructElementsNeedDynamicCode<TElement>()
+    {
+        return $"it is an inline array of {typeof(TElement)}, a struct, whose elements this runtime reads only with "
+            + "dynamic code, and dynamic code is not supported here (Native AOT). ";
+    }
+
+    private static BadgeBuf3 WithLaterBadge(string name)
+    {
+        BadgeBuf3 buffer = new();
+        buffer[2] = new Badge { Tag = 1, Name = name };
+        return buffer;
+    }
+
     private static GuidBuf2 WithSecondGuid(Guid second)
     {
         GuidBuf2 buffer = new();
@@ -1864,6 +2159,144 @@ public class EnsureAssignableInlineArrayTests
     private sealed class Grid
     {
         public IntBuf3[] Rows = [];
+    }
+
+    // A struct of a primitive and a reference, padded between them.
+    private struct Badge
+    {
+        public byte Tag;
+        public string? Name;
+    }
+
+    [InlineArray(3)]
+    private struct BadgeBuf3
+    {
+        private Badge _element;
+    }
+
+    private sealed class Badged
+    {
+        public BadgeBuf3 Badges;
+    }
+
+    private struct BadgeHolder
+    {
+        public BadgeBuf3 Badges;
+    }
+
+    private sealed class BadgeHolding
+    {
+        public BadgeHolder Value;
+    }
+
+    private sealed class BadgeGrid
+    {
+        public BadgeBuf3[] Rows = [];
+    }
+
+    private sealed class BadgeJournal
+    {
+        public List<BadgeBuf3> Entries = [];
+    }
+
+    private sealed class GenericBadged
+    {
+        public Buf2<Badge> Badges;
+    }
+
+    private struct Bag
+    {
+        public List<int>? Items;
+    }
+
+    [InlineArray(2)]
+    private struct BagBuf2
+    {
+        private Bag _element;
+    }
+
+    private sealed class Bagged
+    {
+        public BagBuf2 Bags;
+    }
+
+    // Equal by its hand-written Equals to any other LenientValue.
+    private struct LenientValue
+    {
+        public int Value;
+
+        public override readonly bool Equals(object? obj) => obj is LenientValue;
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    [InlineArray(2)]
+    private struct LenientBuf2
+    {
+        private LenientValue _element;
+    }
+
+    private sealed class Tolerated
+    {
+        public LenientBuf2 Values;
+    }
+
+    private struct ThrowingValue
+    {
+        public int Value;
+
+        public override readonly bool Equals(object? obj) => throw new NotSupportedException();
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    [InlineArray(2)]
+    private struct ThrowingBuf2
+    {
+        private ThrowingValue _element;
+    }
+
+    private sealed class Thrown
+    {
+        public ThrowingBuf2 Values;
+    }
+
+    private sealed class Identified
+    {
+        public GuidBuf2 Ids;
+    }
+
+    [InlineArray(2)]
+    private struct DecimalBuf2
+    {
+        private decimal _element;
+    }
+
+    private sealed class Priced
+    {
+        public DecimalBuf2 Prices;
+    }
+
+    [InlineArray(2)]
+    private struct NullableIntBuf2
+    {
+        private int? _element;
+    }
+
+    private sealed class Optional
+    {
+        public NullableIntBuf2 Values;
+    }
+
+    [InlineArray(2)]
+    private struct IntBuf3Buf2
+    {
+        private IntBuf3 _element;
+    }
+
+    private sealed class Layered
+    {
+        public IntBuf3Buf2 Layers;
     }
 
     private sealed class Journal

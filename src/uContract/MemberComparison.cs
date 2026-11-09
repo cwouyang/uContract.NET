@@ -23,6 +23,10 @@ internal static class MemberComparison
     private static readonly TypeCache<bool> NoDeclaredMemberCache = new();
     private static readonly TypeCache<InlineArrayShape> InlineArrayShapeCache = new();
     private static readonly TypeCache<bool> InlineArrayCache = new();
+    private static readonly TypeCache<int> ElementSizeCache = new();
+    private static readonly TypeCache<StructElementsReader> StructElementsReaderCache = new();
+    private static readonly Func<RuntimeTypeHandle, int>? SizeOf = BindSizeOf();
+    private static readonly BoxFunction? Box = BindBox();
     private static readonly TypeCache<ValueRoutes> ValueRoutesCache = new();
     private static readonly TypeCache<bool> UserEqualsCache = new();
     private static readonly TypeCache<ClassEquals> ClassEqualsCache = new();
@@ -590,13 +594,18 @@ internal static class MemberComparison
         // Patterns are matched against raw names and source names (see IsAssignable), so the advice names the
         // member without its qualifier, and a qualified member shares that name with another member, which it excuses too.
         string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
+        string listAsAssignable =
+            $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
+            + $"matched against top-level member names, so use the plain member name{sharedName}); ";
+        if (hidden.ElementsNeedDynamicCode is { } elementType)
+        {
+            return CannotReadStructElements(hidden.Type, elementType, path, listAsAssignable);
+        }
+
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
             + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
             + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
-        string listAsAssignable =
-            $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
-            + $"matched against top-level member names, so use the plain member name{sharedName}); ";
         if (!CSharpTypeName.CanBeWritten(hidden.Type))
         {
             return new InvalidOperationException(cannotList + WaysOutForAnUnnamedType(hidden.Type, listAsAssignable));
@@ -624,6 +633,11 @@ internal static class MemberComparison
     {
         string start = IsArrayTypeOrSystemArray(wholeType) ? "actual" : wholeType.Name;
         string path = $"{start}{hidden.PathBelowTopLevelMember}";
+        if (hidden.ElementsNeedDynamicCode is { } elementType)
+        {
+            return CannotReadStructElements(hidden.Type, elementType, path);
+        }
+
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
             + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
@@ -640,6 +654,26 @@ internal static class MemberComparison
                 + PreserveWhat(hidden.OnlyByRefLikePropertiesVisible)
                 + ", preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
+                + "or set DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // The comparison met an inline array of struct elements, reached through path, that this runtime reads only with
+    // dynamic code (see ReadStructElements). firstWayOut is empty, or a way out that ends with "; ".
+    private static InvalidOperationException CannotReadStructElements(
+        Type inlineArrayType,
+        Type elementType,
+        string path,
+        string firstWayOut = ""
+    )
+    {
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {inlineArrayType} (reached through '{path}'): it is an inline array of "
+                + $"{elementType}, a struct, whose elements this runtime reads only with dynamic code, and dynamic code "
+                + "is not supported here (Native AOT). Ways out: "
+                + firstWayOut
+                + "preserve the type, for example with "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(inlineArrayType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(inlineArrayType)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }
@@ -835,7 +869,7 @@ internal static class MemberComparison
         // elements (see StartSequences).
         if (actualType.IsValueType && actualType == expectedType)
         {
-            return StartValues(actual, expected, actualType, out equal);
+            return StartValues(actual, expected, actualType, context, out equal);
         }
 
         return StartReferences(actual, expected, context, out equal);
@@ -1059,10 +1093,16 @@ internal static class MemberComparison
     // its elements instead (see TryStartInlineArray), and a struct without a hand-written Equals whose built-in
     // Equals would reach an inline array's on either side (see NeedsFieldComparison) by its fields: the built-in
     // Equals of an inline array sees only element 0, and the .NET 10 runtime throws for it.
-    private static Walk? StartValues(object actual, object expected, Type type, out bool equal)
+    private static Walk? StartValues(
+        object actual,
+        object expected,
+        Type type,
+        ComparisonContext context,
+        out bool equal
+    )
     {
         bool isInlineArray = IsInlineArray(type);
-        if (isInlineArray && TryStartInlineArray(actual, expected, type, out Walk? elements, out equal))
+        if (isInlineArray && TryStartInlineArray(actual, expected, type, context, out Walk? elements, out equal))
         {
             return elements;
         }
@@ -1122,12 +1162,15 @@ internal static class MemberComparison
     // ValueType.Equals is not asked: it sees only element 0, and the .NET 10 runtime throws for it. An inline
     // array of n elements of E is laid out as n consecutive values of E, so the elements are read from the
     // memory of the box. Primitive and enum elements are compared in place (see TryCompareInPlace); reference
-    // elements are walked. False leaves the pair to the rules for other value types: an inline array of
-    // another element type, or one whose element field reflection does not list.
+    // and struct elements are walked, a struct element boxed (see ReadStructElements). Struct elements that this
+    // runtime cannot read leave the pair uncompared (context.Hidden is set), equal or not. False leaves the pair to
+    // the rules for other value types: an inline array of pointers, or one whose element field reflection does not
+    // list.
     private static bool TryStartInlineArray(
         object actual,
         object expected,
         Type type,
+        ComparisonContext context,
         out Walk? elements,
         out bool equal
     )
@@ -1153,17 +1196,97 @@ internal static class MemberComparison
             return true;
         }
 
-        elements = new CollectionWalk(
-            ReadElements(ref actualData, shape.Length),
-            ReadElements(ref expectedData, shape.Length)
-        );
+        if (
+            ReadElements(elementType, ref actualData, shape.Length) is not { } actualElements
+            || ReadElements(elementType, ref expectedData, shape.Length) is not { } expectedElements
+        )
+        {
+            context.Hidden = new HiddenMembers(type) { ElementsNeedDynamicCode = elementType };
+            return true;
+        }
+
+        elements = new CollectionWalk(actualElements, expectedElements);
         return true;
     }
 
-    // The length elements of an inline array of reference elements at data, each read as the reference it holds.
-    private static object?[] ReadElements(ref byte data, int length)
+    // The length elements of elementType at data: a reference element as the reference it holds, a struct element
+    // boxed (see ReadStructElements). Null when this runtime cannot read struct elements.
+    private static object?[]? ReadElements(Type elementType, ref byte data, int length)
     {
-        return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref data), length).ToArray();
+        return elementType.IsValueType
+            ? ReadStructElements(elementType, ref data, length)
+            : MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref data), length).ToArray();
+    }
+
+    // A struct element is boxed from its memory. The .NET 9+ runtime offers RuntimeHelpers.SizeOf and
+    // RuntimeHelpers.Box, which need no dynamic code; this library targets .NET 8, so they are bound at run time (see
+    // BindSizeOf, BindBox). The .NET 8 runtime has neither, and its only way to read a struct element of a type known
+    // at run time is a generic method instantiated over it (see CreateStructElementsReader), which needs dynamic code.
+    // Null when neither way is available.
+    private static object?[]? ReadStructElements(Type elementType, ref byte data, int length)
+    {
+        if (SizeOf is not null && Box is not null)
+        {
+            RuntimeTypeHandle handle = elementType.TypeHandle;
+            int size = ElementSizeCache.GetOrAdd(elementType, static t => SizeOf(t.TypeHandle));
+            object?[] elements = new object?[length];
+            for (int i = 0; i < length; i++)
+            {
+                elements[i] = Box(ref Unsafe.Add(ref data, i * size), handle);
+            }
+
+            return elements;
+        }
+
+        return RuntimeFacts.IsDynamicCodeSupported
+            ? StructElementsReaderCache.GetOrAdd(elementType, CreateStructElementsReader)(ref data, length)
+            : null;
+    }
+
+    private static Func<RuntimeTypeHandle, int>? BindSizeOf()
+    {
+        return typeof(RuntimeHelpers)
+            .GetMethod("SizeOf", BindingFlags.Public | BindingFlags.Static, [typeof(RuntimeTypeHandle)])
+            ?.CreateDelegate<Func<RuntimeTypeHandle, int>>();
+    }
+
+    private static BoxFunction? BindBox()
+    {
+        return typeof(RuntimeHelpers)
+            .GetMethod(
+                "Box",
+                BindingFlags.Public | BindingFlags.Static,
+                [typeof(byte).MakeByRefType(), typeof(RuntimeTypeHandle)]
+            )
+            ?.CreateDelegate<BoxFunction>();
+    }
+
+    // Reached only where dynamic code is supported (see ReadStructElements): on the .NET 8 runtime under the JIT.
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "Called only when RuntimeFeature.IsDynamicCodeSupported is true (through RuntimeFacts), so the instantiation over the element type can be compiled at run time. Without dynamic code the elements are boxed by the .NET 9+ RuntimeHelpers.Box, or the comparison reports that it cannot compare them."
+    )]
+    private static StructElementsReader CreateStructElementsReader(Type elementType)
+    {
+        return typeof(MemberComparison)
+            .GetMethod(nameof(BoxElements), BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(elementType)
+            .CreateDelegate<StructElementsReader>();
+    }
+
+    // The memory at data is read as length elements of TElement, which is in bounds: TElement is the element type of
+    // the inline array that holds them.
+    private static object?[] BoxElements<TElement>(ref byte data, int length)
+    {
+        ReadOnlySpan<TElement> span = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TElement>(ref data), length);
+        object?[] elements = new object?[length];
+        for (int i = 0; i < length; i++)
+        {
+            elements[i] = span[i];
+        }
+
+        return elements;
     }
 
     // True when type overrides Equals(object) by hand. A delegate bound to the virtual object.Equals on the box
@@ -1537,11 +1660,7 @@ internal static class MemberComparison
         MemberAccessor[] fields = [.. GetOrCacheMetadata(type).Members.Where(member => member.IsField)];
         Type? elementType = fields.Length == 1 ? fields[0].MemberType : null;
         bool isComparedInPlaceOrWalked =
-            elementType is not null
-            && (
-                InPlaceOf(elementType) != InPlace.No
-                || !(elementType.IsValueType || elementType.IsPointer || elementType.IsFunctionPointer)
-            );
+            elementType is not null && !(elementType.IsPointer || elementType.IsFunctionPointer);
         return new InlineArrayShape(
             elementType,
             type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length,
@@ -1939,9 +2058,15 @@ internal static class MemberComparison
     }
 
     // What TryStartInlineArray needs of an inline-array type: its element type (null when reflection does not
-    // list its one element field), its length, and whether its elements are compared one by one (primitive, enum
-    // and reference elements are; struct and pointer elements, and an unknown element type, are not yet).
+    // list its one element field), its length, and whether its elements are compared one by one (they are, except
+    // pointer elements, which C# cannot declare in an inline array, and an unknown element type).
     private sealed record InlineArrayShape(Type? ElementType, int Length, bool IsComparedByElements);
+
+    // RuntimeHelpers.Box(ref byte, RuntimeTypeHandle) of the .NET 9+ runtime (see ReadStructElements).
+    private delegate object? BoxFunction(ref byte data, RuntimeTypeHandle type);
+
+    // Reads length struct elements at data, boxed (see CreateStructElementsReader).
+    private delegate object?[] StructElementsReader(ref byte data, int length);
 
     private enum InPlace
     {
@@ -2031,6 +2156,10 @@ internal static class MemberComparison
         // a byref-like type. False for a type that shows no declared member while the members it inherits stay
         // visible (see ShowsNoDeclaredMember).
         public bool OnlyByRefLikePropertiesVisible { get; init; }
+
+        // Set when Type is an inline array whose elements, of this struct type, this runtime reads only with dynamic
+        // code, which is not supported (see ReadStructElements); its members are visible.
+        public Type? ElementsNeedDynamicCode { get; init; }
 
         public string PathBelowTopLevelMember { get; private set; } = "";
 
