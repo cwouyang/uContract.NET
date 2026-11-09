@@ -1087,6 +1087,149 @@ public class EnsureAssignableInlineArrayTests
         Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
+    // ---- A derived record's own inline array under a base record's hand-written typed Equals ----
+
+    // The derived record's generated Equals calls the base record's hand-written one and then compares the fields the
+    // derived record declares: an inline array there still reaches the built-in Equals, so the record is looked into.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfADerivedRecordsOwnInlineArrayUnderAHandWrittenBaseEqualsChanged_ReportsTheMember()
+    {
+        QuotaOwnerHolding actual = new() { Value = new QuotaOwner { Item = new OwnQuota(WithLaterElementChanged()) } };
+        QuotaOwnerHolding expected = new() { Value = new QuotaOwner { Item = new OwnQuota(new IntBuf3()) } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenADerivedRecordsOwnInlineArraysUnderAHandWrittenBaseEqualsHaveEqualElements_DoesNotReportIt()
+    {
+        QuotaOwnerHolding actual = new() { Value = new QuotaOwner { Item = new OwnQuota(WithLaterElementChanged()) } };
+        QuotaOwnerHolding expected = new()
+        {
+            Value = new QuotaOwner { Item = new OwnQuota(WithLaterElementChanged()) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // The record between the derived record and the base record declares the inline array.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAMiddleRecordsInlineArrayUnderAHandWrittenBaseEqualsChanged_ReportsTheMember()
+    {
+        QuotaOwnerHolding actual = new()
+        {
+            Value = new QuotaOwner { Item = new LeafQuota(WithLaterElementChanged(), 1) },
+        };
+        QuotaOwnerHolding expected = new() { Value = new QuotaOwner { Item = new LeafQuota(new IntBuf3(), 1) } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInADerivedRecordsHolderStructUnderAHandWrittenBaseEqualsChanged_ReportsTheMember()
+    {
+        QuotaOwnerHolding actual = new()
+        {
+            Value = new QuotaOwner { Item = new HolderQuota(new Holder { Counts = WithLaterElementChanged() }) },
+        };
+        QuotaOwnerHolding expected = new()
+        {
+            Value = new QuotaOwner { Item = new HolderQuota(new Holder { Counts = new IntBuf3() }) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInADerivedRecordsObjectFieldUnderAHandWrittenBaseEqualsChanged_ReportsTheMember()
+    {
+        QuotaOwnerHolding actual = new() { Value = new QuotaOwner { Item = new BoxQuota(WithLaterElementChanged()) } };
+        QuotaOwnerHolding expected = new() { Value = new QuotaOwner { Item = new BoxQuota(new IntBuf3()) } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInADerivedRecordsRecordUnderAHandWrittenBaseEqualsChanged_ReportsTheMember()
+    {
+        QuotaOwnerHolding actual = new()
+        {
+            Value = new QuotaOwner { Item = new RecordQuota(new BufRecord(WithLaterElementChanged())) },
+        };
+        QuotaOwnerHolding expected = new()
+        {
+            Value = new QuotaOwner { Item = new RecordQuota(new BufRecord(new IntBuf3())) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAGenericDerivedRecordsOwnInlineArrayUnderAHandWrittenBaseEqualsChanged_ReportsTheMember()
+    {
+        QuotaOwnerHolding actual = new()
+        {
+            Value = new QuotaOwner { Item = new GenericQuota<IntBuf3>(WithLaterElementChanged()) },
+        };
+        QuotaOwnerHolding expected = new()
+        {
+            Value = new QuotaOwner { Item = new GenericQuota<IntBuf3>(new IntBuf3()) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    // A field the derived record declares that cannot hold an inline array leaves the base's hand-written Equals to
+    // decide.
+    [Fact]
+    public void EnsureAssignable_WhenADerivedRecordDeclaresOnlyAnIntAndTheBaseRecordsHandWrittenEqualsIgnoresItsInlineArray_DoesNotReportIt()
+    {
+        TolerantBaseOwnerHolding actual = new()
+        {
+            Value = new TolerantBaseOwner
+            {
+                Item = new TolerantExtended(1) { Raw = WithLaterElementChanged(), Total = 1 },
+            },
+        };
+        TolerantBaseOwnerHolding expected = new()
+        {
+            Value = new TolerantBaseOwner
+            {
+                Item = new TolerantExtended(1) { Raw = new IntBuf3(), Total = 1 },
+            },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- A deep graph without an inline array ----
 
     // Looking at run-time values does not use the stack for each level: a struct holding a long chain of records keeps
@@ -1626,6 +1769,42 @@ public class EnsureAssignableInlineArrayTests
     {
         public GenericCountsBaseOwner Value;
     }
+
+    // Equal when the totals are.
+    private record QuotaBase
+    {
+        public int Total { get; init; }
+
+        public virtual bool Equals(QuotaBase? other) => other is not null && Total == other.Total;
+
+        public override int GetHashCode() => Total;
+    }
+
+    private sealed record OwnQuota(IntBuf3 Own) : QuotaBase;
+
+    private record MiddleQuota(IntBuf3 Middle) : QuotaBase;
+
+    private sealed record LeafQuota(IntBuf3 Middle, int Extra) : MiddleQuota(Middle);
+
+    private sealed record HolderQuota(Holder Inner) : QuotaBase;
+
+    private sealed record BoxQuota(object Box) : QuotaBase;
+
+    private sealed record RecordQuota(BufRecord Inner) : QuotaBase;
+
+    private sealed record GenericQuota<TOwn>(TOwn Own) : QuotaBase;
+
+    private struct QuotaOwner
+    {
+        public QuotaBase Item;
+    }
+
+    private sealed class QuotaOwnerHolding
+    {
+        public QuotaOwner Value;
+    }
+
+    private sealed record TolerantExtended(int Extra) : TolerantBase;
 
     private struct ChainOwner
     {

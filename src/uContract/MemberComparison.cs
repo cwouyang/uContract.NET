@@ -100,6 +100,7 @@ internal static class MemberComparison
                         t.BaseType is { } baseType
                         && !IsFrameworkClass(baseType)
                         && GetOrCacheMetadata(baseType).HasHandWrittenTypedEquals
+                        && !DeclaresFieldReachingInlineArray(t, metadata)
                     );
                 return metadata;
             }
@@ -1392,6 +1393,45 @@ internal static class MemberComparison
     {
         return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
             && type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal);
+    }
+
+    // True when a field declared on type itself (in metadata, its members) can lead to an inline array's Equals, as a
+    // field CreateValueRoutes keeps does: a derived record's generated typed Equals compares the fields the record
+    // declares after it calls that of its base record.
+    private static bool DeclaresFieldReachingInlineArray(Type type, TypeMetadata metadata)
+    {
+        foreach (MemberAccessor field in metadata.Members)
+        {
+            if (!field.IsField || field.DeclaringType != type)
+            {
+                continue;
+            }
+
+            Type declared = Nullable.GetUnderlyingType(field.MemberType) ?? field.MemberType;
+            if (
+                declared.IsDefined(typeof(InlineArrayAttribute), inherit: false)
+                || declared == typeof(object)
+                || declared == typeof(ValueType)
+                || declared.IsInterface
+                || (
+                    declared.IsClass
+                    && declared != typeof(string)
+                    && !declared.IsArray
+                    && !typeof(Delegate).IsAssignableFrom(declared)
+                )
+                || (
+                    declared.IsValueType
+                    && !declared.IsPrimitive
+                    && !declared.IsEnum
+                    && !ValueRoutesCache.GetOrAdd(declared, CreateValueRoutes).IsEmpty
+                )
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's. A field declared
