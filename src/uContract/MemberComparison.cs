@@ -1180,7 +1180,7 @@ internal static class MemberComparison
         }
 
         equal = false;
-        if (shape is not { IsComparedByElements: true, ElementType: { } elementType })
+        if (shape is not { ElementType: { } elementType })
         {
             return false;
         }
@@ -1565,10 +1565,11 @@ internal static class MemberComparison
     }
 
     // True when type is an inline array whose two values TryStartInlineArray compares element by element (see
-    // InlineArrayShape.IsComparedByElements), a fact of the type that is cached.
+    // InlineArrayShape.ElementType), a fact of the type that is cached.
     internal static bool IsInlineArrayComparedByElements(Type type)
     {
-        return IsInlineArray(type) && InlineArrayShapeCache.GetOrAdd(type, CreateInlineArrayShape).IsComparedByElements;
+        return IsInlineArray(type)
+            && InlineArrayShapeCache.GetOrAdd(type, CreateInlineArrayShape).ElementType is not null;
     }
 
     // True when type is marked [InlineArray], a fact of the type that is cached.
@@ -1584,12 +1585,7 @@ internal static class MemberComparison
     {
         MemberAccessor[] fields = [.. GetOrCacheMetadata(type).Members.Where(member => member.IsField)];
         Type? elementType = fields.Length == 1 ? fields[0].MemberType : null;
-        bool isComparedInPlaceOrWalked = elementType is not null;
-        return new InlineArrayShape(
-            elementType,
-            type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length,
-            isComparedInPlaceOrWalked
-        );
+        return new InlineArrayShape(elementType, type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length);
     }
 
     // True for elements of a type that is compared in place (see InPlaceOf); equal then tells whether the length
@@ -1988,9 +1984,8 @@ internal static class MemberComparison
     }
 
     // What TryStartInlineArray needs of an inline-array type: its element type (null when reflection does not
-    // list its one element field), its length, and whether its elements are compared one by one (they are, unless
-    // the element type is unknown).
-    private sealed record InlineArrayShape(Type? ElementType, int Length, bool IsComparedByElements);
+    // list its one element field; its elements are then not compared one by one) and its length.
+    private sealed record InlineArrayShape(Type? ElementType, int Length);
 
     private enum InPlace
     {
