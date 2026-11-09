@@ -35,32 +35,31 @@ internal static class DeepCopier
             return value;
         }
 
-        Dictionary<object, object> copies = new(ReferenceEqualityComparer.Instance);
-        Stack<object> pending = new();
-        object copy = CopyOf(value, copies, pending);
-        while (pending.TryPop(out object? clone))
+        Copying copying = new();
+        object copy = CopyOf(value, copying);
+        while (copying.Pending.TryPop(out object? clone))
         {
             if (clone is Array array)
             {
-                ReplaceElements(array, copies, pending);
+                ReplaceElements(array, copying);
             }
             else
             {
-                ReplaceReferenceFields(clone, copies, pending);
+                ReplaceReferenceFields(clone, copying);
             }
         }
 
         return (T)copy;
     }
 
-    private static object CopyOf(object original, Dictionary<object, object> copies, Stack<object> pending)
+    private static object CopyOf(object original, Copying copying)
     {
         if (SharedTypes.IsShared(original.GetType()))
         {
             return original;
         }
 
-        if (copies.TryGetValue(original, out object? copy))
+        if (copying.Copies.TryGetValue(original, out object? copy))
         {
             return copy;
         }
@@ -70,8 +69,8 @@ internal static class DeepCopier
 #pragma warning disable CA1816 // The clone is a fresh object that this copier owns; it is not an IDisposable pattern.
         GC.SuppressFinalize(copy);
 #pragma warning restore CA1816
-        copies.Add(original, copy);
-        pending.Push(copy);
+        copying.Copies.Add(original, copy);
+        copying.Pending.Push(copy);
         return copy;
     }
 
@@ -80,9 +79,9 @@ internal static class DeepCopier
         "IL2075",
         Justification = "Callers (Old/EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a field the trimmer hides from reflection is not visited, so the object it refers to stays bitwise: the copy shares it with the original."
     )]
-    private static void ReplaceReferenceFields(object clone, Dictionary<object, object> copies, Stack<object> pending)
+    private static void ReplaceReferenceFields(object clone, Copying copying)
     {
-        if (TryReplaceInlineArrayElements(clone, copies, pending))
+        if (TryReplaceInlineArrayElements(clone, copying))
         {
             return;
         }
@@ -96,18 +95,14 @@ internal static class DeepCopier
                     continue;
                 }
 
-                field.SetValue(clone, Replacement(value, field.FieldType, copies, pending));
+                field.SetValue(clone, Replacement(value, field.FieldType, copying));
             }
         }
     }
 
     // A boxed inline array: reflection lists only its element 0, so every element is replaced here, from the memory
     // of the box. False leaves the box to the field walk.
-    private static bool TryReplaceInlineArrayElements(
-        object box,
-        Dictionary<object, object> copies,
-        Stack<object> pending
-    )
+    private static bool TryReplaceInlineArrayElements(object box, Copying copying)
     {
         Type type = box.GetType();
         if (!MemberComparison.IsInlineArray(type))
@@ -124,7 +119,7 @@ internal static class DeepCopier
         ref byte data = ref Unsafe.As<StrongBox<byte>>(box).Value;
         if (elementType.IsValueType)
         {
-            return TryReplaceStructElements(elementType, ref data, shape.Length, copies, pending);
+            return TryReplaceStructElements(elementType, ref data, shape.Length, copying);
         }
 
         Span<object?> elements = MemoryMarshal.CreateSpan(ref Unsafe.As<byte, object?>(ref data), shape.Length);
@@ -132,7 +127,7 @@ internal static class DeepCopier
         {
             if (elements[i] is { } element)
             {
-                elements[i] = CopyOf(element, copies, pending);
+                elements[i] = CopyOf(element, copying);
             }
         }
 
@@ -141,13 +136,7 @@ internal static class DeepCopier
 
     // The length struct elements at data are read boxed, the references inside each box are replaced, and the boxes
     // are written back (see StructElements). False, changing nothing, where this runtime cannot write them.
-    private static bool TryReplaceStructElements(
-        Type elementType,
-        ref byte data,
-        int length,
-        Dictionary<object, object> copies,
-        Stack<object> pending
-    )
+    private static bool TryReplaceStructElements(Type elementType, ref byte data, int length, Copying copying)
     {
         if (!StructElements.CanWrite || StructElements.Read(elementType, ref data, length) is not { } elements)
         {
@@ -156,7 +145,7 @@ internal static class DeepCopier
 
         for (int i = 0; i < length; i++)
         {
-            elements[i] = Replacement(elements[i]!, elementType, copies, pending);
+            elements[i] = Replacement(elements[i]!, elementType, copying);
         }
 
         StructElements.Write(elementType, ref data, elements);
@@ -164,7 +153,7 @@ internal static class DeepCopier
     }
 
     // The clone already has the original's runtime type, rank and bounds; only its elements are replaced.
-    private static void ReplaceElements(Array clone, Dictionary<object, object> copies, Stack<object> pending)
+    private static void ReplaceElements(Array clone, Copying copying)
     {
         Type elementType = clone.GetType().GetElementType()!;
         if (!HoldsReferences(elementType))
@@ -190,25 +179,20 @@ internal static class DeepCopier
                 continue;
             }
 
-            clone.SetValue(Replacement(element, elementType, copies, pending), indices);
+            clone.SetValue(Replacement(element, elementType, copying), indices);
         } while (Advance(clone, indices));
     }
 
     // A struct (field or element) arrives boxed: the references inside the box are replaced and the box is
     // stored back. This recurses once per level of struct nesting, which the type bounds, not the graph.
-    private static object Replacement(
-        object value,
-        Type declaredType,
-        Dictionary<object, object> copies,
-        Stack<object> pending
-    )
+    private static object Replacement(object value, Type declaredType, Copying copying)
     {
         if (!declaredType.IsValueType)
         {
-            return CopyOf(value, copies, pending);
+            return CopyOf(value, copying);
         }
 
-        ReplaceReferenceFields(value, copies, pending);
+        ReplaceReferenceFields(value, copying);
         return value;
     }
 
@@ -267,4 +251,13 @@ internal static class DeepCopier
 
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "MemberwiseClone")]
     private static extern object CloneBitwise(object original);
+
+    // The state of one copy: the copy of each instance copied so far, by reference, and the clones whose fields or
+    // elements are still to be replaced.
+    private sealed class Copying
+    {
+        public Dictionary<object, object> Copies { get; } = new(ReferenceEqualityComparer.Instance);
+
+        public Stack<object> Pending { get; } = new();
+    }
 }
