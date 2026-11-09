@@ -290,6 +290,49 @@ public class OldInlineArrayTests
         Assert.Equal(Violation + "  - Bags", violation.Description);
     }
 
+    [Fact]
+    public void EnsureAssignable_WhenALaterListOfAnInlineArrayInAHolderStructChangedInPlaceAfterOld_ReportsTheField()
+    {
+        HeldLists held = new() { Value = new ListHolder { Lists = WithLists() } };
+        HeldLists old = Contract.Old(() => held);
+        held.Value.Lists[2]!.Add(Added);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(held, old)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenALaterListOfAnInlineArrayAutoPropertyChangedInPlaceAfterOld_ReportsTheProperty()
+    {
+        ListedProperty listed = new() { Lists = WithLists() };
+        ListedProperty old = Contract.Old(() => listed);
+        ListBuf3 lists = listed.Lists;
+        lists[2]!.Add(Added);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(listed, old)
+        );
+
+        Assert.Equal(Violation + "  - Lists\n  - <Lists>k__BackingField", exception.Description);
+    }
+
+    [Fact]
+    public void Old_WhenTwoElementsOfAnInlineArrayShareAList_CopiesItOnceForBoth()
+    {
+        List<int> shared = [1];
+        Listed listed = new() { Lists = WithLists() };
+        listed.Lists[0] = shared;
+        listed.Lists[2] = shared;
+
+        Listed old = Contract.Old(() => listed);
+
+        Assert.NotSame(shared, old.Lists[0]);
+        Assert.Same(old.Lists[0], old.Lists[2]);
+    }
+
     private static string OldCouldNotCopy<TInlineArray, TElement>(string path, string member)
     {
         return $"EnsureAssignable cannot compare {typeof(TInlineArray)} (reached through '{path}'): it is an inline "
@@ -389,6 +432,21 @@ public class OldInlineArrayTests
     private sealed class Boxed
     {
         public object? Value;
+    }
+
+    private struct ListHolder
+    {
+        public ListBuf3 Lists;
+    }
+
+    private sealed class HeldLists
+    {
+        public ListHolder Value;
+    }
+
+    private sealed class ListedProperty
+    {
+        public ListBuf3 Lists { get; set; }
     }
 
     private sealed class BaggedEntries
