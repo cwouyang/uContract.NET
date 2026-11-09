@@ -764,6 +764,71 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // A class derived from System.Tuple<…> compares values with the base class's Equals; its items are read through
+    // the tuple, not through fields the derived class shows.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInADerivedTupleInAStructChanged_ReportsTheMember()
+    {
+        DerivedTupleOwnerHolding actual = new()
+        {
+            Value = new DerivedTupleOwner { Item = new DerivedTuple(WithLaterElementChanged(), 1) },
+        };
+        DerivedTupleOwnerHolding expected = new()
+        {
+            Value = new DerivedTupleOwner { Item = new DerivedTuple(new IntBuf3(), 1) },
+        };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenADerivedTupleInAStructHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        DerivedTupleOwnerHolding actual = new()
+        {
+            Value = new DerivedTupleOwner { Item = new DerivedTuple(WithLaterElementChanged(), 1) },
+        };
+        DerivedTupleOwnerHolding expected = new()
+        {
+            Value = new DerivedTupleOwner { Item = new DerivedTuple(WithLaterElementChanged(), 1) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInADerivedTupleInAStructsObjectFieldChanged_ReportsTheMember()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = new DerivedTuple(WithLaterElementChanged(), 1) } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = new DerivedTuple(new IntBuf3(), 1) } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenADerivedTupleInAStructsObjectFieldHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = new DerivedTuple(WithLaterElementChanged(), 1) } };
+        BoxHolding expected = new()
+        {
+            Value = new BoxHolder { Value = new DerivedTuple(WithLaterElementChanged(), 1) },
+        };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- A value that refers back to itself ----
 
     // Looking at run-time values stops at a value already looked at: a box whose object field refers back to it is
@@ -1187,6 +1252,21 @@ public class EnsureAssignableInlineArrayTests
     private sealed class SystemTupleOwnerHolding
     {
         public SystemTupleOwner Value;
+    }
+
+    // Its items are private fields of the framework base class System.Tuple<IntBuf3, int>.
+#pragma warning disable MA0097 // Test fixture only: the comparison operators of the base tuple are not under test.
+    private sealed class DerivedTuple(IntBuf3 counts, int total) : Tuple<IntBuf3, int>(counts, total);
+#pragma warning restore MA0097
+
+    private struct DerivedTupleOwner
+    {
+        public DerivedTuple Item;
+    }
+
+    private sealed class DerivedTupleOwnerHolding
+    {
+        public DerivedTupleOwner Value;
     }
 
     private sealed class Thrower

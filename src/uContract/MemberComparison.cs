@@ -1271,16 +1271,37 @@ internal static class MemberComparison
             return true;
         }
 
-        bool followed = type.IsValueType
-            ? !HasUserEquals(held, type)
-            : ClassEqualsOf(held, type) != ClassEquals.NotFollowed;
+        ClassEquals classEquals = type.IsValueType ? ClassEquals.NotFollowed : ClassEqualsOf(held, type);
+        bool followed = type.IsValueType ? !HasUserEquals(held, type) : classEquals != ClassEquals.NotFollowed;
         if (!followed)
         {
             return false;
         }
 
         looked ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
-        return looked.Add(held) && NeedsFieldComparison(held, type, ref looked);
+        if (!looked.Add(held))
+        {
+            return false;
+        }
+
+        return classEquals == ClassEquals.Tuple
+            ? TupleItemsNeedFieldComparison((ITuple)held, ref looked)
+            : NeedsFieldComparison(held, type, ref looked);
+    }
+
+    // The Equals of a System.Tuple<…> compares its items, which a class derived from it does not show as fields of
+    // its own (they are private fields of the framework base class), so they are read through ITuple.
+    private static bool TupleItemsNeedFieldComparison(ITuple tuple, ref HashSet<object>? looked)
+    {
+        for (int i = 0; i < tuple.Length; i++)
+        {
+            if (tuple[i] is { } item && NeedsFieldComparisonAsHeld(item, ref looked))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Which Equals the class of box dispatches to, when it compares values but is not written by hand: a record
