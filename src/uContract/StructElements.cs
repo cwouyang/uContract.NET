@@ -8,18 +8,20 @@ namespace uContract;
 
 /// <summary>
 ///     Reads the struct elements of an inline array, boxed, from its memory (see
-///     <see cref="MemberComparison" />, which compares them as the elements of an array).
+///     <see cref="MemberComparison" />, which compares them as the elements of an array), and writes boxed ones back
+///     (see <see cref="DeepCopier" />, which copies them as the elements of an array).
 /// </summary>
 /// <remarks>
 ///     The .NET 9+ runtime offers <c>RuntimeHelpers.SizeOf</c> and <c>RuntimeHelpers.Box</c>, which need no dynamic
 ///     code; this library targets .NET 8, so they are bound at run time. The .NET 8 runtime has neither, and its only
 ///     way to read a struct element of a type known at run time is a generic method instantiated over it, which needs
-///     dynamic code.
+///     dynamic code. Neither runtime offers a way to write one without such a method.
 /// </remarks>
 internal static class StructElements
 {
     private static readonly TypeCache<int> SizeCache = new();
     private static readonly TypeCache<Reader> ReaderCache = new();
+    private static readonly TypeCache<Writer> WriterCache = new();
     private static readonly Func<RuntimeTypeHandle, int>? SizeOf = BindSizeOf();
     private static readonly BoxFunction? Box = BindBox();
 
@@ -28,6 +30,13 @@ internal static class StructElements
 
     // Reads length struct elements at data, boxed (see CreateReader).
     private delegate object?[] Reader(ref byte data, int length);
+
+    // Writes boxed struct elements over as many elements at data (see CreateWriter).
+    private delegate void Writer(ref byte data, object?[] elements);
+
+    // Whether Write is available: neither runtime writes a struct element of a type known at run time without a
+    // generic method instantiated over it, which needs dynamic code.
+    internal static bool CanWrite => RuntimeFacts.IsDynamicCodeSupported;
 
     // The length elements of the struct type elementType at data, boxed. Null when neither way is available: the
     // .NET 8 runtime without dynamic code.
@@ -49,6 +58,13 @@ internal static class StructElements
         return RuntimeFacts.IsDynamicCodeSupported
             ? ReaderCache.GetOrAdd(elementType, CreateReader)(ref data, length)
             : null;
+    }
+
+    // Writes elements, boxed values of the struct type elementType, over the elements.Length elements at data, through
+    // typed references, so that the references they hold stay visible to the GC. Called only when CanWrite.
+    internal static void Write(Type elementType, ref byte data, object?[] elements)
+    {
+        WriterCache.GetOrAdd(elementType, CreateWriter)(ref data, elements);
     }
 
     private static Func<RuntimeTypeHandle, int>? BindSizeOf()
@@ -78,12 +94,21 @@ internal static class StructElements
         );
     }
 
+    // Reached only where dynamic code is supported (see CanWrite).
+    private static Writer CreateWriter(Type elementType)
+    {
+        return Instantiate<Writer>(
+            typeof(StructElements).GetMethod(nameof(UnboxElements), BindingFlags.NonPublic | BindingFlags.Static)!,
+            elementType
+        );
+    }
+
     // The generic method definition of this class instantiated over elementType, as a TDelegate. The only place that
     // needs dynamic code: every caller is reached only where it is supported.
     [UnconditionalSuppressMessage(
         "AOT",
         "IL3050",
-        Justification = "Called only when RuntimeFeature.IsDynamicCodeSupported is true (through RuntimeFacts), so the instantiation over the element type can be compiled at run time. Without dynamic code the elements are boxed by the .NET 9+ RuntimeHelpers.Box, or the comparison reports that it cannot compare them."
+        Justification = "Called only when RuntimeFeature.IsDynamicCodeSupported is true (through RuntimeFacts), so the instantiation over the element type can be compiled at run time. Without dynamic code the elements are boxed by the .NET 9+ RuntimeHelpers.Box, or the comparison reports that it cannot compare them; an Old copy leaves them as the field walk copies them."
     )]
     private static TDelegate Instantiate<TDelegate>(MethodInfo definition, Type elementType)
         where TDelegate : Delegate
@@ -103,5 +128,16 @@ internal static class StructElements
         }
 
         return elements;
+    }
+
+    // The memory at data is written as elements.Length elements of TElement, which is in bounds: TElement is the
+    // element type of the inline array that holds them, and elements holds one value for each of its elements.
+    private static void UnboxElements<TElement>(ref byte data, object?[] elements)
+    {
+        Span<TElement> span = MemoryMarshal.CreateSpan(ref Unsafe.As<byte, TElement>(ref data), elements.Length);
+        for (int i = 0; i < elements.Length; i++)
+        {
+            span[i] = (TElement)elements[i]!;
+        }
     }
 }

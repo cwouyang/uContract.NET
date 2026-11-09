@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace uContract;
 
@@ -11,7 +12,9 @@ namespace uContract;
 ///     bitwise clone, so every instance field keeps the original's value; then each reference-typed field
 ///     visible to reflection is replaced by the copy of what it refers to. A struct field stays bitwise
 ///     except for the reference-typed fields inside it, replaced the same way at any nesting depth. An
-///     array keeps its runtime type, rank and bounds, and its elements are replaced by the same rules.
+///     array keeps its runtime type, rank and bounds, and its elements are replaced by the same rules. So are the
+///     elements of an inline array, read from its memory; struct elements only where the runtime can write them back
+///     (see <see cref="StructElements" />), and elsewhere element 0 alone, as a field.
 /// </summary>
 /// <remarks>
 ///     Shared types (<see cref="SharedTypes" />, <see cref="string" /> included) are never cloned. An instance
@@ -79,6 +82,11 @@ internal static class DeepCopier
     )]
     private static void ReplaceReferenceFields(object clone, Dictionary<object, object> copies, Stack<object> pending)
     {
+        if (TryReplaceInlineArrayElements(clone, copies, pending))
+        {
+            return;
+        }
+
         for (Type? type = clone.GetType(); type is not null; type = type.BaseType)
         {
             foreach (FieldInfo field in type.GetFields(DeclaredInstanceFields))
@@ -91,6 +99,68 @@ internal static class DeepCopier
                 field.SetValue(clone, Replacement(value, field.FieldType, copies, pending));
             }
         }
+    }
+
+    // A boxed inline array: reflection lists only its element 0, so every element is replaced here, from the memory
+    // of the box. False leaves the box to the field walk.
+    private static bool TryReplaceInlineArrayElements(
+        object box,
+        Dictionary<object, object> copies,
+        Stack<object> pending
+    )
+    {
+        Type type = box.GetType();
+        if (!MemberComparison.IsInlineArray(type))
+        {
+            return false;
+        }
+
+        MemberComparison.InlineArrayShape shape = MemberComparison.InlineArrayShapeOf(type);
+        if (shape is not { ElementType: { } elementType } || !HoldsReferences(elementType))
+        {
+            return false;
+        }
+
+        ref byte data = ref Unsafe.As<StrongBox<byte>>(box).Value;
+        if (elementType.IsValueType)
+        {
+            return TryReplaceStructElements(elementType, ref data, shape.Length, copies, pending);
+        }
+
+        Span<object?> elements = MemoryMarshal.CreateSpan(ref Unsafe.As<byte, object?>(ref data), shape.Length);
+        for (int i = 0; i < elements.Length; i++)
+        {
+            if (elements[i] is { } element)
+            {
+                elements[i] = CopyOf(element, copies, pending);
+            }
+        }
+
+        return true;
+    }
+
+    // The length struct elements at data are read boxed, the references inside each box are replaced, and the boxes
+    // are written back (see StructElements). False, changing nothing, where this runtime cannot write them.
+    private static bool TryReplaceStructElements(
+        Type elementType,
+        ref byte data,
+        int length,
+        Dictionary<object, object> copies,
+        Stack<object> pending
+    )
+    {
+        if (!StructElements.CanWrite || StructElements.Read(elementType, ref data, length) is not { } elements)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < length; i++)
+        {
+            elements[i] = Replacement(elements[i]!, elementType, copies, pending);
+        }
+
+        StructElements.Write(elementType, ref data, elements);
+        return true;
     }
 
     // The clone already has the original's runtime type, rank and bounds; only its elements are replaced.

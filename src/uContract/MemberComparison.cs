@@ -1989,8 +1989,9 @@ internal static class MemberComparison
         }
     }
 
-    // What TryStartInlineArray needs of an inline-array type: its element type (null when reflection does not
-    // list its one element field; its elements are then not compared one by one) and its length.
+    // What TryStartInlineArray and DeepCopier need of an inline-array type: its element type (null when reflection
+    // does not list its one element field; its elements are then neither compared nor copied one by one) and its
+    // length.
     internal sealed record InlineArrayShape(Type? ElementType, int Length);
 
     private enum InPlace
