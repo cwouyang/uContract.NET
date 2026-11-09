@@ -23,10 +23,6 @@ internal static class MemberComparison
     private static readonly TypeCache<bool> NoDeclaredMemberCache = new();
     private static readonly TypeCache<InlineArrayShape> InlineArrayShapeCache = new();
     private static readonly TypeCache<bool> InlineArrayCache = new();
-    private static readonly TypeCache<int> ElementSizeCache = new();
-    private static readonly TypeCache<StructElementsReader> StructElementsReaderCache = new();
-    private static readonly Func<RuntimeTypeHandle, int>? SizeOf = BindSizeOf();
-    private static readonly BoxFunction? Box = BindBox();
     private static readonly TypeCache<ValueRoutes> ValueRoutesCache = new();
     private static readonly TypeCache<bool> UserEqualsCache = new();
     private static readonly TypeCache<ClassEquals> ClassEqualsCache = new();
@@ -659,7 +655,7 @@ internal static class MemberComparison
     }
 
     // The comparison met an inline array of struct elements, reached through path, that this runtime reads only with
-    // dynamic code (see ReadStructElements). firstWayOut is empty, or a way out that ends with "; ".
+    // dynamic code (see StructElements.Read). firstWayOut is empty, or a way out that ends with "; ".
     private static InvalidOperationException CannotReadStructElements(
         Type inlineArrayType,
         Type elementType,
@@ -1162,7 +1158,7 @@ internal static class MemberComparison
     // ValueType.Equals is not asked: it sees only element 0, and the .NET 10 runtime throws for it. An inline
     // array of n elements of E is laid out as n consecutive values of E, so the elements are read from the
     // memory of the box. Primitive and enum elements are compared in place (see TryCompareInPlace); reference
-    // and struct elements are walked, a struct element boxed (see ReadStructElements). Struct elements that this
+    // and struct elements are walked, a struct element boxed (see StructElements.Read). Struct elements that this
     // runtime cannot read leave the pair uncompared (context.Hidden is set), equal or not. False leaves the pair to
     // the rules for other value types: an inline array of pointers, or one whose element field reflection does not
     // list.
@@ -1210,83 +1206,12 @@ internal static class MemberComparison
     }
 
     // The length elements of elementType at data: a reference element as the reference it holds, a struct element
-    // boxed (see ReadStructElements). Null when this runtime cannot read struct elements.
+    // boxed (see StructElements.Read). Null when this runtime cannot read struct elements.
     private static object?[]? ReadElements(Type elementType, ref byte data, int length)
     {
         return elementType.IsValueType
-            ? ReadStructElements(elementType, ref data, length)
+            ? StructElements.Read(elementType, ref data, length)
             : MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref data), length).ToArray();
-    }
-
-    // A struct element is boxed from its memory. The .NET 9+ runtime offers RuntimeHelpers.SizeOf and
-    // RuntimeHelpers.Box, which need no dynamic code; this library targets .NET 8, so they are bound at run time (see
-    // BindSizeOf, BindBox). The .NET 8 runtime has neither, and its only way to read a struct element of a type known
-    // at run time is a generic method instantiated over it (see CreateStructElementsReader), which needs dynamic code.
-    // Null when neither way is available.
-    private static object?[]? ReadStructElements(Type elementType, ref byte data, int length)
-    {
-        if (SizeOf is not null && Box is not null)
-        {
-            RuntimeTypeHandle handle = elementType.TypeHandle;
-            int size = ElementSizeCache.GetOrAdd(elementType, static t => SizeOf(t.TypeHandle));
-            object?[] elements = new object?[length];
-            for (int i = 0; i < length; i++)
-            {
-                elements[i] = Box(ref Unsafe.Add(ref data, i * size), handle);
-            }
-
-            return elements;
-        }
-
-        return RuntimeFacts.IsDynamicCodeSupported
-            ? StructElementsReaderCache.GetOrAdd(elementType, CreateStructElementsReader)(ref data, length)
-            : null;
-    }
-
-    private static Func<RuntimeTypeHandle, int>? BindSizeOf()
-    {
-        return typeof(RuntimeHelpers)
-            .GetMethod("SizeOf", BindingFlags.Public | BindingFlags.Static, [typeof(RuntimeTypeHandle)])
-            ?.CreateDelegate<Func<RuntimeTypeHandle, int>>();
-    }
-
-    private static BoxFunction? BindBox()
-    {
-        return typeof(RuntimeHelpers)
-            .GetMethod(
-                "Box",
-                BindingFlags.Public | BindingFlags.Static,
-                [typeof(byte).MakeByRefType(), typeof(RuntimeTypeHandle)]
-            )
-            ?.CreateDelegate<BoxFunction>();
-    }
-
-    // Reached only where dynamic code is supported (see ReadStructElements): on the .NET 8 runtime under the JIT.
-    [UnconditionalSuppressMessage(
-        "AOT",
-        "IL3050",
-        Justification = "Called only when RuntimeFeature.IsDynamicCodeSupported is true (through RuntimeFacts), so the instantiation over the element type can be compiled at run time. Without dynamic code the elements are boxed by the .NET 9+ RuntimeHelpers.Box, or the comparison reports that it cannot compare them."
-    )]
-    private static StructElementsReader CreateStructElementsReader(Type elementType)
-    {
-        return typeof(MemberComparison)
-            .GetMethod(nameof(BoxElements), BindingFlags.NonPublic | BindingFlags.Static)!
-            .MakeGenericMethod(elementType)
-            .CreateDelegate<StructElementsReader>();
-    }
-
-    // The memory at data is read as length elements of TElement, which is in bounds: TElement is the element type of
-    // the inline array that holds them.
-    private static object?[] BoxElements<TElement>(ref byte data, int length)
-    {
-        ReadOnlySpan<TElement> span = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TElement>(ref data), length);
-        object?[] elements = new object?[length];
-        for (int i = 0; i < length; i++)
-        {
-            elements[i] = span[i];
-        }
-
-        return elements;
     }
 
     // True when type overrides Equals(object) by hand. A delegate bound to the virtual object.Equals on the box
@@ -2062,12 +1987,6 @@ internal static class MemberComparison
     // pointer elements, which C# cannot declare in an inline array, and an unknown element type).
     private sealed record InlineArrayShape(Type? ElementType, int Length, bool IsComparedByElements);
 
-    // RuntimeHelpers.Box(ref byte, RuntimeTypeHandle) of the .NET 9+ runtime (see ReadStructElements).
-    private delegate object? BoxFunction(ref byte data, RuntimeTypeHandle type);
-
-    // Reads length struct elements at data, boxed (see CreateStructElementsReader).
-    private delegate object?[] StructElementsReader(ref byte data, int length);
-
     private enum InPlace
     {
         No,
@@ -2158,7 +2077,7 @@ internal static class MemberComparison
         public bool OnlyByRefLikePropertiesVisible { get; init; }
 
         // Set when Type is an inline array whose elements, of this struct type, this runtime reads only with dynamic
-        // code, which is not supported (see ReadStructElements); its members are visible.
+        // code, which is not supported (see StructElements.Read); its members are visible.
         public Type? ElementsNeedDynamicCode { get; init; }
 
         public string PathBelowTopLevelMember { get; private set; } = "";
