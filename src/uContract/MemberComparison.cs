@@ -1166,20 +1166,47 @@ internal static class MemberComparison
     // True when the built-in Equals of a value of type, a struct without a hand-written Equals that is not an inline
     // array, would reach the built-in Equals of an inline array: the struct is a holder (see HolderState), or a
     // field declared object, an interface or ValueType holds, on this side, an inline array or a struct that needs
-    // this itself (see HoldsAtRunTime). Which fields to look at is a fact of the type (see CreateValueRoutes).
+    // this itself (see PushHeldValues). Which fields to look at is a fact of the type (see CreateValueRoutes).
+    // The held values still to look at wait in pending, not on the call stack, so a long chain of held values (a
+    // linked list of records) does not overflow it. looked holds the held values already looked at in this look,
+    // created on the first one, so a value that refers back to itself (through one box or object or more) is looked
+    // at once: a cycle alone needs no field comparison.
     private static bool NeedsFieldComparison(object value, Type type)
     {
+        Stack<object>? pending = null;
         HashSet<object>? looked = null;
-        return NeedsFieldComparison(value, type, ref looked);
+        if (NeedsFieldComparison(value, type, ref pending))
+        {
+            return true;
+        }
+
+        while (pending is { Count: > 0 })
+        {
+            if (NeedsFieldComparisonAsHeld(pending.Pop(), ref pending, ref looked))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    // looked holds the held values already looked at in this look, created on the first one, so a value that refers
-    // back to itself (through one box or object or more) is looked at once: a cycle alone needs no field comparison.
-    private static bool NeedsFieldComparison(object value, Type type, ref HashSet<object>? looked)
+    // True when value is a holder; otherwise the run-time values it holds are put in pending (see PushHeldValues).
+    private static bool NeedsFieldComparison(object value, Type type, ref Stack<object>? pending)
     {
         ValueRoutes routes = ValueRoutesCache.GetOrAdd(type, CreateValueRoutes);
-        return !routes.IsEmpty
-            && (HolderState(routes, value) == Holder.Yes || HoldsAtRunTime(routes, value, ref looked));
+        if (routes.IsEmpty)
+        {
+            return false;
+        }
+
+        if (HolderState(routes, value) == Holder.Yes)
+        {
+            return true;
+        }
+
+        PushHeldValues(routes, value, ref pending);
+        return false;
     }
 
     // A struct is a holder when a field declared (a Nullable<> of) an inline array, or a field declared (a
@@ -1229,36 +1256,32 @@ internal static class MemberComparison
         return state;
     }
 
-    // Looks at the run-time values of the fields declared object, an interface or ValueType, of value and of its
-    // nested structs that have no hand-written Equals.
-    private static bool HoldsAtRunTime(ValueRoutes routes, object value, ref HashSet<object>? looked)
+    // Puts in pending the run-time values of the fields declared object, an interface, ValueType or a class, of value
+    // and of its nested structs that have no hand-written Equals. Nested structs go no deeper than their declared
+    // types do.
+    private static void PushHeldValues(ValueRoutes routes, object value, ref Stack<object>? pending)
     {
         foreach (MemberAccessor field in routes.RunTime)
         {
-            if (field.GetValue(value) is { } held && NeedsFieldComparisonAsHeld(held, ref looked))
+            if (field.GetValue(value) is { } held)
             {
-                return true;
+                (pending ??= new Stack<object>()).Push(held);
             }
         }
 
         foreach (MemberAccessor field in routes.Nested)
         {
-            if (
-                field.GetValue(value) is { } nested
-                && !HasUserEquals(nested, nested.GetType())
-                && HoldsAtRunTime(ValueRoutesCache.GetOrAdd(nested.GetType(), CreateValueRoutes), nested, ref looked)
-            )
+            if (field.GetValue(value) is { } nested && !HasUserEquals(nested, nested.GetType()))
             {
-                return true;
+                PushHeldValues(ValueRoutesCache.GetOrAdd(nested.GetType(), CreateValueRoutes), nested, ref pending);
             }
         }
-
-        return false;
     }
 
     // A held value is the same object on every read (a box read from an object field is not copied), so it is
-    // recorded in looked before it is looked into, and a value already recorded is not looked into again.
-    private static bool NeedsFieldComparisonAsHeld(object held, ref HashSet<object>? looked)
+    // recorded in looked before it is looked into, and a value already recorded is not looked into again. The values
+    // it holds in turn are put in pending.
+    private static bool NeedsFieldComparisonAsHeld(object held, ref Stack<object>? pending, ref HashSet<object>? looked)
     {
         Type type = held.GetType();
         if (type.IsValueType && (type.IsPrimitive || type.IsEnum))
@@ -1284,24 +1307,26 @@ internal static class MemberComparison
             return false;
         }
 
-        return classEquals == ClassEquals.Tuple
-            ? TupleItemsNeedFieldComparison((ITuple)held, ref looked)
-            : NeedsFieldComparison(held, type, ref looked);
+        if (classEquals == ClassEquals.Tuple)
+        {
+            PushTupleItems((ITuple)held, ref pending);
+            return false;
+        }
+
+        return NeedsFieldComparison(held, type, ref pending);
     }
 
     // The Equals of a System.Tuple<…> compares its items, which a class derived from it does not show as fields of
     // its own (they are private fields of the framework base class), so they are read through ITuple.
-    private static bool TupleItemsNeedFieldComparison(ITuple tuple, ref HashSet<object>? looked)
+    private static void PushTupleItems(ITuple tuple, ref Stack<object>? pending)
     {
         for (int i = 0; i < tuple.Length; i++)
         {
-            if (tuple[i] is { } item && NeedsFieldComparisonAsHeld(item, ref looked))
+            if (tuple[i] is { } item)
             {
-                return true;
+                (pending ??= new Stack<object>()).Push(item);
             }
         }
-
-        return false;
     }
 
     // Which Equals the class of box dispatches to, when it compares values but is not written by hand: a record

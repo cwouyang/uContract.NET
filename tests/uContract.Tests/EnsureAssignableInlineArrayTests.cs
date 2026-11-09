@@ -12,6 +12,9 @@ public class EnsureAssignableInlineArrayTests
 
     private const int Changed = 7;
 
+    // Long enough that a look using the stack for each node overflows it (measured at about 2400 nodes).
+    private const int LongChainLength = 3000;
+
     // ---- Primitive and enum elements ----
 
     [Fact]
@@ -873,6 +876,33 @@ public class EnsureAssignableInlineArrayTests
         Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
+    // ---- A deep graph without an inline array ----
+
+    // Looking at run-time values does not use the stack for each level: a struct holding a long chain of records keeps
+    // today's result, the chains' Equals decides.
+    [Fact]
+    public void EnsureAssignable_WhenAStructHoldsDistinctLongRecordChainsWithEqualValues_DoesNotReportIt()
+    {
+        ChainOwnerHolding actual = new() { Value = new ChainOwner { Head = Chain(LongChainLength) } };
+        ChainOwnerHolding expected = new() { Value = new ChainOwner { Head = Chain(LongChainLength) } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAStructHoldsOneSharedLongRecordChainOnBothSides_DoesNotReportIt()
+    {
+        ChainNode head = Chain(LongChainLength);
+        ChainOwnerHolding actual = new() { Value = new ChainOwner { Head = head } };
+        ChainOwnerHolding expected = new() { Value = new ChainOwner { Head = head } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // ---- An exception from a hand-written Equals below a struct ----
 
     // No NotSupportedException is caught: one thrown by the hand-written Equals of a class a struct holds
@@ -1230,6 +1260,29 @@ public class EnsureAssignableInlineArrayTests
         first.Refer(second);
         second.Refer(first);
         return first;
+    }
+
+    private static ChainNode Chain(int length)
+    {
+        ChainNode head = new(0, null);
+        for (int value = 1; value < length; value++)
+        {
+            head = new ChainNode(value, head);
+        }
+
+        return head;
+    }
+
+    private sealed record ChainNode(int Value, ChainNode? Next);
+
+    private struct ChainOwner
+    {
+        public ChainNode? Head;
+    }
+
+    private sealed class ChainOwnerHolding
+    {
+        public ChainOwner Value;
     }
 
     private sealed record BufRecord(IntBuf3 Counts);
