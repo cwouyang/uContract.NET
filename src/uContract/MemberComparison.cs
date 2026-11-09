@@ -1141,23 +1141,29 @@ internal static class MemberComparison
         }
 
         equal = false;
-        if (!shape.IsComparedByElements)
+        if (shape is not { IsComparedByElements: true, ElementType: { } elementType })
         {
             return false;
         }
 
         ref byte actualData = ref Unsafe.As<StrongBox<byte>>(actual).Value;
         ref byte expectedData = ref Unsafe.As<StrongBox<byte>>(expected).Value;
-        if (TryCompareInPlace(shape.ElementType!, ref actualData, ref expectedData, shape.Length, out equal))
+        if (TryCompareInPlace(elementType, ref actualData, ref expectedData, shape.Length, out equal))
         {
             return true;
         }
 
         elements = new CollectionWalk(
-            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref actualData), shape.Length).ToArray(),
-            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref expectedData), shape.Length).ToArray()
+            ReadElements(ref actualData, shape.Length),
+            ReadElements(ref expectedData, shape.Length)
         );
         return true;
+    }
+
+    // The length elements of an inline array of reference elements at data, each read as the reference it holds.
+    private static object?[] ReadElements(ref byte data, int length)
+    {
+        return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref data), length).ToArray();
     }
 
     // True when type overrides Equals(object) by hand. A delegate bound to the virtual object.Equals on the box
@@ -1530,14 +1536,16 @@ internal static class MemberComparison
     {
         MemberAccessor[] fields = [.. GetOrCacheMetadata(type).Members.Where(member => member.IsField)];
         Type? elementType = fields.Length == 1 ? fields[0].MemberType : null;
+        bool isComparedInPlaceOrWalked =
+            elementType is not null
+            && (
+                InPlaceOf(elementType) != InPlace.No
+                || !(elementType.IsValueType || elementType.IsPointer || elementType.IsFunctionPointer)
+            );
         return new InlineArrayShape(
             elementType,
             type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length,
-            elementType is not null
-                && (
-                    InPlaceOf(elementType) != InPlace.No
-                    || !(elementType.IsValueType || elementType.IsPointer || elementType.IsFunctionPointer)
-                )
+            isComparedInPlaceOrWalked
         );
     }
 
