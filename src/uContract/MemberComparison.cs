@@ -1169,8 +1169,17 @@ internal static class MemberComparison
     // this itself (see HoldsAtRunTime). Which fields to look at is a fact of the type (see CreateValueRoutes).
     private static bool NeedsFieldComparison(object value, Type type)
     {
+        HashSet<object>? looked = null;
+        return NeedsFieldComparison(value, type, ref looked);
+    }
+
+    // looked holds the held values already looked at in this look, created on the first one, so a value that refers
+    // back to itself (through one box or object or more) is looked at once: a cycle alone needs no field comparison.
+    private static bool NeedsFieldComparison(object value, Type type, ref HashSet<object>? looked)
+    {
         ValueRoutes routes = ValueRoutesCache.GetOrAdd(type, CreateValueRoutes);
-        return !routes.IsEmpty && (HolderState(routes, value) == Holder.Yes || HoldsAtRunTime(routes, value));
+        return !routes.IsEmpty
+            && (HolderState(routes, value) == Holder.Yes || HoldsAtRunTime(routes, value, ref looked));
     }
 
     // A struct is a holder when a field declared (a Nullable<> of) an inline array, or a field declared (a
@@ -1222,11 +1231,11 @@ internal static class MemberComparison
 
     // Looks at the run-time values of the fields declared object, an interface or ValueType, of value and of its
     // nested structs that have no hand-written Equals.
-    private static bool HoldsAtRunTime(ValueRoutes routes, object value)
+    private static bool HoldsAtRunTime(ValueRoutes routes, object value, ref HashSet<object>? looked)
     {
         foreach (MemberAccessor field in routes.RunTime)
         {
-            if (field.GetValue(value) is { } held && NeedsFieldComparisonAsHeld(held))
+            if (field.GetValue(value) is { } held && NeedsFieldComparisonAsHeld(held, ref looked))
             {
                 return true;
             }
@@ -1237,7 +1246,7 @@ internal static class MemberComparison
             if (
                 field.GetValue(value) is { } nested
                 && !HasUserEquals(nested, nested.GetType())
-                && HoldsAtRunTime(ValueRoutesCache.GetOrAdd(nested.GetType(), CreateValueRoutes), nested)
+                && HoldsAtRunTime(ValueRoutesCache.GetOrAdd(nested.GetType(), CreateValueRoutes), nested, ref looked)
             )
             {
                 return true;
@@ -1247,21 +1256,29 @@ internal static class MemberComparison
         return false;
     }
 
-    private static bool NeedsFieldComparisonAsHeld(object held)
+    // A held value is the same object on every read (a box read from an object field is not copied), so it is
+    // recorded in looked before it is looked into, and a value already recorded is not looked into again.
+    private static bool NeedsFieldComparisonAsHeld(object held, ref HashSet<object>? looked)
     {
         Type type = held.GetType();
-        if (!type.IsValueType)
-        {
-            return ComparesValues(held, type) && NeedsFieldComparison(held, type);
-        }
-
-        if (type.IsPrimitive || type.IsEnum)
+        if (type.IsValueType && (type.IsPrimitive || type.IsEnum))
         {
             return false;
         }
 
-        return type.IsDefined(typeof(InlineArrayAttribute), inherit: false)
-            || (!HasUserEquals(held, type) && NeedsFieldComparison(held, type));
+        if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        {
+            return true;
+        }
+
+        bool followed = type.IsValueType ? !HasUserEquals(held, type) : ComparesValues(held, type);
+        if (!followed)
+        {
+            return false;
+        }
+
+        looked ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
+        return looked.Add(held) && NeedsFieldComparison(held, type, ref looked);
     }
 
     // True when the Equals the class of box dispatches to compares values but is not written by hand: a record

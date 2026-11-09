@@ -764,6 +764,50 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // ---- A value that refers back to itself ----
+
+    // Looking at run-time values stops at a value already looked at: a box whose object field refers back to it is
+    // compared as without the inline-array rules.
+    [Fact]
+    public void EnsureAssignable_WhenOneSideIsABoxThatRefersToItself_ReportsTheMember()
+    {
+        Boxed actual = new() { Value = SelfReferring(tag: 1) };
+        Boxed expected = new() { Value = new Referring { Tag = 1 } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    // The tags differ, so the built-in Equals decides "unequal" before it reaches the cycles.
+    [Fact]
+    public void EnsureAssignable_WhenBothSidesAreBoxesThatReferToThemselves_ReportsTheMember()
+    {
+        Boxed actual = new() { Value = SelfReferring(tag: 1) };
+        Boxed expected = new() { Value = SelfReferring(tag: 2) };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOneSideIsTwoBoxesThatReferToEachOther_ReportsTheMember()
+    {
+        Boxed actual = new() { Value = ReferringToEachOther(tag: 1) };
+        Boxed expected = new() { Value = new Referring { Tag = 1 } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
     // ---- An exception from a hand-written Equals below a struct ----
 
     // No NotSupportedException is caught: one thrown by the hand-written Equals of a class a struct holds
@@ -1091,6 +1135,36 @@ public class EnsureAssignableInlineArrayTests
     private sealed class TolerantOwnerHolding
     {
         public TolerantOwner Value;
+    }
+
+    // Setting the field through the interface sets it on the box itself, not on a copy.
+    private interface IReferring
+    {
+        void Refer(object? target);
+    }
+
+    private struct Referring : IReferring
+    {
+        public int Tag;
+        public object? Target;
+
+        public void Refer(object? target) => Target = target;
+    }
+
+    private static object SelfReferring(int tag)
+    {
+        IReferring box = new Referring { Tag = tag };
+        box.Refer(box);
+        return box;
+    }
+
+    private static object ReferringToEachOther(int tag)
+    {
+        IReferring first = new Referring { Tag = tag };
+        IReferring second = new Referring { Tag = tag };
+        first.Refer(second);
+        second.Refer(first);
+        return first;
     }
 
     private sealed record BufRecord(IntBuf3 Counts);
