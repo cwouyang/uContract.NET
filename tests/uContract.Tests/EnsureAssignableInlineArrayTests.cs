@@ -1467,6 +1467,186 @@ public class EnsureAssignableInlineArrayTests
         Assert.Equal(Violation + "  - Item", exception.Description);
     }
 
+    // ---- At the top level ----
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual()
+    {
+        IntBuf3 actual = WithLaterElementChanged();
+        IntBuf3 expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<IntBuf3>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInlineArrayAndAPatternNamesItsElementField_StillReportsTheTwoAsNotEqual()
+    {
+        IntBuf3 actual = WithLaterElementChanged();
+        IntBuf3 expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected, "_element")
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<IntBuf3>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInlineArrayAndEveryElementIsEqual_Passes()
+    {
+        IntBuf3 actual = WithLaterElementChanged();
+        IntBuf3 expected = WithLaterElementChanged();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedInlineArraysHoldEqualElements_Passes()
+    {
+        object actual = WithLaterElementChanged();
+        object expected = WithLaterElementChanged();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndABoxedInlineArrayMeetsABoxedInt_ReportsDifferentRuntimeTypes()
+    {
+        object actual = WithLaterElementChanged();
+        object expected = Changed;
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            $"actual and expected are of different runtime types: actual is {typeof(IntBuf3)}, expected is "
+                + $"{typeof(int)}, and T is {typeof(object)}. No member was compared, so assignable patterns do not apply.",
+            exception.Description
+        );
+    }
+
+    // An inline array that is also a sequence is compared element by element as any other inline array, not by
+    // the rules for a value-type sequence.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAnEnumerableInlineArrayHoldsDistinctListsWithEqualContents_Passes()
+    {
+        object actual = WithEnumerableLists([1, 2], [3]);
+        object expected = WithEnumerableLists([1, 2], [3]);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndALaterListOfAnEnumerableInlineArrayChanged_ReportsTheTwoAsNotEqual()
+    {
+        object actual = WithEnumerableLists([1, 2], [3]);
+        object expected = WithEnumerableLists([1, 2], [Changed]);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<EnumerableListBuf2>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndAStructFieldOfTypeObjectHoldsAnInlineArrayWhoseLaterElementChanged_ReportsTheField()
+    {
+        object actual = new BoxHolder { Value = WithLaterElementChanged() };
+        object expected = new BoxHolder { Value = new IntBuf3() };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value" + ListedFrom<BoxHolder>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndOnlyALaterElementOfABoxedHolderStructChanged_ReportsTheField()
+    {
+        object actual = new Holder { Counts = WithLaterElementChanged() };
+        object expected = new Holder();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Counts" + ListedFrom<Holder>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTwoBoxedHolderStructsAreEqual_Passes()
+    {
+        object actual = new Holder { Counts = WithLaterElementChanged(), Total = Changed };
+        object expected = new Holder { Counts = WithLaterElementChanged(), Total = Changed };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndABoxedHolderStructsHandWrittenEqualsSaysEqual_Passes()
+    {
+        object actual = new TolerantHolder { Counts = WithLaterElementChanged() };
+        object expected = new TolerantHolder();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsANullableInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual()
+    {
+        IntBuf3? actual = WithLaterElementChanged();
+        IntBuf3? expected = new IntBuf3();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(
+            $"actual and expected are not equal. {typeof(IntBuf3?)} is compared as a whole, so assignable patterns "
+                + "do not apply.",
+            exception.Description
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsANullableInlineArrayAndEveryElementIsEqual_Passes()
+    {
+        IntBuf3? actual = WithLaterElementChanged();
+        IntBuf3? expected = WithLaterElementChanged();
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    private static string ListedFrom<TRuntime>()
+    {
+        return $"\nMembers were listed from the runtime type {typeof(TRuntime)}, not from T ({typeof(object)}).";
+    }
+
+    private static string ComparedAsAnInlineArray<TInlineArray>()
+    {
+        return $"actual and expected are not equal. {typeof(TInlineArray)} is an inline array, compared as a whole "
+            + "element by element, so assignable patterns do not apply.";
+    }
+
     // ---- A C# fixed-size buffer is not an inline array ----
 
     // Pins today's behavior: ValueType.Equals and reflection see only the first element of a fixed-size buffer.
@@ -1546,6 +1726,14 @@ public class EnsureAssignableInlineArrayTests
         return other is not null
             && other.GetType() == self.GetType()
             && Equals(key.GetValue(self), key.GetValue(other));
+    }
+
+    private static EnumerableListBuf2 WithEnumerableLists(List<int> first, List<int> second)
+    {
+        EnumerableListBuf2 buffer = new();
+        buffer[0] = first;
+        buffer[1] = second;
+        return buffer;
     }
 
     private static ListBuf2 WithLists(List<int> first, List<int> second)
@@ -2144,6 +2332,16 @@ public class EnsureAssignableInlineArrayTests
     private struct ListBuf2
     {
         private List<int>? _element;
+    }
+
+    [InlineArray(2)]
+    private struct EnumerableListBuf2 : IEnumerable<List<int>?>
+    {
+        private List<int>? _element;
+
+        public IEnumerator<List<int>?> GetEnumerator() => new List<List<int>?> { this[0], this[1] }.GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private struct ListHolder

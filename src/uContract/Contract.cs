@@ -1639,8 +1639,9 @@ public static class Contract
     }
 
     // Returns true when the runtime type of the two values settled the comparison: a value that is compared as a
-    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array) or by reference
-    // (a shared type) is compared so whatever T is, and the patterns are not read. Two values of different
+    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array, an inline array,
+    // element by element as below the top level) or by reference (a shared type) is compared so whatever T is,
+    // and the patterns are not read. The built-in Equals of an inline array is never asked. Two values of different
     // runtime types where either is such a value are a violation, except two sequences, which are left to
     // _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the address and
     // the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
@@ -1678,7 +1679,11 @@ public static class Contract
         }
 
         // A boxed pointer is shared, but compared by address, as a member of it is (see MemberComparison.Start).
-        if (_IsComparedAsWhole(actualType) || actual is System.Reflection.Pointer)
+        if (
+            _IsComparedAsWhole(actualType)
+            || actual is System.Reflection.Pointer
+            || actualType.IsDefined(typeof(InlineArrayAttribute), inherit: false)
+        )
         {
             _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), actual, expected);
             return true;
@@ -1798,7 +1803,9 @@ public static class Contract
 
     private static bool _IsDecidedByRuntimeType(Type runtimeType)
     {
-        return _IsComparedAsWhole(runtimeType) || SharedTypes.IsShared(runtimeType);
+        return _IsComparedAsWhole(runtimeType)
+            || SharedTypes.IsShared(runtimeType)
+            || runtimeType.IsDefined(typeof(InlineArrayAttribute), inherit: false);
     }
 
     // The top level compared member by member, by the members of the type _TopLevelType picks.
@@ -1967,6 +1974,14 @@ public static class Contract
             throw MemberComparison.CannotCompareBelowWhole(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
         }
 
+        if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        {
+            throw new PostconditionViolationException(
+                $"actual and expected are not equal. {type} is an inline array, compared as a whole element by "
+                    + "element, so assignable patterns do not apply."
+            );
+        }
+
         throw new PostconditionViolationException(
             $"actual and expected are not equal. {type} is compared as a whole, so assignable patterns do not apply."
         );
@@ -2097,10 +2112,17 @@ public static class Contract
         List<MemberAccessor> members = [];
 
         // A boxed value of a value type other than T is compared as a member of that type is: its Equals
-        // decides first, and only when it says "unequal" are its fields compared. A primitive, an enum and an
-        // inline array are decided by Equals alone, and a value without a field is then unequal.
+        // decides first, and only when it says "unequal" are its fields compared; a struct whose built-in Equals
+        // would reach an inline array's is compared by its fields without it (see
+        // MemberComparison.IsComparedByFieldsWithoutEquals). A primitive and an enum are decided by Equals alone,
+        // and a value without a field is then unequal. (An inline array never comes here: see
+        // _CompareByRuntimeType.)
         bool asAMember = comparedType.IsValueType && comparedType != declaredType;
-        if (!asAMember || !Equals(actual, expected))
+        if (
+            !asAMember
+            || MemberComparison.IsComparedByFieldsWithoutEquals(actual, expected, comparedType)
+            || !Equals(actual, expected)
+        )
         {
             if (asAMember && _IsDecidedByEqualsAlone(comparedType))
             {

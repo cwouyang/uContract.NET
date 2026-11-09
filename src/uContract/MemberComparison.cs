@@ -1110,6 +1110,18 @@ internal static class MemberComparison
         return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
     }
 
+    // True when two values of type, a struct that is not an inline array, are compared by their fields without
+    // asking its Equals: it has no hand-written Equals, and its built-in Equals would reach an inline array's on
+    // either side (see NeedsFieldComparison).
+    internal static bool IsComparedByFieldsWithoutEquals(object actual, object expected, Type type)
+    {
+        return !type.IsDefined(typeof(InlineArrayAttribute), inherit: false)
+            && !type.IsPrimitive
+            && !type.IsEnum
+            && !HasUserEquals(actual, type)
+            && (NeedsFieldComparison(actual, type) || NeedsFieldComparison(expected, type));
+    }
+
     // Two values of one inline-array type: a hand-written Equals that says "equal" decides; otherwise the n
     // elements are compared pairwise, in index order, by the rules for two elements of an array. The built-in
     // ValueType.Equals is not asked: it sees only element 0, and the .NET 10 runtime throws for it. An inline
