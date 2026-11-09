@@ -1642,11 +1642,12 @@ public static class Contract
     // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array, an inline array
     // element by element as below the top level) or by reference (a shared type) is compared so whatever T is, and
     // the patterns are not read; the built-in Equals of an inline array is not asked. Only an inline array whose
-    // element field reflection does not list keeps the member route (see
-    // MemberComparison.IsInlineArrayComparedByElements). Two values of different
-    // runtime types where either is such a value are a violation, except two sequences, which are left to
-    // _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the address and
-    // the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
+    // element field reflection does not list (Native AOT), or whose elements are pointers or function pointers (which
+    // C# cannot declare; IL can), keeps the member route (see MemberComparison.IsInlineArrayComparedByElements). Two
+    // values of different runtime types where either is such a value are a violation, except two sequences, which are
+    // left to _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the
+    // address and the pointer type, as before; under another T a boxed pointer is compared by address only, as a member
+    // is.
     private static bool _CompareByRuntimeType(Type declaredType, object actual, object expected)
     {
         if (declaredType == typeof(System.Reflection.Pointer))
@@ -2068,8 +2069,8 @@ public static class Contract
     }
 
     // A primitive, an enum and an inline array whose elements are not compared one by one (its element field is not
-    // listed by reflection; see _CompareByRuntimeType for the others), as a value of a type other than T, are decided
-    // by Equals alone.
+    // listed by reflection, or its elements are pointers or function pointers, which only IL can declare; see
+    // _CompareByRuntimeType for the others), as a value of a type other than T, are decided by Equals alone.
     private static bool _IsDecidedByEqualsAlone(Type type)
     {
         return type.IsPrimitive || type.IsEnum || MemberComparison.IsInlineArray(type);
@@ -2119,7 +2120,8 @@ public static class Contract
         // decides first, and only when it says "unequal" are its fields compared; a struct whose built-in Equals
         // would reach an inline array's is compared by its fields without it (see
         // MemberComparison.IsComparedByFieldsWithoutEquals). A primitive, an enum and an inline array whose element
-        // field reflection does not list are decided by Equals alone, and a value without a field is then unequal.
+        // field reflection does not list, or whose elements are pointers or function pointers (IL only), are decided
+        // by Equals alone, and a value without a field is then unequal.
         // (Any other inline array never comes here: see _CompareByRuntimeType.)
         bool asAMember = comparedType.IsValueType && comparedType != declaredType;
         if (
