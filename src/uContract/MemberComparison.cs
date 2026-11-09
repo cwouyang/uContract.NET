@@ -20,6 +20,7 @@ internal static class MemberComparison
     private static readonly TypeCache<TypeMetadata> MetadataCache = new();
     private static readonly TypeCache<SequenceRule> SequenceRuleCache = new();
     private static readonly TypeCache<bool> NoDeclaredMemberCache = new();
+    private static readonly TypeCache<InlineArrayShape> InlineArrayShapeCache = new();
 
     // The public key tokens the assemblies of the .NET runtime and libraries are signed with: every token that
     // occurs in the .NET 8 shared frameworks (Microsoft.NETCore.App, Microsoft.AspNetCore.App and
@@ -1005,9 +1006,18 @@ internal static class MemberComparison
 
     // A value type decides equality first; when it says "unequal", its elements (for ArraySegment<T> or
     // ImmutableArray<T>) or its fields are compared, because ValueType.Equals calls each field's own
-    // Equals, which for most classes (List<T>, arrays) compares by reference.
+    // Equals, which for most classes (List<T>, arrays) compares by reference. An inline array is compared by
+    // its elements instead (see TryStartInlineArray).
     private static Walk? StartValues(object actual, object expected, Type type, out bool equal)
     {
+        if (
+            type.IsDefined(typeof(InlineArrayAttribute), inherit: false)
+            && TryStartInlineArray(actual, expected, type, out Walk? elements, out equal)
+        )
+        {
+            return elements;
+        }
+
         equal = Equals(actual, expected);
         if (equal || type.IsPrimitive || type.IsEnum)
         {
@@ -1029,7 +1039,8 @@ internal static class MemberComparison
             return new CollectionWalk(actualItems, expectedItems);
         }
 
-        // Reflection shows only the first element of an inline array, so it has no fully visible fields.
+        // Reflection shows only the first element of an inline array, so it has no fully visible fields. Only an
+        // inline array that TryStartInlineArray leaves to these rules reaches here.
         if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
         {
             return null;
@@ -1037,6 +1048,75 @@ internal static class MemberComparison
 
         // A value type without visible fields has only its Equals to decide, and it said "unequal".
         return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
+    }
+
+    // Two values of one inline-array type: a hand-written Equals that says "equal" decides; otherwise the n
+    // elements are compared pairwise, in index order, by the rules for two elements of an array. The built-in
+    // ValueType.Equals is not asked: it sees only element 0, and the .NET 10 runtime throws for it. An inline
+    // array of n elements of E is laid out as n consecutive values of E, so the elements are read from the
+    // memory of the box. Primitive and enum elements are compared in place (see TryCompareInPlace); reference
+    // elements are walked. False leaves the pair to the rules for other value types: an inline array of
+    // another element type, or one whose element field reflection does not list.
+    private static bool TryStartInlineArray(
+        object actual,
+        object expected,
+        Type type,
+        out Walk? elements,
+        out bool equal
+    )
+    {
+        elements = null;
+        InlineArrayShape shape = InlineArrayShapeCache.GetOrAdd(type, CreateInlineArrayShape);
+        if (shape.HasHandWrittenEquals && Equals(actual, expected))
+        {
+            equal = true;
+            return true;
+        }
+
+        equal = false;
+        if (shape.ElementType is not { } elementType)
+        {
+            return false;
+        }
+
+        ref byte actualData = ref Unsafe.As<StrongBox<byte>>(actual).Value;
+        ref byte expectedData = ref Unsafe.As<StrongBox<byte>>(expected).Value;
+        if (TryCompareInPlace(elementType, ref actualData, ref expectedData, shape.Length, out equal))
+        {
+            return true;
+        }
+
+        if (elementType.IsValueType || elementType.IsPointer || elementType.IsFunctionPointer)
+        {
+            return false;
+        }
+
+        elements = new CollectionWalk(
+            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref actualData), shape.Length).ToArray(),
+            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref expectedData), shape.Length).ToArray()
+        );
+        return true;
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT an element field that the trimmer hides leaves the inline array to the rules for other value types, and a hidden Equals override is not asked first."
+    )]
+    private static InlineArrayShape CreateInlineArrayShape(Type type)
+    {
+        // An inline array declares exactly one instance field, whose type is the element type.
+        FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        MethodInfo? handWrittenEquals = type.GetMethod(
+            nameof(Equals),
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly,
+            [typeof(object)]
+        );
+        return new InlineArrayShape(
+            fields.Length == 1 ? fields[0].FieldType : null,
+            type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length,
+            handWrittenEquals is not null
+        );
     }
 
     // True for elements of a type that is compared in place: bool, char, an integer type (nint and nuint
@@ -1419,6 +1499,10 @@ internal static class MemberComparison
     }
 
     // OwnMembers is cached for every caller, so it is read-only.
+    // What TryStartInlineArray needs of an inline-array type: its element type (null when reflection does not
+    // list its one element field), its length, and whether the type declares its own Equals(object).
+    private sealed record InlineArrayShape(Type? ElementType, int Length, bool HasHandWrittenEquals);
+
     internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers)
     {
         // A compiler-generated sequence of yours (a yield iterator, a collection expression): compared by its

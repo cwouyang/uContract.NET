@@ -630,8 +630,8 @@ public class EnsureAssignableRuntimeTypeTests
         Assert.Equal(DecidedByEquals<Triple, object>(), exception.Description);
     }
 
-    // As for a member (see EnsureAssignable_WhenInlineArrayFirstElementIsEqual_DoesNotSeeLaterElements):
-    // ValueType.Equals sees only element 0 of an inline array, and decides it alone.
+    // At the top level ValueType.Equals still decides an inline array alone, and it sees only element 0
+    // (below the top level the elements are compared; see EnsureAssignableInlineArrayTests).
     [Fact]
     public void EnsureAssignable_WhenTIsObjectAndOnlyTheSecondElementOfABoxedInlineArrayChanged_DoesNotSeeIt()
     {
