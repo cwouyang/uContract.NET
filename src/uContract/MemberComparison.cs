@@ -1330,7 +1330,8 @@ internal static class MemberComparison
     }
 
     // Which Equals the class of box dispatches to, when it compares values but is not written by hand: a record
-    // class's [CompilerGenerated] Equals, or the Equals of a System.Tuple<…>. A fact of the type, cached.
+    // class's [CompilerGenerated] Equals, the Equals of an anonymous type (the type is [CompilerGenerated], its Equals
+    // is not marked), or the Equals of a System.Tuple<…>. A fact of the type, cached.
     private static ClassEquals ClassEqualsOf(object box, Type type)
     {
         return ClassEqualsCache.GetOrAdd(
@@ -1349,7 +1350,9 @@ internal static class MemberComparison
                     return ClassEquals.Tuple;
                 }
 
-                return equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                return
+                    equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                    || declaring.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
                     ? ClassEquals.CompilerGenerated
                     : ClassEquals.NotFollowed;
             },

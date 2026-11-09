@@ -767,6 +767,31 @@ public class EnsureAssignableInlineArrayTests
         Assert.Null(exception);
     }
 
+    // An anonymous type's Equals compares its values, like a record class's.
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAnInlineArrayInAnAnonymousObjectInAStructsObjectFieldChanged_ReportsTheMember()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = new { Counts = WithLaterElementChanged() } } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = new { Counts = new IntBuf3() } } };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnAnonymousObjectInAStructsObjectFieldHoldsInlineArraysWithEqualElements_DoesNotReportIt()
+    {
+        BoxHolding actual = new() { Value = new BoxHolder { Value = new { Counts = WithLaterElementChanged() } } };
+        BoxHolding expected = new() { Value = new BoxHolder { Value = new { Counts = WithLaterElementChanged() } } };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     // A class derived from System.Tuple<…> compares values with the base class's Equals; its items are read through
     // the tuple, not through fields the derived class shows.
     [Fact]
