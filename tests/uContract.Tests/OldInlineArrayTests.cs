@@ -181,16 +181,132 @@ public class OldInlineArrayTests
         );
     }
 
-    // The .NET 9+ runtime reads a struct element without dynamic code.
+    // The .NET 9+ runtime reads a struct element without dynamic code but cannot write one back, so Old leaves the
+    // references inside later struct elements shared with the original, and the comparison of that copy refuses.
     [RuntimeHelpersBoxFact(exists: true)]
-    public void EnsureAssignable_WhenOldCopiedUnchangedStructElementsWithoutDynamicCode_DoesNotReportThem()
+    public void EnsureAssignable_WhenOldCouldNotCopyUnchangedStructElementsWithoutDynamicCode_CannotCompareThem()
     {
         Bagged bagged = new() { Bags = WithBags() };
         Bagged old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bagged));
 
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bagged, old));
 
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("Bagged.Bags", "Bags"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldCouldNotCopyStructElementsWithoutDynamicCodeAndALaterListChanged_CannotCompareThem()
+    {
+        Bagged bagged = new() { Bags = WithBags() };
+        Bagged old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bagged));
+        bagged.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bagged, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("Bagged.Bags", "Bags"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldCouldNotCopyStructElementsOfAnInlineArrayInAListWithoutDynamicCode_CannotCompareThem()
+    {
+        BaggedEntries entries = new() { Entries = [WithBags()] };
+        BaggedEntries old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => entries));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(entries, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("BaggedEntries.Entries[]", "Entries"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldCouldNotCopyStructElementsOfAnInlineArrayHeldAsAnObjectWithoutDynamicCode_CannotCompareThem()
+    {
+        Boxed boxed = new() { Value = WithBags() };
+        Boxed old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => boxed));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(boxed, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("Boxed.Value", "Value"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsObjectAndOldCouldNotCopyTheStructElementsOfABoxedInlineArray_CannotCompareThem()
+    {
+        object bags = WithBags();
+        object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bags));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bags, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(BagBuf3)} (reached through 'BagBuf3'): it is an inline array of "
+                + $"{typeof(Bag)}, a struct, whose elements Contract.Old could not copy: this runtime writes struct "
+                + "elements only with dynamic code, and dynamic code is not supported here (Native AOT), so the copy "
+                + "shares what they refer to with the original. Ways out: set DBC_POST=off (disables all "
+                + "postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    // Struct elements that hold no reference are copied whole with the inline array, so nothing is left uncopied.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldCopiedUnchangedStructElementsWithoutReferencesWithoutDynamicCode_DoesNotReportThem()
+    {
+        Plotted plotted = new() { Points = WithPoints() };
+        Plotted old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => plotted));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(plotted, old));
+
         Assert.Null(exception);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenALaterStructElementWithoutReferencesChangedAfterOldWithoutDynamicCode_ReportsTheField()
+    {
+        Plotted plotted = new() { Points = WithPoints() };
+        Plotted old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => plotted));
+        plotted.Points[2] = new Point { X = Added };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(plotted, old));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(Violation + "  - Points", violation.Description);
+    }
+
+    // Only an Old copy records what it could not copy: two values built apart are compared as usual.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenExpectedIsNotAnOldCopyAndALaterStructElementDiffersWithoutDynamicCode_ReportsTheField()
+    {
+        Bagged actual = new() { Bags = WithBags() };
+        Bagged expected = new() { Bags = WithBags() };
+        expected.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(Violation + "  - Bags", violation.Description);
+    }
+
+    private static string OldCouldNotCopy<TInlineArray, TElement>(string path, string member)
+    {
+        return $"EnsureAssignable cannot compare {typeof(TInlineArray)} (reached through '{path}'): it is an inline "
+            + $"array of {typeof(TElement)}, a struct, whose elements Contract.Old could not copy: this runtime writes "
+            + "struct elements only with dynamic code, and dynamic code is not supported here (Native AOT), so the "
+            + "copy shares what they refer to with the original. Ways out: "
+            + $"list '{member}' as assignable (patterns are regular expressions matched against top-level member "
+            + "names, so use the plain member name); or set DBC_POST=off (disables all postcondition checks).";
+    }
+
+    private static PointBuf3 WithPoints()
+    {
+        PointBuf3 buffer = new();
+        buffer[0] = new Point { X = 1, Y = 1 };
+        buffer[1] = new Point { X = 2, Y = 2 };
+        buffer[2] = new Point { X = 3, Y = 3 };
+        return buffer;
     }
 
     private static BagBuf3 WithBags()
@@ -273,5 +389,27 @@ public class OldInlineArrayTests
     private sealed class Boxed
     {
         public object? Value;
+    }
+
+    private sealed class BaggedEntries
+    {
+        public List<BagBuf3> Entries = [];
+    }
+
+    private struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
+    [InlineArray(3)]
+    private struct PointBuf3
+    {
+        private Point _element;
+    }
+
+    private sealed class Plotted
+    {
+        public PointBuf3 Points;
     }
 }

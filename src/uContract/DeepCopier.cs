@@ -14,7 +14,8 @@ namespace uContract;
 ///     except for the reference-typed fields inside it, replaced the same way at any nesting depth. An
 ///     array keeps its runtime type, rank and bounds, and its elements are replaced by the same rules. So are the
 ///     elements of an inline array, read from its memory; struct elements only where the runtime can write them back
-///     (see <see cref="StructElements" />), and elsewhere element 0 alone, as a field.
+///     (see <see cref="StructElements" />), and elsewhere element 0 alone, as a field: such a copy records which
+///     inline-array types it could not copy (see <see cref="UncopiedInlineArrays" />).
 /// </summary>
 /// <remarks>
 ///     Shared types (<see cref="SharedTypes" />, <see cref="string" /> included) are never cloned. An instance
@@ -47,6 +48,11 @@ internal static class DeepCopier
             {
                 ReplaceReferenceFields(clone, copying);
             }
+        }
+
+        if (copying.Uncopied is { } uncopied)
+        {
+            UncopiedInlineArrays.Record(copying.Copies.Values, uncopied);
         }
 
         return (T)copy;
@@ -119,7 +125,7 @@ internal static class DeepCopier
         ref byte data = ref Unsafe.As<StrongBox<byte>>(box).Value;
         if (elementType.IsValueType)
         {
-            return TryReplaceStructElements(elementType, ref data, shape.Length, copying);
+            return TryReplaceStructElements(type, elementType, ref data, shape.Length, copying);
         }
 
         Span<object?> elements = MemoryMarshal.CreateSpan(ref Unsafe.As<byte, object?>(ref data), shape.Length);
@@ -134,14 +140,30 @@ internal static class DeepCopier
         return true;
     }
 
-    // The length struct elements at data are read boxed, the references inside each box are replaced, and the boxes
-    // are written back (see StructElements). False, changing nothing, where this runtime cannot write them.
-    private static bool TryReplaceStructElements(Type elementType, ref byte data, int length, Copying copying)
+    // The length struct elements at data, of an inline array of type, are read boxed, the references inside each box
+    // are replaced, and the boxes are written back (see StructElements). False, changing nothing, where this runtime
+    // cannot write them. Where it can still read them (the .NET 9 runtime or later without dynamic code), the copy
+    // records type as not copied, so that the comparison refuses to compare it; where it cannot read them either, the
+    // comparison refuses anyway.
+    private static bool TryReplaceStructElements(
+        Type type,
+        Type elementType,
+        ref byte data,
+        int length,
+        Copying copying
+    )
     {
-        if (!StructElements.CanWrite || StructElements.Read(elementType, ref data, length) is not { } elements)
+        if (!StructElements.CanWrite)
         {
+            if (StructElements.CanRead)
+            {
+                (copying.Uncopied ??= []).Add(type);
+            }
+
             return false;
         }
+
+        object?[] elements = StructElements.Read(elementType, ref data, length)!;
 
         for (int i = 0; i < length; i++)
         {
@@ -259,5 +281,8 @@ internal static class DeepCopier
         public Dictionary<object, object> Copies { get; } = new(ReferenceEqualityComparer.Instance);
 
         public Stack<object> Pending { get; } = new();
+
+        // The inline-array types whose struct elements could not be copied; null while there are none.
+        public HashSet<Type>? Uncopied { get; set; }
     }
 }

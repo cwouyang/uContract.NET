@@ -39,6 +39,9 @@ internal static class StructElements
     // generic method instantiated over it, which needs dynamic code.
     internal static bool CanWrite => RuntimeFacts.IsDynamicCodeSupported;
 
+    // Whether Read returns the elements: through RuntimeHelpers on the .NET 9 runtime or later, or with dynamic code.
+    internal static bool CanRead => (SizeOf is not null && Box is not null) || RuntimeFacts.IsDynamicCodeSupported;
+
     // The length elements of the struct type elementType at data, boxed. Null when neither way is available: the
     // .NET 8 runtime without dynamic code.
     internal static object?[]? Read(Type elementType, ref byte data, int length)

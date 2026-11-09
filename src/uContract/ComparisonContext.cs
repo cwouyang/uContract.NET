@@ -35,6 +35,17 @@ internal sealed class ComparisonContext
     public MemberComparison.HiddenMembers? Hidden { get; set; }
 
     /// <summary>
+    ///     The inline-array types that the <see cref="Contract.Old{T}" /> copy holding the pair being started could
+    ///     not copy (see <see cref="UncopiedInlineArrays" />); null when the pair is not held by such a copy.
+    /// </summary>
+    public IReadOnlySet<Type>? Uncopied { get; set; }
+
+    /// <summary>
+    ///     As <see cref="Uncopied" />, for the members of the top-level pair.
+    /// </summary>
+    public IReadOnlySet<Type>? UncopiedInTopLevel { get; set; }
+
+    /// <summary>
     ///     Marks the top-level pair as in progress for the whole call.
     /// </summary>
     public void EnterTopLevel(ReferencePair pair)

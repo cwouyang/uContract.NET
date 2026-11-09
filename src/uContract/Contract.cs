@@ -2192,6 +2192,7 @@ public static class Contract
         // are the top-level pair here only when T is neither an array type nor System.Array (object, an
         // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
         context.EnterTopLevel(new ReferencePair(actual, expected));
+        context.UncopiedInTopLevel = UncopiedInlineArrays.Of(actual) ?? UncopiedInlineArrays.Of(expected);
 
         // A property of an interface T is compared even when a member of comparedType has its name: its getter
         // may be another implementation (an explicit one). It is not reported when a member of that name was

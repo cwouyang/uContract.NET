@@ -433,7 +433,13 @@ internal static class MemberComparison
     internal static bool ElementsAreEqual(IEnumerable actual, IEnumerable expected, ComparisonContext context)
     {
         Walk? walk = StartSequences(actual, expected);
-        return walk is not null && Run(walk, context);
+        if (walk is null)
+        {
+            return false;
+        }
+
+        walk.Uncopied = context.UncopiedInTopLevel;
+        return Run(walk, context);
     }
 
     // True for a public key token that the assemblies of the .NET runtime and libraries are signed with.
@@ -598,6 +604,11 @@ internal static class MemberComparison
             return CannotReadStructElements(hidden.Type, elementType, path, listAsAssignable);
         }
 
+        if (hidden.ElementsNotCopied is { } notCopied)
+        {
+            return CannotCompareUncopiedElements(hidden.Type, notCopied, path, listAsAssignable);
+        }
+
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
             + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
@@ -632,6 +643,11 @@ internal static class MemberComparison
         if (hidden.ElementsNeedDynamicCode is { } elementType)
         {
             return CannotReadStructElements(hidden.Type, elementType, path);
+        }
+
+        if (hidden.ElementsNotCopied is { } notCopied)
+        {
+            return CannotCompareUncopiedElements(hidden.Type, notCopied, path);
         }
 
         string cannotList =
@@ -671,6 +687,27 @@ internal static class MemberComparison
                 + firstWayOut
                 + "run on the .NET 9 runtime or later, which reads struct elements without dynamic code; or set "
                 + "DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // The comparison met an inline array of struct elements, reached through path, that the Old copy being compared
+    // could not copy (see UncopiedInlineArrays). firstWayOut is empty, or a way out that ends with "; ". Preserving the
+    // type is not offered: the elements stay uncopied whatever is preserved.
+    private static InvalidOperationException CannotCompareUncopiedElements(
+        Type inlineArrayType,
+        Type elementType,
+        string path,
+        string firstWayOut = ""
+    )
+    {
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {inlineArrayType} (reached through '{path}'): it is an inline array of "
+                + $"{elementType}, a struct, whose elements Contract.Old could not copy: this runtime writes struct "
+                + "elements only with dynamic code, and dynamic code is not supported here (Native AOT), so the copy "
+                + "shares what they refer to with the original. Ways out: "
+                + firstWayOut
+                + (firstWayOut.Length == 0 ? "set" : "or set")
+                + " DBC_POST=off (disables all postcondition checks)."
         );
     }
 
@@ -763,7 +800,7 @@ internal static class MemberComparison
     // blocked the comparison), not "different". Callers must check it before reporting a difference.
     internal static bool AreEqual(object? actual, object? expected, ComparisonContext context)
     {
-        Walk? walk = Start(actual, expected, context, out bool equal);
+        Walk? walk = StartHeld(actual, expected, context.UncopiedInTopLevel, context, out bool equal);
         return walk is null ? equal : Run(walk, context);
     }
 
@@ -785,7 +822,7 @@ internal static class MemberComparison
                 Step step = walk.Next();
                 if (step == Step.Child)
                 {
-                    Walk? child = Start(walk.ChildActual, walk.ChildExpected, context, out equal);
+                    Walk? child = StartHeld(walk.ChildActual, walk.ChildExpected, walk.Uncopied, context, out equal);
                     if (child is not null)
                     {
                         walks.Push(child);
@@ -809,6 +846,31 @@ internal static class MemberComparison
                 return equal;
             }
         }
+    }
+
+    // Start, for a pair held by an object whose Old copy could not copy the inline-array types uncopiedInHolder (null
+    // when there are none): a pair of objects tells for itself whether it belongs to such a copy (see
+    // UncopiedInlineArrays), and a pair of values read from a struct is held where that struct is held. The walk
+    // returned passes this on to the pairs it holds.
+    private static Walk? StartHeld(
+        object? actual,
+        object? expected,
+        IReadOnlySet<Type>? uncopiedInHolder,
+        ComparisonContext context,
+        out bool equal
+    )
+    {
+        context.Uncopied =
+            UncopiedInlineArrays.Of(actual)
+            ?? UncopiedInlineArrays.Of(expected)
+            ?? (actual is ValueType ? uncopiedInHolder : null);
+        Walk? walk = Start(actual, expected, context, out equal);
+        if (walk is not null)
+        {
+            walk.Uncopied = context.Uncopied;
+        }
+
+        return walk;
     }
 
     // Decides a pair that needs no walk into it (equal is the outcome), or returns the walk that compares it.
@@ -1183,6 +1245,12 @@ internal static class MemberComparison
         if (shape is not { ElementType: { } elementType })
         {
             return false;
+        }
+
+        if (context.Uncopied?.Contains(type) == true)
+        {
+            context.Hidden = new HiddenMembers(type) { ElementsNotCopied = elementType };
+            return true;
         }
 
         ref byte actualData = ref Unsafe.As<StrongBox<byte>>(actual).Value;
@@ -1850,6 +1918,9 @@ internal static class MemberComparison
 
         public object? ChildActual { get; private set; }
 
+        // The inline-array types that the Old copy holding this pair could not copy (see StartHeld).
+        public IReadOnlySet<Type>? Uncopied { get; set; }
+
         public object? ChildExpected { get; private set; }
 
         // The path segment of the current child, prepended when the child could not be compared.
@@ -2086,6 +2157,10 @@ internal static class MemberComparison
         // Set when Type is an inline array whose elements, of this struct type, this runtime reads only with dynamic
         // code, which is not supported (see StructElements.Read); its members are visible.
         public Type? ElementsNeedDynamicCode { get; init; }
+
+        // Set when Type is an inline array whose elements, of this struct type, the Old copy being compared could not
+        // copy (see UncopiedInlineArrays); its members are visible.
+        public Type? ElementsNotCopied { get; init; }
 
         public string PathBelowTopLevelMember { get; private set; } = "";
 
