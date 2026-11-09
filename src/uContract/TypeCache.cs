@@ -25,26 +25,38 @@ internal sealed class TypeCache<TValue>
     /// </summary>
     internal TValue GetOrAdd(Type type, Func<Type, TValue> create)
     {
+        return GetOrAdd(type, static (t, c) => c(t), create);
+    }
+
+    /// <summary>
+    ///     As <see cref="GetOrAdd(Type, Func{Type, TValue})" />, with <paramref name="argument" /> passed to
+    ///     <paramref name="create" />, so a caller that needs a value to create the cached one allocates no closure
+    ///     on a hit.
+    /// </summary>
+    internal TValue GetOrAdd<TArg>(Type type, Func<Type, TArg, TValue> create, TArg argument)
+    {
         // A hit proves the type is not collectible, so IsCollectible, a native call, is read only on a miss.
         if (_nonCollectibleTypes.TryGetValue(type, out TValue? value))
         {
             return value;
         }
 
-        return type.IsCollectible ? GetOrAddCollectible(type, create) : _nonCollectibleTypes.GetOrAdd(type, create);
+        return type.IsCollectible
+            ? GetOrAddCollectible(type, create, argument)
+            : _nonCollectibleTypes.GetOrAdd(type, create, argument);
     }
 
-    private TValue GetOrAddCollectible(Type type, Func<Type, TValue> create)
+    private TValue GetOrAddCollectible<TArg>(Type type, Func<Type, TArg, TValue> create, TArg argument)
     {
         return _collectibleTypes.TryGetValue(type, out StrongBox<TValue>? box)
             ? box.Value!
-            : AddCollectible(type, create);
+            : AddCollectible(type, create, argument);
     }
 
-    // Kept apart from GetOrAddCollectible: the closure over create is then allocated only when a collectible type
-    // is not cached yet.
-    private TValue AddCollectible(Type type, Func<Type, TValue> create)
+    // Kept apart from GetOrAddCollectible: the closure over create and argument is then allocated only when a
+    // collectible type is not cached yet.
+    private TValue AddCollectible<TArg>(Type type, Func<Type, TArg, TValue> create, TArg argument)
     {
-        return _collectibleTypes.GetValue(type, t => new StrongBox<TValue>(create(t))).Value!;
+        return _collectibleTypes.GetValue(type, t => new StrongBox<TValue>(create(t, argument))).Value!;
     }
 }

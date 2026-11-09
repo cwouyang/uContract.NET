@@ -1033,7 +1033,7 @@ internal static class MemberComparison
             return elements;
         }
 
-        if (HolderCache.GetOrAdd(type, t => IsHolder(t, actual)) && !HasUserEquals(actual, type))
+        if (HolderCache.GetOrAdd(type, IsHolder, actual) && !HasUserEquals(actual, type))
         {
             equal = false;
             return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
@@ -1178,7 +1178,7 @@ internal static class MemberComparison
 
         return field.GetValue(box) is { } nested
             && nested.GetType() == fieldType
-            && HolderCache.GetOrAdd(fieldType, t => IsHolder(t, nested))
+            && HolderCache.GetOrAdd(fieldType, IsHolder, nested)
             && !HasUserEquals(nested, fieldType);
     }
 
