@@ -47,6 +47,9 @@ the work is done).
    holding such a record class all throw `NotSupportedException` on .NET 10, equal values included, and pass on .NET 8
    with only element 2 changed; a record class as a class member is walked by members and is fine):
    "也沿著這類類別追 (Recommended)" (B2a, routes through classes whose `Equals` is not a user `Equals`).
+9. Revision during Act (Task 2 risk review; measured by the reviewer on both runtimes: a `record struct` / `record
+   class` with a hand-written typed `Equals(R)` lost its equality, because its `[CompilerGenerated]` `Equals(object)`
+   forwards to it): "手寫 Equals(R) 算使用者 Equals (Recommended)" (Terms, User `Equals`).
 
 ## Terms
 
@@ -60,7 +63,9 @@ the work is done).
 - **User `Equals`**: an `Equals(object)` override written by hand in the type (of the inline array, or of a struct).
   Not a user `Equals`: the built-in `ValueType.Equals`, an override marked `[CompilerGenerated]` (as a record
   struct's is, measured; a record class's too), and the `Equals` of `System.ValueTuple<…>`, `System.Nullable<T>` and
-  `System.Tuple<…>` (they only call the `Equals` of the values they hold).
+  `System.Tuple<…>` (they only call the `Equals` of the values they hold). Exception: when a record (struct or class)
+  declares a typed `Equals(R)` written by hand, its `[CompilerGenerated]` `Equals(object)` forwards to that method, so
+  the record has a user `Equals` (it decides first; its exceptions propagate).
 - **Element rules**: the rules by which two elements of an array are compared today (ADR-0022 R1–R7 as applied to
   array elements: `Equals` for primitives and enums, R3 for value types, references walked by members, sequences by
   elements, and so on).
@@ -96,12 +101,14 @@ there, the built-in `Equals` is not called and the pair is compared by its field
 on .NET 8 and .NET 10. No `NotSupportedException` is caught: an exception thrown by a user `Equals`, at any depth,
 propagates as today (ADR-0022 R3).
 The look also follows a field (declared or held at run time) whose type is a **class** whose `Equals` compares its
-values but is not a user `Equals` (a record class, `System.Tuple<…>`), as it follows a nested struct: when such a class
+values but is not a user `Equals` (a record class, `System.Tuple<…>`, an anonymous type), as it follows a nested
+struct: when such a class
 holds an inline array or a holder struct (directly, or further along such routes), the outer struct is compared by its
 fields as above. A class with no `Equals` override (reference equality) or with a user `Equals` is not followed. The
 look terminates on cyclic values (a box or an object that refers back to itself): a value already being looked at is
 not looked at again, so a self-referencing value never overflows the stack or loops, and a cycle alone does not make a
-pair be compared by its fields.
+pair be compared by its fields. A deep acyclic graph (for example a long chain of records) does not overflow the stack
+either: a struct that holds no inline array keeps today's result at any depth.
 
 **B3. Top level.** When `T` is an inline-array type, or `T` is another type and the runtime type of the two values is
 one inline-array type (for example a boxed inline array with `T` = `object`), the two values are compared as a whole
