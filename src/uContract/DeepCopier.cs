@@ -28,6 +28,7 @@ internal static class DeepCopier
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
 
     private static readonly TypeCache<bool> HoldsReferencesCache = new();
+    private static readonly TypeCache<bool> HasStructElementsHoldingReferencesCache = new();
 
     internal static T Copy<T>(T value)
     {
@@ -56,6 +57,26 @@ internal static class DeepCopier
         }
 
         return (T)copy;
+    }
+
+    // True when a copy leaves the struct elements of an inline array of type uncopied on this runtime: they hold
+    // references, and the runtime can read struct elements but cannot write them back (the .NET 9 runtime or later
+    // without dynamic code; see StructElements). Old records such a type (see UncopiedInlineArrays), and the
+    // comparison refuses to compare it.
+    internal static bool LeavesStructElementsUncopied(Type type)
+    {
+        return !StructElements.CanWrite
+            && StructElements.CanRead
+            && HasStructElementsHoldingReferencesCache.GetOrAdd(type, HasStructElementsHoldingReferences);
+    }
+
+    // True when type is an inline array whose element type, as reflection lists it, is a struct that holds a
+    // reference (see HoldsReferences).
+    private static bool HasStructElementsHoldingReferences(Type type)
+    {
+        return MemberComparison.IsInlineArray(type)
+            && MemberComparison.InlineArrayShapeOf(type) is { ElementType: { IsValueType: true } elementType }
+            && HoldsReferences(elementType);
     }
 
     private static object CopyOf(object original, Copying copying)
@@ -142,9 +163,9 @@ internal static class DeepCopier
 
     // The length struct elements at data, of an inline array of type, are read boxed, the references inside each box
     // are replaced, and the boxes are written back (see StructElements). False, changing nothing, where this runtime
-    // cannot write them. Where it can still read them (the .NET 9 runtime or later without dynamic code), the copy
-    // records type as not copied, so that the comparison refuses to compare it; where it cannot read them either, the
-    // comparison refuses anyway.
+    // cannot write them. Where it can still read them, the copy records type as not copied (see
+    // LeavesStructElementsUncopied), so that the comparison refuses to compare it; where it cannot read them either
+    // (the .NET 8 runtime without dynamic code), the comparison refuses anyway.
     private static bool TryReplaceStructElements(
         Type type,
         Type elementType,
@@ -153,13 +174,14 @@ internal static class DeepCopier
         Copying copying
     )
     {
+        if (LeavesStructElementsUncopied(type))
+        {
+            (copying.Uncopied ??= []).Add(type);
+            return false;
+        }
+
         if (!StructElements.CanWrite)
         {
-            if (StructElements.CanRead)
-            {
-                (copying.Uncopied ??= []).Add(type);
-            }
-
             return false;
         }
 
