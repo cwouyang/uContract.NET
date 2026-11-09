@@ -24,7 +24,7 @@ internal static class MemberComparison
     private static readonly TypeCache<InlineArrayShape> InlineArrayShapeCache = new();
     private static readonly TypeCache<ValueRoutes> ValueRoutesCache = new();
     private static readonly TypeCache<bool> UserEqualsCache = new();
-    private static readonly TypeCache<bool> ValueEqualsClassCache = new();
+    private static readonly TypeCache<ClassEquals> ClassEqualsCache = new();
 
     private static readonly Type[] TupleDefinitions =
     [
@@ -1271,7 +1271,9 @@ internal static class MemberComparison
             return true;
         }
 
-        bool followed = type.IsValueType ? !HasUserEquals(held, type) : ComparesValues(held, type);
+        bool followed = type.IsValueType
+            ? !HasUserEquals(held, type)
+            : ClassEqualsOf(held, type) != ClassEquals.NotFollowed;
         if (!followed)
         {
             return false;
@@ -1281,22 +1283,29 @@ internal static class MemberComparison
         return looked.Add(held) && NeedsFieldComparison(held, type, ref looked);
     }
 
-    // True when the Equals the class of box dispatches to compares values but is not written by hand: a record
+    // Which Equals the class of box dispatches to, when it compares values but is not written by hand: a record
     // class's [CompilerGenerated] Equals, or the Equals of a System.Tuple<…>. A fact of the type, cached.
-    private static bool ComparesValues(object box, Type type)
+    private static ClassEquals ClassEqualsOf(object box, Type type)
     {
-        return ValueEqualsClassCache.GetOrAdd(
+        return ClassEqualsCache.GetOrAdd(
             type,
             static (_, b) =>
             {
                 Func<object?, bool> equals = b.Equals;
                 Type? declaring = equals.Method.DeclaringType;
-                return declaring is not null
-                    && declaring != typeof(object)
-                    && (
-                        equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                        || (declaring.IsGenericType && TupleDefinitions.Contains(declaring.GetGenericTypeDefinition()))
-                    );
+                if (declaring is null || declaring == typeof(object))
+                {
+                    return ClassEquals.NotFollowed;
+                }
+
+                if (declaring.IsGenericType && TupleDefinitions.Contains(declaring.GetGenericTypeDefinition()))
+                {
+                    return ClassEquals.Tuple;
+                }
+
+                return equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                    ? ClassEquals.CompilerGenerated
+                    : ClassEquals.NotFollowed;
             },
             box
         );
@@ -1751,6 +1760,14 @@ internal static class MemberComparison
         Unknown,
         Yes,
         No,
+    }
+
+    // How the Equals of a class compares (see ClassEqualsOf): only CompilerGenerated and Tuple are followed.
+    private enum ClassEquals
+    {
+        NotFollowed,
+        CompilerGenerated,
+        Tuple,
     }
 
     // What NeedsFieldComparison looks at in a struct: fields declared (a Nullable<> of) an inline array, fields
