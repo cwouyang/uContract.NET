@@ -2065,10 +2065,11 @@ public static class Contract
         }
     }
 
-    // A primitive, an enum and an inline array, as a value of a type other than T, are decided by Equals alone.
+    // A primitive and an enum, as a value of a type other than T, are decided by Equals alone. (An inline array
+    // is decided by its runtime type before; see _CompareByRuntimeType.)
     private static bool _IsDecidedByEqualsAlone(Type type)
     {
-        return type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false);
+        return type.IsPrimitive || type.IsEnum;
     }
 
     // The values can be passed as the runtime type only when both are of it.

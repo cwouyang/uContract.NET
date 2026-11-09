@@ -1066,13 +1066,7 @@ internal static class MemberComparison
             return elements;
         }
 
-        if (
-            !isInlineArray
-            && !type.IsPrimitive
-            && !type.IsEnum
-            && !HasUserEquals(actual, type)
-            && (NeedsFieldComparison(actual, type) || NeedsFieldComparison(expected, type))
-        )
+        if (IsComparedByFieldsWithoutEquals(actual, expected, type))
         {
             equal = false;
             return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
