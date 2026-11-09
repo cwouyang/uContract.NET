@@ -1,0 +1,160 @@
+# Compare `[InlineArray]` values element by element (issue #84)
+
+Status: draft for approval. Scaffolding: this file is dropped before the merge; the durable record is the ADR
+amendments listed under "Documentation".
+
+## Why
+
+On the .NET 10 runtime, `Contract.EnsureAssignable<T>()` throws `NotSupportedException` ("Calling built-in Equals()
+or GetHashCode() on type marked as InlineArray is invalid.") whenever the comparison meets an `[InlineArray]` struct,
+also when the two values are equal. The published package targets `net8.0`, and an application on .NET 10 runs it
+on the .NET 10 runtime, so this is a defect of the released library. It also blocks 3.0.0 and the move to .NET 10
+(#82, ADR-0020 amendment of 2026-11-09).
+
+On .NET 8 the same comparison does not throw, but it sees only element 0: `ValueType.Equals` and reflection show only
+the one declared field. A change in a later element with an equal element 0 passes silently. ADR-0022 records this
+as an accepted limitation, unchanged since 2.0.0.
+
+The maintainer chose, after a measuring spike, to fix both: compare an inline array element by element, on both
+runtimes ("A 逐元素，這張就做"). Evidence for every measured statement below is in the spike report
+`C:\Users\cwouyang\Desktop\Dev\personal\sdd-work\uContract.NET-84\spike-report.md` (archived to `sdd-archive` when
+the work is done).
+
+## Decisions taken by the maintainer (verbatim option labels)
+
+1. Comparison: "A 逐元素，這張就做" (options were A element by element, B emulate .NET 8, C always "cannot compare").
+2. Native AOT, inline-array element field hidden because nothing preserves the type: "丟 cannot compare (Recommended)".
+3. CI: also run the unit tests on the .NET 10 runtime: "這次一起加 (Recommended)".
+4. Endgame: "審查後直接開 PR (Recommended)".
+5. Decide path: "Path A：完整 spec + plan". Clarifying questions were skipped ("跳過提問直接看 spec"); the calls the
+   spec author made are marked **[author's call]**.
+
+## Terms
+
+- **Inline array**: a struct type marked `[System.Runtime.CompilerServices.InlineArray(n)]`. It declares exactly one
+  instance field; its length is `n` and its element type is that field's type.
+- **Holder struct**: a struct that is not an inline array, does not override `Equals`, and has an instance field
+  (directly, or through a field of a nested struct that is itself a holder struct) whose type is an inline array.
+  Its built-in `ValueType.Equals` reaches the inline array's built-in `Equals` and throws on .NET 10 (measured).
+- **User `Equals`**: an `Equals(object)` override declared by the inline-array type itself (or by a holder candidate,
+  which then is not a holder struct).
+- **Element rules**: the rules by which two elements of an array are compared today (ADR-0022 R1–R7 as applied to
+  array elements: `Equals` for primitives and enums, R3 for value types, references walked by members, sequences by
+  elements, and so on).
+
+## Required behaviour
+
+The same input gives the same result on the .NET 8 and .NET 10 runtimes, under the JIT. Under Native AOT the result
+is either that same result or the "cannot compare" `InvalidOperationException` described in B6; never a silent pass
+that the JIT would have reported, and never `NotSupportedException` or `IndexOutOfRangeException`.
+
+**B1. Inline array as a member or element.** Wherever the comparison meets two values of one inline-array type (a
+field or property of a class or struct, an element of an array, a `List<>` or another sequence, the value of an
+`object`-typed member, a dictionary value):
+
+1. If the type has a user `Equals` and it returns `true`, the pair is equal.
+2. Otherwise all `n` elements are compared pairwise, in index order, by the element rules. The pair is equal when
+   every element pair is equal.
+3. The built-in `ValueType.Equals`/`GetHashCode` of the inline array is never called.
+
+A difference is reported as a difference of the member that holds the inline array, as for an array member today
+(for example `- B`). **[author's call]**: no element index is added to the message, matching arrays.
+
+**B2. Holder struct.** Its built-in `Equals` is never called. It is compared by its fields under the existing rules
+(as R3 step 3 does after `Equals` said "unequal"), and an inline-array field among them follows B1. A struct that
+overrides `Equals` keeps today's behaviour: its `Equals` decides first.
+
+**B3. Top level.** When `T` is an inline-array type, or `T` is another type and the runtime type of the two values is
+one inline-array type (for example a boxed inline array with `T` = `object`), the two values are compared as a whole
+by B1, as an array is. **[author's call]**: assignable patterns do not apply to it, as for arrays (today `T` = the
+inline-array type compares its one field, so a pattern naming that field could excuse element 0). The violation
+message says the two values are not equal and are compared as that inline-array type element by element; the exact
+wording is the builder's, following the existing "compared as a whole" messages. Top-level holder structs follow B2
+(today `_TopLevelMembers` calls `Equals` first on a boxed value type ≠ `T`).
+
+**B4. `Contract.Old` copies.** An `Old` copy of a value that contains an inline array deep-copies **every** element
+the way an array element is copied, not only element 0. Then an unchanged pair passes, and an in-place change to any
+element after `Old` (for example `buf[2].Add(1)` on a `List<int>` element) is reported. (Measured: today elements
+1..n-1 are shared with the original; with B1 alone an in-place change of element ≥ 1 would pass silently.)
+
+**B5. Elements of every kind.** B1–B4 hold for primitive, enum, reference and struct element types, including a
+struct element that holds references, and an element type that is itself an inline array.
+
+**B6. Cannot compare (loud failure).** When the elements of an inline array cannot be read, the call throws
+`InvalidOperationException` and does not pass. Two cases are known (measured):
+
+- Native AOT, the inline-array type's element field is not visible to reflection because nothing preserves the type.
+- Native AOT on the .NET 8 runtime, the element type is a struct: there is no AOT-safe way on .NET 8 to get the
+  element size (the .NET 9+ `RuntimeHelpers.SizeOf`/`Box` exist from the .NET 9 runtime on).
+
+The message names the inline-array type and the member path, and gives the ways out, in the style of the existing
+"cannot compare" messages (ADR-0021): preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All,
+typeof(X))]`, list the member that holds it as assignable, or set `DBC_POST=off`. **[author's call]**: if `Contract.Old`
+cannot copy the elements in these cases it does not throw itself; the comparison that follows throws as above.
+
+**B7. Not changed.** C# fixed-size buffers (`fixed int X[4]`) are not inline arrays; they keep today's behaviour
+(element 0 only, on both runtimes, measured). Other `Ensure*`/`Require*` methods do not compare values and are not
+changed (read from code). No `GetHashCode` of a user value is called anywhere (read from code); this stays so.
+
+## Compatibility
+
+Measured with a prototype of A on both runtimes, unit suite of 1491 tests:
+
+- 5 existing tests change result and are rewritten to the new behaviour (named in the spike report, M3): later
+  elements are now seen; distinct lists with equal elements are now equal; the top-level message changes.
+- On .NET 8 the check becomes stricter (a later-element change is now reported) and in one case more lenient (an
+  inline array of distinct but equal references is no longer reported on every call). **[author's call]**: the
+  CHANGELOG lists this under Changed as **BREAKING**, since 3.0.0 is a major release.
+- ezDDD.NET does not use inline arrays or `EnsureAssignable` (measured); no downstream change.
+
+## Verification
+
+- New unit tests cover B1–B6 for the shapes in the spike's probe (element kinds × member, property, top level with
+  `T` = the struct and `T` = `object`, array and `List<>` element, nested in a holder struct, `Old` unchanged and
+  changed in place, element 0 changed and only a later element changed, a user `Equals`). The B6 cases are covered
+  in unit tests where the existing test seams can simulate them (for example `TestRuntime.WithoutDynamicCode`) and in
+  the Native AOT smoke.
+- The whole unit suite passes on the .NET 8 runtime and on the .NET 10 runtime (`DOTNET_ROLL_FORWARD=LatestMajor`),
+  locally and in CI.
+- Native AOT smoke (net8.0, win-x64 locally, linux-x64 in CI): publishes with `-warnaserror`, `--assert` passes with
+  contracts on and with `DBC_POST=off`. New smoke checks cover an inline array that is preserved (reported / passes
+  as under the JIT, primitive and reference elements), one that is not preserved (B6), and a struct element (B6 on
+  .NET 8).
+- No trim or AOT warning (IL2xxx/IL3xxx) is added to the library build.
+
+## CI
+
+`build-and-test.yml` also runs the unit tests on the .NET 10 runtime on both runners: `actions/setup-dotnet`
+installs `10.0.x` next to the SDK from `global.json`, and a second test step sets `DOTNET_ROLL_FORWARD: LatestMajor`
+(both measured locally: 10.0.14 used, 6 known failures on master, SDK still 8.0.427). The log shows which runtime ran
+(a `dotnet --list-runtimes` step or a test output line; builder's choice). `global.json` stays on 8.0.427.
+
+## Documentation
+
+- ADR-0022: amendment. R3 step 3's "and is not `[InlineArray]`" and the limitations "`[InlineArray]` structs and
+  fixed-size buffers" (narrowed to fixed-size buffers) and "Inline arrays of references" (replaced by the B6 note).
+- ADR-0026: amendment (top level: an inline array is compared as a whole element by element, not by `Equals` alone).
+- ADR-0021: amendment (the new "cannot compare" cases of B6).
+- README, `docs/examples/API_REFERENCE.md`, the XML docs of `EnsureAssignable` and `Old` where they name inline
+  arrays or "decided by Equals alone".
+- CHANGELOG `[Unreleased]`: Fixed (#84, the .NET 10 exception, including holder structs) and Changed **BREAKING**
+  (element by element; B6 cases); the known-limitation line keeps only fixed-size buffers.
+- ADRs are written after the code and the measurements, as the last task.
+
+## Non-goals
+
+- Fixed-size buffers (B7).
+- Running the Native AOT smoke as `net10.0`, multi-targeting, SDK 10: issue #82.
+- The .NET 9 runtime is not tested (it is out of support from 2026-11-10).
+- Performance of the element walk beyond not adding per-call reflection that the existing metadata caches avoid.
+
+## Anti-goals
+
+- A silent pass where an element differs and the JIT would report it.
+- A different result on .NET 8 and .NET 10 for the same input, other than B6's "cannot compare" on .NET 8 Native AOT.
+- Any remaining call of the built-in `Equals`/`GetHashCode` on an inline array or a holder struct.
+
+## Left to the builder
+
+How elements are read (the spike's M2 lists measured techniques and their limits under JIT and Native AOT; none is
+binding), where the new logic lives, the exact message wording within the constraints above, and test placement.
