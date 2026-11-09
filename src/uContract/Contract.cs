@@ -1682,7 +1682,7 @@ public static class Contract
         if (
             _IsComparedAsWhole(actualType)
             || actual is System.Reflection.Pointer
-            || actualType.IsDefined(typeof(InlineArrayAttribute), inherit: false)
+            || MemberComparison.IsInlineArray(actualType)
         )
         {
             _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), actual, expected);
@@ -1805,7 +1805,7 @@ public static class Contract
     {
         return _IsComparedAsWhole(runtimeType)
             || SharedTypes.IsShared(runtimeType)
-            || runtimeType.IsDefined(typeof(InlineArrayAttribute), inherit: false);
+            || MemberComparison.IsInlineArray(runtimeType);
     }
 
     // The top level compared member by member, by the members of the type _TopLevelType picks.
@@ -1974,7 +1974,7 @@ public static class Contract
             throw MemberComparison.CannotCompareBelowWhole(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
         }
 
-        if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        if (MemberComparison.IsInlineArray(type))
         {
             throw new PostconditionViolationException(
                 $"actual and expected are not equal. {type} is an inline array, compared as a whole element by "

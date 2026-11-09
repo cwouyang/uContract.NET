@@ -22,6 +22,7 @@ internal static class MemberComparison
     private static readonly TypeCache<SequenceRule> SequenceRuleCache = new();
     private static readonly TypeCache<bool> NoDeclaredMemberCache = new();
     private static readonly TypeCache<InlineArrayShape> InlineArrayShapeCache = new();
+    private static readonly TypeCache<bool> InlineArrayCache = new();
     private static readonly TypeCache<ValueRoutes> ValueRoutesCache = new();
     private static readonly TypeCache<bool> UserEqualsCache = new();
     private static readonly TypeCache<ClassEquals> ClassEqualsCache = new();
@@ -1060,7 +1061,7 @@ internal static class MemberComparison
     // Equals of an inline array sees only element 0, and the .NET 10 runtime throws for it.
     private static Walk? StartValues(object actual, object expected, Type type, out bool equal)
     {
-        bool isInlineArray = type.IsDefined(typeof(InlineArrayAttribute), inherit: false);
+        bool isInlineArray = IsInlineArray(type);
         if (isInlineArray && TryStartInlineArray(actual, expected, type, out Walk? elements, out equal))
         {
             return elements;
@@ -1095,7 +1096,7 @@ internal static class MemberComparison
 
         // Reflection shows only the first element of an inline array, so it has no fully visible fields. Only an
         // inline array that TryStartInlineArray leaves to these rules reaches here.
-        if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        if (IsInlineArray(type))
         {
             return null;
         }
@@ -1109,7 +1110,7 @@ internal static class MemberComparison
     // either side (see NeedsFieldComparison).
     internal static bool IsComparedByFieldsWithoutEquals(object actual, object expected, Type type)
     {
-        return !type.IsDefined(typeof(InlineArrayAttribute), inherit: false)
+        return !IsInlineArray(type)
             && !type.IsPrimitive
             && !type.IsEnum
             && !HasUserEquals(actual, type)
@@ -1318,7 +1319,7 @@ internal static class MemberComparison
             return false;
         }
 
-        if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        if (IsInlineArray(type))
         {
             return true;
         }
@@ -1413,7 +1414,7 @@ internal static class MemberComparison
     // inline array has none: its elements are compared by TryStartInlineArray.
     private static ValueRoutes CreateValueRoutes(Type type)
     {
-        if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        if (IsInlineArray(type))
         {
             return ValueRoutes.None;
         }
@@ -1448,7 +1449,7 @@ internal static class MemberComparison
     private static Route RouteOf(Type fieldType)
     {
         Type declared = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
-        if (declared.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        if (IsInlineArray(declared))
         {
             return Route.InlineArray;
         }
@@ -1512,6 +1513,12 @@ internal static class MemberComparison
         }
 
         return result;
+    }
+
+    // True when type is marked [InlineArray], a fact of the type that is cached.
+    internal static bool IsInlineArray(Type type)
+    {
+        return InlineArrayCache.GetOrAdd(type, static t => t.IsDefined(typeof(InlineArrayAttribute), inherit: false));
     }
 
     // An inline array declares exactly one instance field, whose type is the element type. The field is read from
