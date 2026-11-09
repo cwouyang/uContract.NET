@@ -22,12 +22,15 @@ internal sealed class TypeMetadata
     public int OwnMemberCount { get; set; }
 
     /// <summary>
-    ///     True when the type declares a public typed <c>Equals(T)</c> that is not marked
-    ///     <see cref="System.Runtime.CompilerServices.CompilerGeneratedAttribute" />: a record's hand-written one, which
-    ///     its generated <c>Equals(object)</c> calls. An anonymous type declares none: the type is marked, its typed
-    ///     <c>Equals</c> is not.
-    ///     Also true when a base class below the framework classes has one: a derived record's generated typed
-    ///     <c>Equals</c> calls that of its base record. Set only in the cached metadata.
+    ///     True when the type is not an anonymous type and the public <c>Equals</c> it declares that takes a <c>T</c> is
+    ///     not marked <see cref="System.Runtime.CompilerServices.CompilerGeneratedAttribute" />: a record's hand-written
+    ///     typed <c>Equals(T)</c>, which its generated <c>Equals(object)</c> calls. The lookup uses the default binder,
+    ///     so when the type declares no <c>Equals(T)</c> it finds a declared <c>Equals(object)</c> instead: the fact
+    ///     then also holds for a class that overrides <c>Equals(object)</c> by hand. The <c>Equals</c> an anonymous type
+    ///     declares is not marked (only the type is), so anonymous types are left out by name (see IsAnonymousType).
+    ///     Also true when a base class below the framework classes has the fact and the type declares no field that can
+    ///     lead to an inline array's <c>Equals</c>: a derived record's generated typed <c>Equals</c> calls that of its
+    ///     base record, then compares the fields the record declares. Set only in the cached metadata.
     /// </summary>
     public bool HasHandWrittenTypedEquals { get; set; }
 }
