@@ -14,6 +14,8 @@ public class EnsureAssignableInlineArrayTests
 
     private const int Changed = 7;
 
+    private static readonly Guid SecondGuid = new("6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7");
+
     // Long enough that a look using the stack for each node overflows it (measured at about 2400 nodes).
     private const int LongChainLength = 3000;
 
@@ -1665,7 +1667,39 @@ public class EnsureAssignableInlineArrayTests
         object actual = new ThrowingHolder { Counts = WithLaterElementChanged() };
         object expected = new ThrowingHolder();
 
-        Assert.Throws<NotSupportedException>(() => Contract.EnsureAssignable(actual, expected));
+        NotSupportedException exception = Assert.Throws<NotSupportedException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        // Thrown by the hand-written Equals, not by the runtime for the built-in Equals of an inline array.
+        Assert.Equal(typeof(ThrowingHolder), exception.TargetSite?.DeclaringType);
+    }
+
+    // An inline array of struct elements other than primitives and enums is not compared element by element
+    // yet: as T it is compared by its members, as before, and its built-in Equals is not asked.
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInlineArrayOfGuidsAndEveryElementIsEqual_Passes()
+    {
+        GuidBuf2 actual = WithSecondGuid(SecondGuid);
+        GuidBuf2 expected = WithSecondGuid(SecondGuid);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInlineArrayOfGuidsAndTheFirstElementChanged_ReportsItsElementField()
+    {
+        GuidBuf2 actual = new();
+        actual[0] = SecondGuid;
+        GuidBuf2 expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - _element", exception.Description);
     }
 
     [Fact]
@@ -1786,6 +1820,13 @@ public class EnsureAssignableInlineArrayTests
         return other is not null
             && other.GetType() == self.GetType()
             && Equals(key.GetValue(self), key.GetValue(other));
+    }
+
+    private static GuidBuf2 WithSecondGuid(Guid second)
+    {
+        GuidBuf2 buffer = new();
+        buffer[1] = second;
+        return buffer;
     }
 
     private static EnumerableListBuf2 WithEnumerableLists(List<int> first, List<int> second)
@@ -2392,6 +2433,12 @@ public class EnsureAssignableInlineArrayTests
     private struct ListBuf2
     {
         private List<int>? _element;
+    }
+
+    [InlineArray(2)]
+    private struct GuidBuf2
+    {
+        private Guid _element;
     }
 
     [InlineArray(2)]

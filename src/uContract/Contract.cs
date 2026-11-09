@@ -1639,9 +1639,11 @@ public static class Contract
     }
 
     // Returns true when the runtime type of the two values settled the comparison: a value that is compared as a
-    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array, an inline array,
-    // element by element as below the top level) or by reference (a shared type) is compared so whatever T is,
-    // and the patterns are not read. The built-in Equals of an inline array is never asked. Two values of different
+    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array, an inline array of
+    // primitive, enum or reference elements, element by element as below the top level) or by reference (a shared
+    // type) is compared so whatever T is, and the patterns are not read; the built-in Equals of such an inline array
+    // is not asked. An inline array of struct elements is not compared element by element yet: it keeps the member
+    // route, where under a T other than itself its built-in Equals decides (and throws on .NET 10). Two values of different
     // runtime types where either is such a value are a violation, except two sequences, which are left to
     // _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the address and
     // the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
@@ -1682,7 +1684,7 @@ public static class Contract
         if (
             _IsComparedAsWhole(actualType)
             || actual is System.Reflection.Pointer
-            || MemberComparison.IsInlineArray(actualType)
+            || MemberComparison.IsInlineArrayComparedByElements(actualType)
         )
         {
             _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), actual, expected);
@@ -1805,7 +1807,7 @@ public static class Contract
     {
         return _IsComparedAsWhole(runtimeType)
             || SharedTypes.IsShared(runtimeType)
-            || MemberComparison.IsInlineArray(runtimeType);
+            || MemberComparison.IsInlineArrayComparedByElements(runtimeType);
     }
 
     // The top level compared member by member, by the members of the type _TopLevelType picks.
@@ -2065,11 +2067,11 @@ public static class Contract
         }
     }
 
-    // A primitive and an enum, as a value of a type other than T, are decided by Equals alone. (An inline array
-    // is decided by its runtime type before; see _CompareByRuntimeType.)
+    // A primitive, an enum and an inline array whose elements are not compared one by one (struct elements; see
+    // _CompareByRuntimeType for the others), as a value of a type other than T, are decided by Equals alone.
     private static bool _IsDecidedByEqualsAlone(Type type)
     {
-        return type.IsPrimitive || type.IsEnum;
+        return type.IsPrimitive || type.IsEnum || MemberComparison.IsInlineArray(type);
     }
 
     // The values can be passed as the runtime type only when both are of it.
@@ -2115,9 +2117,9 @@ public static class Contract
         // A boxed value of a value type other than T is compared as a member of that type is: its Equals
         // decides first, and only when it says "unequal" are its fields compared; a struct whose built-in Equals
         // would reach an inline array's is compared by its fields without it (see
-        // MemberComparison.IsComparedByFieldsWithoutEquals). A primitive and an enum are decided by Equals alone,
-        // and a value without a field is then unequal. (An inline array never comes here: see
-        // _CompareByRuntimeType.)
+        // MemberComparison.IsComparedByFieldsWithoutEquals). A primitive, an enum and an inline array of struct
+        // elements are decided by Equals alone, and a value without a field is then unequal. (Any other inline array
+        // never comes here: see _CompareByRuntimeType.)
         bool asAMember = comparedType.IsValueType && comparedType != declaredType;
         if (
             !asAMember
