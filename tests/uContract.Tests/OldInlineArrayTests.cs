@@ -415,6 +415,51 @@ public class OldInlineArrayTests
         Assert.Equal(Violation + "  - Inner", violation.Description);
     }
 
+    // A field declared object holds a box, a reference: the struct-T rule does not reach through it, and the record on
+    // the box of an Old copy decides.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructWhoseObjectFieldHoldsSuchAnInlineArrayNotFromOldWithoutDynamicCode_ReportsTheField()
+    {
+        BoxHolder actual = new() { Value = WithBags() };
+        BagBuf3 changed = WithBags();
+        changed[2].Items!.Add(Added);
+        BoxHolder expected = new() { Value = changed };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(Violation + "  - Value", violation.Description);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructWhoseObjectFieldHoldsSuchAnInlineArrayFromOldWithoutDynamicCode_CannotCompareIt()
+    {
+        BoxHolder held = new() { Value = WithBags() };
+        BoxHolder old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => held));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(held, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("BoxHolder.Value", "Value"), cannotCompare.Message);
+    }
+
+    // An element declared object of an inline array that T holds by value is a reference too.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructWhoseInlineArrayOfObjectsHoldsSuchAnInlineArrayNotFromOldWithoutDynamicCode_ReportsTheField()
+    {
+        ObjectsHolder actual = new();
+        actual.Items[0] = WithBags();
+        ObjectsHolder expected = new();
+        BagBuf3 changed = WithBags();
+        changed[2].Items!.Add(Added);
+        expected.Items[0] = changed;
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(Violation + "  - Items", violation.Description);
+    }
+
     [Fact]
     public void EnsureAssignable_WhenTIsAnInlineArrayOfStructElementsHoldingListsAndUnchangedAfterOld_DoesNotReportIt()
     {
@@ -759,6 +804,22 @@ public class OldInlineArrayTests
     private struct BaggedHolder
     {
         public Bagged Inner;
+    }
+
+    private struct BoxHolder
+    {
+        public object? Value;
+    }
+
+    [InlineArray(2)]
+    private struct ObjectBuf2
+    {
+        private object? _element;
+    }
+
+    private struct ObjectsHolder
+    {
+        public ObjectBuf2 Items;
     }
 
     private struct Outer

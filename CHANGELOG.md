@@ -469,7 +469,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   the inline array and for the structs that hold it by value at any depth. For a struct `T`, whose
   copy carries no record of what was not copied, it refuses every such inline array that `T` holds by
   value, also for values that did not come from `Old`, and the message still says "Contract.Old could
-  not copy". Case 3 was measured with unit tests that simulate a runtime without dynamic code on .NET
+  not copy"; a box held in a member or an inline-array element declared `object`, an interface or
+  `ValueType` is held through a reference, so only the record on an `Old` copy refuses it. Case 3 was
+  measured with unit tests that simulate a runtime without dynamic code on .NET
   10; no Native AOT build on .NET 9 or later was run. The library uses dynamic code
   (`MakeGenericMethod`) in one place, for struct elements, only where it is supported; its `IL3050` is
   suppressed there with a justification, and the smoke program's Native AOT publish reports no warning.

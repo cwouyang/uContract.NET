@@ -840,9 +840,21 @@ internal static class MemberComparison
 
     // A false return with context.Hidden set means "could not compare" (a type with no visible members
     // blocked the comparison), not "different". Callers must check it before reporting a difference.
-    internal static bool AreEqual(object? actual, object? expected, ComparisonContext context)
+    // heldByReference: the pair is held in a member declared a reference type (see Walk.ChildHeldByReference).
+    internal static bool AreEqual(
+        object? actual,
+        object? expected,
+        ComparisonContext context,
+        bool heldByReference = false
+    )
     {
-        Walk? walk = StartHeld(actual, expected, context.UncopiedInTopLevel, context, out bool equal);
+        Walk? walk = StartHeld(
+            actual,
+            expected,
+            heldByReference ? null : context.UncopiedInTopLevel,
+            context,
+            out bool equal
+        );
         return walk is null ? equal : Run(walk, context);
     }
 
@@ -864,7 +876,13 @@ internal static class MemberComparison
                 Step step = walk.Next();
                 if (step == Step.Child)
                 {
-                    Walk? child = StartHeld(walk.ChildActual, walk.ChildExpected, walk.Uncopied, context, out equal);
+                    Walk? child = StartHeld(
+                        walk.ChildActual,
+                        walk.ChildExpected,
+                        walk.ChildHeldByReference ? null : walk.Uncopied,
+                        context,
+                        out equal
+                    );
                     if (child is not null)
                     {
                         walks.Push(child);
@@ -893,7 +911,9 @@ internal static class MemberComparison
     // Start, for a pair held by an object whose Old copy could not copy the inline-array types uncopiedInHolder (null
     // when there are none): a pair of objects tells for itself whether it belongs to such a copy (see
     // UncopiedInlineArrays), and a pair of values read from a struct is held where that struct is held. The walk
-    // returned passes this on to the pairs it holds.
+    // returned passes this on to the pairs it holds by value; a box held in a member or element declared a reference
+    // type (object, an interface, ValueType) is held through a reference, and callers pass null for it, so only its own
+    // record counts (the rule for a struct T covers only what T holds by value; see Contract._UncopiedHeldByValue).
     private static Walk? StartHeld(
         object? actual,
         object? expected,
@@ -1340,7 +1360,7 @@ internal static class MemberComparison
             return null;
         }
 
-        return new CollectionWalk(actualElements, expectedElements);
+        return new CollectionWalk(actualElements, expectedElements, !elementType.IsValueType);
     }
 
     // The length elements of elementType at data: a reference element as the reference it holds, a struct element
@@ -2024,6 +2044,10 @@ internal static class MemberComparison
 
         public object? ChildExpected { get; private set; }
 
+        // True when the current child is held in a member or element declared a reference type (object, an interface,
+        // ValueType), so that a boxed value there is held through a reference, not by value (see StartHeld).
+        public bool ChildHeldByReference { get; private set; }
+
         // The path segment of the current child, prepended when the child could not be compared.
         public abstract string ChildSegment { get; }
 
@@ -2044,10 +2068,11 @@ internal static class MemberComparison
             }
         }
 
-        protected Step Child(object? actual, object? expected)
+        protected Step Child(object? actual, object? expected, bool heldByReference = false)
         {
             ChildActual = actual;
             ChildExpected = expected;
+            ChildHeldByReference = heldByReference;
             return Step.Child;
         }
     }
@@ -2077,14 +2102,17 @@ internal static class MemberComparison
                 }
 
                 _comparedAny = true;
-                return Child(member.GetValue(actual), member.GetValue(expected));
+                return Child(member.GetValue(actual), member.GetValue(expected), !member.MemberType.IsValueType);
             }
 
             return _comparedAny || !fieldsOnly ? Step.Equal : Step.Different;
         }
     }
 
-    private sealed class CollectionWalk(object?[] actual, object?[] expected) : Walk
+    // elementsHeldByReference: the elements are declared a reference type, so a boxed element is held through a
+    // reference (see StartHeld). False where the declared element type is a value type or is not known.
+    private sealed class CollectionWalk(object?[] actual, object?[] expected, bool elementsHeldByReference = false)
+        : Walk
     {
         private int _index = -1;
 
@@ -2098,7 +2126,9 @@ internal static class MemberComparison
             }
 
             _index++;
-            return _index < actual.Length ? Child(actual[_index], expected[_index]) : Step.Equal;
+            return _index < actual.Length
+                ? Child(actual[_index], expected[_index], elementsHeldByReference)
+                : Step.Equal;
         }
     }
 
@@ -2120,7 +2150,9 @@ internal static class MemberComparison
                 step = members.Next();
             }
 
-            return step == Step.Child ? Child(_current.ChildActual, _current.ChildExpected) : step;
+            return step == Step.Child
+                ? Child(_current.ChildActual, _current.ChildExpected, _current.ChildHeldByReference)
+                : step;
         }
     }
 
