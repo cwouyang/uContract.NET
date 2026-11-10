@@ -1201,12 +1201,19 @@ internal static class MemberComparison
         out bool equal
     )
     {
+        // A primitive or an enum is decided by its Equals alone; it is never an inline array or a holder.
+        if (type.IsPrimitive || type.IsEnum)
+        {
+            equal = Equals(actual, expected);
+            return null;
+        }
+
         if (IsInlineArray(type))
         {
             return StartInlineArray(actual, expected, type, context, out equal);
         }
 
-        if (IsComparedByFieldsWithoutEquals(actual, expected, type))
+        if (IsStructComparedByFieldsWithoutEquals(actual, expected, type))
         {
             equal = false;
             return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
@@ -1219,8 +1226,6 @@ internal static class MemberComparison
         // did not come from Old (see Contract._UncopiedHeldByValue).
         if (
             context.Uncopied is { } isUncopied
-            && !type.IsPrimitive
-            && !type.IsEnum
             && (FindUncopiedHeld(actual, type, isUncopied) ?? FindUncopiedHeld(expected, type, isUncopied)) is { } held
         )
         {
@@ -1230,7 +1235,7 @@ internal static class MemberComparison
         }
 
         equal = Equals(actual, expected);
-        if (equal || type.IsPrimitive || type.IsEnum)
+        if (equal)
         {
             return null;
         }
@@ -1259,10 +1264,17 @@ internal static class MemberComparison
     // either side (see NeedsFieldComparison).
     internal static bool IsComparedByFieldsWithoutEquals(object actual, object expected, Type type)
     {
-        return !IsInlineArray(type)
-            && !type.IsPrimitive
+        return !type.IsPrimitive
             && !type.IsEnum
-            && !HasUserEquals(actual, type)
+            && !IsInlineArray(type)
+            && IsStructComparedByFieldsWithoutEquals(actual, expected, type);
+    }
+
+    // As IsComparedByFieldsWithoutEquals, for a type already known to be neither a primitive, an enum nor an inline
+    // array.
+    private static bool IsStructComparedByFieldsWithoutEquals(object actual, object expected, Type type)
+    {
+        return !HasUserEquals(actual, type)
             && (NeedsFieldComparison(actual, type) || NeedsFieldComparison(expected, type));
     }
 
@@ -1295,7 +1307,7 @@ internal static class MemberComparison
             return null;
         }
 
-        if (OverridesEquals(actual, type) && Equals(actual, expected))
+        if (HasUserEquals(actual, type) && Equals(actual, expected))
         {
             equal = true;
             return null;
