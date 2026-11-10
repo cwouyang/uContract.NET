@@ -577,7 +577,11 @@ AOT](README.md#trimming-and-native-aot) in the README.
   accepted); list the member as assignable. A computed property whose getter builds an object from a
   field (`AsArray => [Buf]`) carries no `Old` record, so when that field is excused and `Old` could not
   copy its struct elements, an in-place change of them passes through the property (accepted); list
-  the computed property as assignable too. After the first `Old` copy in a process that could not
+  the computed property as assignable too. A getter written by hand that is marked `[CompilerGenerated]`
+  (by you, a source generator or an IL weaver) is trusted as an auto-property's, so with its field
+  excused and `Old` unable to copy the struct elements of an inline array, an in-place change of them
+  can pass through it (accepted); do not mark hand-written getters `[CompilerGenerated]`, or list the
+  property as assignable too. After the first `Old` copy in a process that could not
   copy struct elements, every compared pair costs up to two more weak-table lookups (read from the
   code, not measured). A struct with a field declared as `object`, `ValueType`, an interface or a
   class (other than `string`, an array or a delegate) has the run-time values of those fields looked at each time it is compared, and the look can

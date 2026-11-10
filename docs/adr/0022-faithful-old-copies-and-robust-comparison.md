@@ -4225,8 +4225,8 @@ runtime and has none here; tests that pinned element 0 or the old top-level resu
 new result. Native
 AOT: smoke checks 161 to 169, listed in the ADR-0021 amendment of this date.
 
-**Known limitations.** The first five were put to the maintainer and accepted (spec revisions 12, 16,
-17, 18 and 19); the other three were found in review and recorded without a decision of the maintainer. The
+**Known limitations.** The first six were put to the maintainer and accepted (spec revisions 12, 16,
+17, 18, 19 and 21); the other three were found in review and recorded without a decision of the maintainer. The
 limitation on fixed-size buffers is above.
 
 - **A record's own inline array under a hand-written base `Equals`** (accepted by the user, revision 12). When a record
@@ -4273,6 +4273,14 @@ limitation on fixed-size buffers is above.
   ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date; unit test
   `EnsureAssignable_WhenAComputedPropertyWrapsAnExcusedFieldWhoseElementsOldCouldNotCopy_PassesAnInPlaceChangeAsAKnownLimitation`).
   Way out: list the computed property as assignable too.
+- **A hand-written getter marked `[CompilerGenerated]`** (accepted by the user, revision 21: "記為已知限制
+  (Recommended)"). A getter written by hand that carries `[CompilerGenerated]` (put there by you, a
+  source generator or an IL weaver) is trusted as an auto-property's; with its field excused by a
+  pattern and `Old` unable to copy the struct elements of an inline array (without dynamic code on the
+  .NET 9 runtime or later), an in-place change of them can pass through the property
+  ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date; read from the
+  code, no test pins it). Ways out: do not mark hand-written getters `[CompilerGenerated]`, or list the
+  property as assignable too.
 - **Visual Basic anonymous types.** The look of IA3 follows only the fields behind `Key` properties, but
   once a field comparison starts for another reason, the member walk compares every member of the
   anonymous object, as it did before (found in review; no test pins it).
