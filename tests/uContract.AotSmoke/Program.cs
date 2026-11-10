@@ -880,6 +880,72 @@ internal sealed class UnseenStructHolder
     public UnseenListBufferStruct Inner;
 }
 
+// Nothing preserves it; not an inline array. Equal by its hand-written Equals whatever its field holds.
+internal struct UnseenTolerantPoint
+{
+    public int X;
+
+    public override readonly bool Equals(object? obj) => obj is UnseenTolerantPoint;
+
+    public override readonly int GetHashCode() => 0;
+}
+
+// Passed as T; that preserves its field, not the members of UnseenTolerantPoint.
+internal sealed class UnseenTolerantPointHolder
+{
+    public UnseenTolerantPoint Inner;
+}
+
+// Nothing preserves it; not an inline array. Unequal by its hand-written Equals whatever its field holds.
+internal struct UnseenStrictPoint
+{
+    public int X;
+
+    public override readonly bool Equals(object? obj) => false;
+
+    public override readonly int GetHashCode() => 0;
+}
+
+// Passed as T; that preserves its field, not the members of UnseenStrictPoint.
+internal sealed class UnseenStrictPointHolder
+{
+    public UnseenStrictPoint Inner;
+}
+
+// Nothing preserves it: its element field is hidden. Equal by its hand-written Equals whatever its elements hold.
+[InlineArray(3)]
+internal struct UnseenTolerantBuffer
+{
+    private int _element;
+
+    public override readonly bool Equals(object? obj) => obj is UnseenTolerantBuffer;
+
+    public override readonly int GetHashCode() => 0;
+}
+
+// Passed as T; that preserves its field, not the fields of UnseenTolerantBuffer.
+internal sealed class UnseenTolerantBufferHolder
+{
+    public UnseenTolerantBuffer Buffer;
+}
+
+// Nothing preserves it: its element field is hidden. Unequal by its hand-written Equals whatever its elements hold.
+[InlineArray(3)]
+internal struct UnseenStrictBuffer
+{
+    private int _element;
+
+    public override readonly bool Equals(object? obj) => false;
+
+    public override readonly int GetHashCode() => 0;
+}
+
+// Passed as T; that preserves its field, not the fields of UnseenStrictBuffer.
+internal sealed class UnseenStrictBufferHolder
+{
+    public UnseenStrictBuffer Buffer;
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -2932,6 +2998,123 @@ public static class Program
             Expect.Ok,
             Expect.Ok
         );
+
+        // The hand-written Equals of a struct is found by resolving the Equals its box dispatches to; that runs for
+        // every struct pair, also one with no inline array, and must not fail for a method nothing preserves.
+        // Mutation: field X written. Visibility: T (UnseenTolerantPointHolder); nothing preserves UnseenTolerantPoint.
+        yield return new Check(
+            170,
+            "Unpreserved struct with a hand-written Equals that says equal, field changed",
+            UnseenTolerantPointChanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: field X written. Visibility: T (UnseenStrictPointHolder); nothing preserves UnseenStrictPoint.
+        yield return new Check(
+            171,
+            "Unpreserved struct with a hand-written Equals that says unequal, field changed",
+            UnseenStrictPointChanged,
+            Expect.Throws<PostconditionViolationException>("Inner"),
+            Expect.Ok
+        );
+
+        // Mutation: element 2 written. Visibility: T (UnseenTolerantBufferHolder); nothing preserves
+        // UnseenTolerantBuffer, so its element field is hidden.
+        yield return new Check(
+            172,
+            "Unpreserved inline array with a hand-written Equals that says equal, element changed",
+            UnseenTolerantBufferChanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (UnseenStrictBufferHolder); nothing preserves UnseenStrictBuffer.
+        yield return new Check(
+            173,
+            "Unpreserved inline array with a hand-written Equals that says unequal",
+            UnseenStrictBufferUnchanged,
+            Expect.Throws<InvalidOperationException>([
+                .. NestedText("uContract.AotSmoke.UnseenStrictBuffer", "UnseenStrictBufferHolder.Buffer", "Buffer"),
+                HiddenElementFieldText,
+            ]),
+            Expect.Ok
+        );
+
+        // Control for check 169: the same fixture with element 0 different and element 2 equal is reported, so the
+        // built-in Equals that decides there sees element 0. Mutation: element 0 holds different lists.
+        // Visibility: as check 169.
+        yield return new Check(
+            174,
+            "Unpreserved struct without Equals holding a preserved inline array, element 0 changed",
+            UnseenStructHoldingKeptListBufferFirstElementChanged,
+            Expect.Throws<PostconditionViolationException>("Inner"),
+            Expect.Ok
+        );
+
+        // Check 168 followed by a compare of the original with its copy. Mutation: none. Visibility: as check 168.
+        yield return new Check(
+            175,
+            "Old unpreserved inline array field, then compared",
+            OldUnseenIntBufferHolderCompared,
+            Expect.Throws<InvalidOperationException>([
+                .. NestedText("uContract.AotSmoke.UnseenIntBuffer", "UnseenIntBufferHolder.Buffer", "Buffer"),
+                HiddenElementFieldText,
+            ]),
+            Expect.Ok
+        );
+    }
+
+    private static object? UnseenTolerantPointChanged()
+    {
+        UnseenTolerantPointHolder actual = new() { Inner = new UnseenTolerantPoint { X = 1 } };
+        UnseenTolerantPointHolder expected = new() { Inner = new UnseenTolerantPoint { X = 2 } };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenStrictPointChanged()
+    {
+        UnseenStrictPointHolder actual = new() { Inner = new UnseenStrictPoint { X = 1 } };
+        UnseenStrictPointHolder expected = new() { Inner = new UnseenStrictPoint { X = 2 } };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenTolerantBufferChanged()
+    {
+        UnseenTolerantBufferHolder actual = new();
+        UnseenTolerantBufferHolder expected = new();
+        actual.Buffer[2] = 7;
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenStrictBufferUnchanged()
+    {
+        UnseenStrictBufferHolder actual = new();
+        UnseenStrictBufferHolder expected = new();
+        actual.Buffer[1] = 4;
+        expected.Buffer[1] = 4;
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptListBuffer))]
+    private static object? UnseenStructHoldingKeptListBufferFirstElementChanged()
+    {
+        List<int> shared = [2];
+        UnseenStructHolder actual = new();
+        UnseenStructHolder expected = new();
+        actual.Inner.Buffer[0] = [9];
+        expected.Inner.Buffer[0] = [0];
+        actual.Inner.Buffer[2] = shared;
+        expected.Inner.Buffer[2] = shared;
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? OldUnseenIntBufferHolderCompared()
+    {
+        UnseenIntBufferHolder original = new();
+        original.Buffer[0] = 1;
+        UnseenIntBufferHolder copy = Contract.Old(() => original);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
     }
 
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptIntBuffer))]
