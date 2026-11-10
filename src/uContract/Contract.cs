@@ -42,6 +42,9 @@ public static class Contract
     private static readonly ContractConfiguration Config = new();
     private static readonly AsyncLocal<bool> Entered = new();
 
+    // DeepCopier.LeavesStructElementsUncopied as a delegate, created once (see _UncopiedHeldByValue).
+    private static readonly Func<Type, bool> LeavesStructElementsUncopied = DeepCopier.LeavesStructElementsUncopied;
+
     /// <summary>
     ///     Validates a precondition and throws an exception if the condition is false.
     /// </summary>
@@ -1971,7 +1974,7 @@ public static class Contract
     // the values came from Old. Null when T is not a struct, or where this runtime writes struct elements.
     private static Func<Type, bool>? _UncopiedHeldByValue(Type declaredType)
     {
-        return declaredType.IsValueType && !StructElements.CanWrite ? DeepCopier.LeavesStructElementsUncopied : null;
+        return declaredType.IsValueType && !StructElements.CanWrite ? LeavesStructElementsUncopied : null;
     }
 
     private static void _CompareAsWhole(Type type, Type declaredType, object? actual, object? expected)

@@ -162,7 +162,7 @@ public class OldInlineArrayTests
     // The .NET 8 runtime reads and writes a struct element only with dynamic code, which Native AOT does not support:
     // Old leaves the struct elements as it copies a field, and the comparison cannot compare them.
     [RuntimeHelpersBoxFact(exists: false)]
-    public void EnsureAssignable_WhenOldCopiedStructElementsWithoutDynamicCode_CannotCompareThem()
+    public void EnsureAssignable_WhenOldLeftStructElementsUncopiedWithoutDynamicCode_CannotCompareThem()
     {
         Bagged bagged = new() { Bags = WithBags() };
         Bagged old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bagged));
