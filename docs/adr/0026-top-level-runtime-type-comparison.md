@@ -275,10 +275,10 @@ element and never asks its built-in `Equals`, which sees only element 0 on the .
   so assignable patterns do not apply." (unit tests
   `EnsureAssignable_WhenTIsAnInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual`,
   `EnsureAssignable_WhenTIsAnInlineArrayAndAPatternNamesItsElementField_StillReportsTheTwoAsNotEqual`).
-  `T` = a `Nullable<>` of an inline array keeps the rule for a nullable value type and its message, "… is
-  compared as a whole, so assignable patterns do not apply." (unit test
-  `EnsureAssignable_WhenTIsANullableInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual`); its
-  values are compared by IA1.
+  `T` = a `Nullable<>` of an inline array keeps the rule for a nullable value type, and its values are
+  compared by IA1; the violation names the underlying inline-array type with the inline-array wording
+  above (unit test
+  `EnsureAssignable_WhenTIsANullableInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual`).
 - **An inline array that implements `IEnumerable`** follows IA1 like any inline array, not the rule for a
   value-type sequence that keeps the declared `T` (Details, item 1): with `T` = `object` two such values of
   distinct lists with equal contents pass, and a changed later list is reported (unit tests

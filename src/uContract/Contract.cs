@@ -2043,16 +2043,18 @@ public static class Contract
             return;
         }
 
+        // A nullable value type is named by its underlying type when that is an inline array, as both values are.
+        Type underlying = Nullable.GetUnderlyingType(type) ?? type;
         if (context.Hidden is not null)
         {
-            throw MemberComparison.CannotCompareBelowWhole(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
+            throw MemberComparison.CannotCompareBelowWhole(underlying, context.Hidden);
         }
 
-        string comparedHow = MemberComparison.IsInlineArray(type)
-            ? "is an inline array, compared as a whole element by element"
-            : "is compared as a whole";
+        string comparedAs = MemberComparison.IsInlineArray(underlying)
+            ? $"{underlying} is an inline array, compared as a whole element by element"
+            : $"{type} is compared as a whole";
         throw new PostconditionViolationException(
-            $"actual and expected are not equal. {type} {comparedHow}, so assignable patterns do not apply."
+            $"actual and expected are not equal. {comparedAs}, so assignable patterns do not apply."
         );
     }
 

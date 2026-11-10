@@ -2155,8 +2155,8 @@ public class EnsureAssignableInlineArrayTests
         );
 
         Assert.Equal(
-            $"actual and expected are not equal. {typeof(IntBuf3?)} is compared as a whole, so assignable patterns "
-                + "do not apply.",
+            $"actual and expected are not equal. {typeof(IntBuf3)} is an inline array, compared as a whole element by "
+                + "element, so assignable patterns do not apply.",
             exception.Description
         );
     }
