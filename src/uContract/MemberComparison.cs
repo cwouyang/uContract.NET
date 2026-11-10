@@ -1521,15 +1521,10 @@ internal static class MemberComparison
         return state;
     }
 
-    // The inline array that value, a struct, holds by value through the fields the holder rule lists (see
-    // CreateValueRoutes: a field declared an inline array, or a nested struct with routes of its own, followed to any
-    // depth whether or not it has a hand-written Equals, unlike HolderState, which stops at one: its Equals, say one
-    // that compares what the shared elements refer to, would find them equal too) and whose type isUncopied tells, as
-    // the comparison refuses it, with the path from value to it; null when there is none. Struct nesting by value is
-    // finite, so the recursion ends.
-    // As FindUncopiedHeld below, for either value of a pair of type; null also when isUncopied is null. The one rule
-    // that refuses a struct before its Equals is asked, below the top level (see StartValues) and at it (see
-    // Contract._TopLevelMembers).
+    // The inline array that either value of a pair of type, a struct, holds by value and that isUncopied tells (see
+    // the overload for one value below); null when there is none or isUncopied is null. The one rule that keeps the
+    // Equals of a struct from being asked, below the top level (see StartValues) and at it (see
+    // Contract._EqualsOfABoxedValueSaysEqual).
     internal static HiddenMembers? FindUncopiedHeld(
         object actual,
         object expected,
@@ -1542,6 +1537,12 @@ internal static class MemberComparison
             : FindUncopiedHeld(actual, type, isUncopied) ?? FindUncopiedHeld(expected, type, isUncopied);
     }
 
+    // The inline array that value, a struct, holds by value through the fields the holder rule lists (see
+    // CreateValueRoutes: a field declared an inline array, or a nested struct with routes of its own, followed to any
+    // depth whether or not it has a hand-written Equals, unlike HolderState, which stops at one: its Equals, say one
+    // that compares what the shared elements refer to, would find them equal too) and whose type isUncopied tells, as
+    // the comparison refuses it, with the path from value to it; null when there is none. Struct nesting by value is
+    // finite, so the recursion ends.
     private static HiddenMembers? FindUncopiedHeld(object value, Type type, Func<Type, bool> isUncopied)
     {
         ValueRoutes routes = ValueRoutesCache.GetOrAdd(type, CreateValueRoutes);
