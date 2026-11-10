@@ -2081,12 +2081,11 @@ public static class Contract
         }
     }
 
-    // A primitive, an enum and an inline array whose elements are not compared one by one (its element field is not
-    // listed by reflection, under Native AOT; see _CompareByRuntimeType for the others), as a value of a type other
-    // than T, are decided by Equals alone.
+    // A primitive and an enum, as a value of a type other than T, are decided by Equals alone. (An inline array never
+    // comes here: see _CompareByRuntimeType.)
     private static bool _IsDecidedByEqualsAlone(Type type)
     {
-        return type.IsPrimitive || type.IsEnum || MemberComparison.IsInlineArray(type);
+        return type.IsPrimitive || type.IsEnum;
     }
 
     // The values can be passed as the runtime type only when both are of it.
@@ -2132,10 +2131,8 @@ public static class Contract
         // A boxed value of a value type other than T is compared as a member of that type is: its Equals
         // decides first, and only when it says "unequal" are its fields compared; a struct whose built-in Equals
         // would reach an inline array's is compared by its fields without it (see
-        // MemberComparison.IsComparedByFieldsWithoutEquals). A primitive, an enum and an inline array whose element
-        // field reflection does not list (Native AOT) are decided by Equals alone, and a value without a field is
-        // then unequal.
-        // (Any other inline array never comes here: see _CompareByRuntimeType.)
+        // MemberComparison.IsComparedByFieldsWithoutEquals). A primitive and an enum are decided by Equals alone, and
+        // a value without a field is then unequal. (An inline array never comes here: see _CompareByRuntimeType.)
         bool asAMember = comparedType.IsValueType && comparedType != declaredType;
         if (
             !asAMember

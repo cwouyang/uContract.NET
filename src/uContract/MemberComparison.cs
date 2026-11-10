@@ -1185,7 +1185,7 @@ internal static class MemberComparison
     // A value type decides equality first; when it says "unequal", its elements (for ArraySegment<T> or
     // ImmutableArray<T>) or its fields are compared, because ValueType.Equals calls each field's own
     // Equals, which for most classes (List<T>, arrays) compares by reference. An inline array is compared by
-    // its elements instead (see TryStartInlineArray), and a struct without a hand-written Equals whose built-in
+    // its elements instead (see StartInlineArray), and a struct without a hand-written Equals whose built-in
     // Equals would reach an inline array's on either side (see NeedsFieldComparison) by its fields: the built-in
     // Equals of an inline array sees only element 0, and the .NET 10 runtime throws for it. Before any Equals is
     // asked, a pair that belongs to an Old copy which left struct elements uncopied (context.Uncopied) is refused
@@ -1199,10 +1199,9 @@ internal static class MemberComparison
         out bool equal
     )
     {
-        bool isInlineArray = IsInlineArray(type);
-        if (isInlineArray && TryStartInlineArray(actual, expected, type, context, out Walk? elements, out equal))
+        if (IsInlineArray(type))
         {
-            return elements;
+            return StartInlineArray(actual, expected, type, context, out equal);
         }
 
         if (IsComparedByFieldsWithoutEquals(actual, expected, type))
@@ -1246,13 +1245,6 @@ internal static class MemberComparison
             return new CollectionWalk(actualItems, expectedItems);
         }
 
-        // Reflection shows only the first element of an inline array, so it has no fully visible fields. Only an
-        // inline array that TryStartInlineArray leaves to these rules reaches here.
-        if (IsInlineArray(type))
-        {
-            return null;
-        }
-
         // A value type without visible fields has only its Equals to decide, and it said "unequal".
         return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
     }
@@ -1277,19 +1269,16 @@ internal static class MemberComparison
     // elements are read from the memory of the box. Primitive, enum, pointer and function-pointer elements are
     // compared in place (see TryCompareInPlace); reference and struct elements are walked, a struct element boxed (see
     // StructElements.Read).
-    // Struct elements that this runtime cannot read leave the pair uncompared (context.Hidden is set), equal or not.
-    // False leaves the pair to the rules for other value types: an inline array whose element field reflection does
-    // not list (Native AOT).
-    private static bool TryStartInlineArray(
+    // Struct elements that this runtime cannot read, and elements of a type reflection does not list (Native AOT),
+    // leave the pair uncompared (context.Hidden is set), equal or not.
+    private static CollectionWalk? StartInlineArray(
         object actual,
         object expected,
         Type type,
         ComparisonContext context,
-        out Walk? elements,
         out bool equal
     )
     {
-        elements = null;
         equal = false;
         InlineArrayShape shape = InlineArrayShapeOf(type);
 
@@ -1297,26 +1286,26 @@ internal static class MemberComparison
         if (shape is { ElementType: { } uncopiedElementType } && context.Uncopied?.Invoke(type) == true)
         {
             context.Hidden = new HiddenMembers(type) { ElementsNotCopied = uncopiedElementType };
-            return true;
+            return null;
         }
 
         if (OverridesEquals(actual, type) && Equals(actual, expected))
         {
             equal = true;
-            return true;
+            return null;
         }
 
         if (shape is not { ElementType: { } elementType })
         {
             context.Hidden = new HiddenMembers(type) { ElementFieldHidden = true };
-            return true;
+            return null;
         }
 
         ref byte actualData = ref Unsafe.As<StrongBox<byte>>(actual).Value;
         ref byte expectedData = ref Unsafe.As<StrongBox<byte>>(expected).Value;
         if (TryCompareInPlace(elementType, ref actualData, ref expectedData, shape.Length, out equal))
         {
-            return true;
+            return null;
         }
 
         if (
@@ -1325,11 +1314,10 @@ internal static class MemberComparison
         )
         {
             context.Hidden = new HiddenMembers(type) { ElementsNeedDynamicCode = elementType };
-            return true;
+            return null;
         }
 
-        elements = new CollectionWalk(actualElements, expectedElements);
-        return true;
+        return new CollectionWalk(actualElements, expectedElements);
     }
 
     // The length elements of elementType at data: a reference element as the reference it holds, a struct element
@@ -1625,7 +1613,7 @@ internal static class MemberComparison
     }
 
     // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's (see RouteOf). An
-    // inline array has none: its elements are compared by TryStartInlineArray.
+    // inline array has none: its elements are compared by StartInlineArray.
     private static ValueRoutes CreateValueRoutes(Type type)
     {
         if (IsInlineArray(type))
@@ -1727,13 +1715,6 @@ internal static class MemberComparison
         }
 
         return result;
-    }
-
-    // True when type is an inline array whose two values TryStartInlineArray compares element by element (see
-    // InlineArrayShape.ElementType), a fact of the type that is cached.
-    internal static bool IsInlineArrayComparedByElements(Type type)
-    {
-        return IsInlineArray(type) && InlineArrayShapeOf(type).ElementType is not null;
     }
 
     // The element type and length of the inline-array type type (see InlineArrayShape), a fact of the type that is
@@ -2157,7 +2138,7 @@ internal static class MemberComparison
         }
     }
 
-    // What TryStartInlineArray and DeepCopier need of an inline-array type: its element type (null when reflection
+    // What StartInlineArray and DeepCopier need of an inline-array type: its element type (null when reflection
     // does not list its one element field; its elements are then neither compared nor copied one by one) and its
     // length.
     internal sealed record InlineArrayShape(Type? ElementType, int Length);
