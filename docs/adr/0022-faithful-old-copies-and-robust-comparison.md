@@ -4140,7 +4140,7 @@ they do not collide with B1–B8 of `Old<T>()` and R0–R8 above:
   the type has a user `Equals` and it returns `true`, the pair is equal; otherwise the `n` elements are
   compared pairwise, in index order, by the rules for two elements of an array. Primitive and enum
   elements are compared in place with their `Equals` (`float` and `double` as a boxed one is: `NaN` equals
-  `NaN`, `0.0` equals `-0.0`; read from the code, not tested), pointer and function-pointer elements by
+  `NaN`, `0.0` equals `-0.0`; pinned by unit tests `EnsureAssignable_WhenAFloatElementIsNaNOnBothSides_DoesNotReportIt` and `EnsureAssignable_WhenADoubleElementIsZeroOnOneSideAndNegativeZeroOnTheOther_DoesNotReportIt`), pointer and function-pointer elements by
   address, reference elements by
   these rules, and struct elements boxed, by these rules (an element that is itself an inline array by
   IA1). The built-in `ValueType.Equals` and `GetHashCode` of an inline array are never called

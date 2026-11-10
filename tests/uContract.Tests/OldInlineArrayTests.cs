@@ -504,6 +504,39 @@ public class OldInlineArrayTests
             + "postcondition checks).";
     }
 
+    // A nullable struct T is a struct T: the inline array it holds by value is refused, whether or not from Old.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsANullableStructHoldingSuchAnInlineArrayByValueWithoutDynamicCode_CannotCompareIt()
+    {
+        BagHolder? actual = new BagHolder { Bags = WithBags() };
+        BagHolder? expected = new BagHolder { Bags = WithBags() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(BagBuf3)} (reached through 'BagHolder.Bags'): it is an inline "
+                + $"array of {typeof(Bag)}, a struct, whose elements Contract.Old could not copy: this runtime writes "
+                + "struct elements only with dynamic code, and dynamic code is not supported here (Native AOT), so the "
+                + "copy shares what they refer to with the original. Ways out: set DBC_POST=off (disables all "
+                + "postcondition checks).",
+            cannotCompare.Message
+        );
+    }
+
+    // Nullable<> struct elements that hold references are left uncopied as other struct elements are.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldCouldNotCopyNullableStructElementsWithoutDynamicCode_CannotCompareThem()
+    {
+        NBagged bagged = WithSecondNullableBag();
+        NBagged old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bagged));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bagged, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<NBagBuf3, Bag?>("NBagged.Bags", "Bags"), cannotCompare.Message);
+    }
+
     // A Nullable<> element without a value reads as null, as an array element does, and stays null in the copy.
     [Fact]
     public void Old_WhenNullableStructElementsHaveNoValue_CopiesThemAsNoValue()

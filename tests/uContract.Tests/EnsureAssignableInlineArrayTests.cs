@@ -2175,6 +2175,127 @@ public class EnsureAssignableInlineArrayTests
         return $"\nMembers were listed from the runtime type {typeof(TRuntime)}, not from T ({typeof(object)}).";
     }
 
+    // ---- Pins of further element kinds and holders ----
+
+    [Fact]
+    public void EnsureAssignable_WhenAGenericInlineArrayWithItsOwnEqualsSaysEqual_LetsItsEqualsDecide()
+    {
+        TolerantGenericBuf2<string> actual = new();
+        actual[1] = "first";
+        TolerantGenericBuf2<string> expected = new();
+        expected[1] = "second";
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    // float and double elements are compared in place with their Equals, as a boxed one is.
+    [Fact]
+    public void EnsureAssignable_WhenAFloatElementIsNaNOnBothSides_DoesNotReportIt()
+    {
+        Buf2<float> actual = new();
+        actual[1] = float.NaN;
+        Buf2<float> expected = new();
+        expected[1] = float.NaN;
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenADoubleElementIsZeroOnOneSideAndNegativeZeroOnTheOther_DoesNotReportIt()
+    {
+        Buf2<double> actual = new();
+        actual[1] = 0.0;
+        Buf2<double> expected = new();
+        expected[1] = -0.0;
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterNativeIntElementChanged_ReportsTheTwoAsNotEqual()
+    {
+        AssertOnlyALaterElementChangeIsReported<nint>(Changed);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterBoolElementChanged_ReportsTheTwoAsNotEqual()
+    {
+        AssertOnlyALaterElementChangeIsReported(true);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterCharElementChanged_ReportsTheTwoAsNotEqual()
+    {
+        AssertOnlyALaterElementChangeIsReported('x');
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterLongElementChanged_ReportsTheTwoAsNotEqual()
+    {
+        AssertOnlyALaterElementChangeIsReported(long.MaxValue);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAPointerInlineArrayAndOnlyALaterAddressChanged_ReportsTheTwoAsNotEqual()
+    {
+        PointerBuf2 actual = WithSecondAddress<PointerBuf2>(Changed);
+        PointerBuf2 expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<PointerBuf2>(), exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterAddressOfAPointerInlineArrayInAnArrayChanged_ReportsTheField()
+    {
+        PointerGrid actual = new() { Rows = [WithSecondAddress<PointerBuf2>(Changed)] };
+        PointerGrid expected = new() { Rows = [new PointerBuf2()] };
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Rows", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenOnlyALaterAddressOfAPointerInlineArrayInAHolderStructChanged_ReportsTheField()
+    {
+        PointerHolding actual = new()
+        {
+            Value = new PointerHolder { Pointers = WithSecondAddress<PointerBuf2>(Changed) },
+        };
+        PointerHolding expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    private static void AssertOnlyALaterElementChangeIsReported<TElement>(TElement changed)
+    {
+        Buf2<TElement> actual = new();
+        actual[1] = changed;
+        Buf2<TElement> expected = new();
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
+
+        Assert.Equal(ComparedAsAnInlineArray<Buf2<TElement>>(), exception.Description);
+    }
+
     private static string ComparedAsAnInlineArray<TInlineArray>()
     {
         return $"actual and expected are not equal. {typeof(TInlineArray)} is an inline array, compared as a whole "
@@ -2428,6 +2549,32 @@ public class EnsureAssignableInlineArrayTests
     private sealed class Called
     {
         public FunctionPointerBuf2 Functions;
+    }
+
+    private sealed class PointerGrid
+    {
+        public PointerBuf2[] Rows = [];
+    }
+
+    private struct PointerHolder
+    {
+        public PointerBuf2 Pointers;
+    }
+
+    private sealed class PointerHolding
+    {
+        public PointerHolder Value;
+    }
+
+    // Equal by its hand-written Equals whatever its elements hold.
+    [InlineArray(2)]
+    private struct TolerantGenericBuf2<TElem>
+    {
+        private TElem _element;
+
+        public override readonly bool Equals(object? obj) => obj is TolerantGenericBuf2<TElem>;
+
+        public override readonly int GetHashCode() => 0;
     }
 
     private sealed class BadgeGrid
