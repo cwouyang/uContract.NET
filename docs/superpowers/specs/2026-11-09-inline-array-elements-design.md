@@ -75,6 +75,9 @@ the work is done).
    `Equals` asked before B6's third case sees the elements `Old` left shared and returns `true`, a silent pass):
    "能檢查的先擋，其餘記限制 (Recommended)" — B6's third case is checked before a user `Equals` where the library can
    tell; the rest is a known limitation.
+17. Revision during Act (Task 6 risk review, confirmed 3/3: under Native AOT an unpreserved struct with no user
+   `Equals` that holds an inline array is decided by its built-in `Equals`, since its fields cannot be listed):
+   "記為已知限制，加煙霧檢查 (Recommended)" — a known limitation after B6, pinned by a smoke check.
 
 ## Terms
 
@@ -202,6 +205,16 @@ compare" messages (ADR-0021), only the ways out that work for its case:
 
 **[author's call]**: if `Contract.Old` cannot copy the elements in these cases it does not throw itself; the
 comparison that follows throws as above.
+
+**Known limitation under Native AOT (accepted by the user, revision 17).** A struct that has no user `Equals` and
+whose own fields are not visible to reflection (nothing preserves the struct type; `[DynamicallyAccessedMembers]` on
+`T` preserves `T`'s members, not those of the struct types of its fields) cannot be looked into, so the library
+cannot tell whether it holds an inline array; it is decided by its built-in `Equals` as before this change. When it
+holds an inline array, that built-in `Equals` sees only element 0 on the .NET 8 runtime (a difference in a later
+element passes) and throws `NotSupportedException` on the .NET 10 runtime. This is the one exception to "never a
+silent pass, never `NotSupportedException`" above. Ways out: preserve the struct type with
+`[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]`, or list the member that holds it as assignable.
+A Native AOT smoke check pins the behaviour; the documentation (ADR-0021 amendment, CHANGELOG, README) states it.
 
 **B8. Dynamic code.** Where reading or writing elements needs a generic instantiation that is not known at compile
 time (struct elements on the .NET 8 runtime, measured), the library may use `MakeGenericMethod`, only when
