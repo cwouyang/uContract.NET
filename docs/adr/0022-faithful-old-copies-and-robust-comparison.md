@@ -20,7 +20,7 @@
 - **Amended**: 2026-11-02 — fields-only comparison was evaluated in #46 and is not adopted, so D9 stands and the statements that defer work to #46 are settled; an assignable pattern is also matched against the property name of a compiler-generated backing field ([ADR-0025](0025-fields-only-comparison-not-adopted.md)); the smoke program has 108 checks; see the eleventh Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — the top level of `EnsureAssignable<T>()` compares the runtime type of the two values, so "the top level comparing the members of `typeof(T)`" no longer holds; R6 and R7 compare a sequence by the class chain of its runtime type; under Native AOT R8 also covers a nested class of yours that shows no declared member, and its message names the type in C# syntax; two different instances of a shared type as `T` are a violation by reference (#40 item 2, [ADR-0026](0026-top-level-runtime-type-comparison.md)); the smoke program has 139 checks; see the twelfth Amendment under Implementation Notes
 - **Amended**: 2026-11-08 — `EnsureAssignable<T>()` leaves out a public property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`), which reflection cannot read and which made it throw `NotSupportedException`; the fields behind it are still compared, and under Native AOT it does not count as a visible member (a variant in which it counted was measured and rejected), and the "cannot compare" messages say so; for R6 it still counts as a member declared on a class of yours; D9 and the "untouched" statement on the byref-like property in the #52 amendment are qualified (#40); the smoke program has 160 checks; see the thirteenth Amendment under Implementation Notes
-- **Amended**: 2026-11-10 — an `[InlineArray]` struct is compared element by element wherever the comparison meets two values of one inline-array type, and its built-in `Equals` is never asked; a struct whose built-in `Equals` would reach an inline array's is compared by its fields without it; `Old<T>()` copies every element of an inline array; R3 step 3 loses its `[InlineArray]` exclusion, and the Known Limitations on `[InlineArray]` structs and on inline arrays of references are narrowed to fixed-size buffers (#84); the smoke program has 169 checks; see the fourteenth Amendment under Implementation Notes
+- **Amended**: 2026-11-10 — an `[InlineArray]` struct is compared element by element wherever the comparison meets two values of one inline-array type, and its built-in `Equals` is never asked; a struct whose built-in `Equals` would reach an inline array's is compared by its fields without it; `Old<T>()` copies every element of an inline array; R3 step 3 loses its `[InlineArray]` exclusion, and the Known Limitations on `[InlineArray]` structs and on inline arrays of references are narrowed to fixed-size buffers (#84); the smoke checks are listed in the ADR-0021 amendment of 2026-11-10; see the fourteenth Amendment under Implementation Notes
 
 ---
 
@@ -4209,9 +4209,10 @@ Each statement of this ADR that the change settles or qualifies is quoted by its
   replaces it is the "cannot compare" case for struct elements that `Old<T>()` could not copy
   ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date).
 
-**What was measured.** Unit tests in `EnsureAssignableInlineArrayTests` and `OldInlineArrayTests` (1679
-tests in the suite; 1652 ran on the .NET 8.0.33 runtime and 1671 on the .NET 10.0.14 runtime with
-`DOTNET_ROLL_FORWARD=LatestMajor`, all passed; the others skip by runtime: `BuiltInInlineArrayEqualsFact`
+**What was measured.** Unit tests in `EnsureAssignableInlineArrayTests` and `OldInlineArrayTests` (the
+whole suite passed on the .NET 8.0.33 runtime and on the .NET 10.0.14 runtime with
+`DOTNET_ROLL_FORWARD=LatestMajor`; the counts change with every commit, so they are not kept here; tests
+skip by runtime: `BuiltInInlineArrayEqualsFact`
 for the shapes whose result differs by runtime, and `RuntimeHelpersBoxFact` for the .NET 9+ paths). They
 cover `int`, enum, `string`, `Guid`, `decimal`, `int?`, struct, generic, pointer, function-pointer and
 inline-array elements, lengths 1 and 64, element 0 and only a later element changed, a field, a property,
@@ -4223,10 +4224,12 @@ follows (a real Visual Basic build was checked by the reviewers), cyclic boxes, 
 `TestRuntime.WithoutDynamicCode` under the JIT. The suite had six failures on master on the .NET 10
 runtime and has none here; tests that pinned element 0 or the old top-level result were rewritten to the
 new result. Native
-AOT: smoke checks 161 to 169, listed in the ADR-0021 amendment of this date.
+AOT: the smoke checks listed in the ADR-0021 amendment of this date.
 
-**Known limitations.** The first six were put to the maintainer and accepted (spec revisions 12, 16,
-17, 18, 19 and 21); the other three were found in review and recorded without a decision of the maintainer. The
+**Known limitations.** This is the full list of the known limitations of #84; the CHANGELOG entry carries
+the same list for users, and the README, API_REFERENCE and the XML remarks of `EnsureAssignable<T>()` point
+here. The first seven were put to the maintainer and accepted (spec revisions 12, 16, 17, 18, 19, 21 and
+22); the other four were found in review and recorded without a decision of the maintainer. The
 limitation on fixed-size buffers is above.
 
 - **A record's own inline array under a hand-written base `Equals`** (accepted by the user, revision 12). When a record
@@ -4240,7 +4243,8 @@ limitation on fixed-size buffers is above.
   `Equals`, or list the member as assignable. The maintainer chose this simple rule over a narrower one
   that made other records report an inline array that the base `Equals` ignores ("改回簡單規則，記一個限制").
 - **A user `Equals` asked first through a reference** (accepted by the user, revision 16: "能檢查的先擋，其餘記限制
-  (Recommended)"). Without dynamic code on the .NET 9 runtime or later,
+  (Recommended)"). Without dynamic code (on the .NET 9 runtime or later, and, since revision 22 records
+  the copy there too, on the .NET 8 runtime: read from the code),
   a user `Equals` that is asked before the comparison reaches an inline array whose struct elements `Old`
   left shared, and that reaches it only through a reference (a struct's hand-written `Equals` over a class
   or a boxed value, or, under Native AOT, the `Equals` of a class whose members reflection does not show),
@@ -4251,14 +4255,18 @@ limitation on fixed-size buffers is above.
   `EnsureAssignable_WhenOldLeftAnInlineArrayInAClassWithItsOwnEqualsUncopied_CannotCompareIt`). Ways out:
   list the member as assignable, or compare the elements in that `Equals` by something other than the
   shared references.
-- **Native AOT, a struct that nothing preserves** (accepted by the user, revision 17: "記為已知限制，加煙霧檢查
-  (Recommended)"). A struct with no user `Equals` whose fields reflection
-  does not list cannot be looked into, so it is decided by its built-in `Equals` as before, also when it
-  holds an inline array ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date;
-  smoke check 169).
+- **Native AOT, a struct or a record class that nothing preserves** (accepted by the user, revision 17:
+  "記為已知限制，加煙霧檢查 (Recommended)", extended by revision 22: "併入修訂 17 的限制 (Recommended)"). A
+  struct with no user `Equals` whose fields reflection does not list, or a record class (a class whose
+  `Equals` is compiler-generated) whose members reflection does not show, cannot be looked into, so it is
+  decided by its own `Equals` as before, also when it holds an inline array: on .NET 8 only element 0 is
+  seen (a change of a later element passes), on .NET 10 `NotSupportedException` is thrown (not measured).
+  Ways out: preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]`, or
+  list the member as assignable ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of
+  this date; smoke checks 169 and 176).
 - **Boxes among the elements of a sequence that a struct `T` holds** (accepted by the user, revision 18:
-  "記為已知限制 (Recommended)"). Without dynamic code on the .NET 9 runtime or later, an inline array
-  that is an element of a value-type sequence a struct `T` holds by value (`ImmutableArray<object>`,
+  "記為已知限制 (Recommended)"). Without dynamic code (on the .NET 8 runtime too since revision 22), an
+  inline array that is an element of a value-type sequence a struct `T` holds by value (`ImmutableArray<object>`,
   `ArraySegment<object>`, a struct of yours that implements `IEnumerable`) is refused also when the
   values did not come from `Old` (a reference sequence such as `List<object>` or `object[]` is compared
   through its own record): a loud "cannot compare" ("Contract.Old could not copy"), never a silent
@@ -4281,6 +4289,19 @@ limitation on fixed-size buffers is above.
   ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date; read from the
   code, no test pins it). Ways out: do not mark hand-written getters `[CompilerGenerated]`, or list the
   property as assignable too.
+- **A framework struct whose `Equals` forwards to the value it holds** (accepted by the user, revision
+  22: "記為已知限制 (Recommended)"). `ValueTask<T>` and `SequencePosition` have an `Equals` written by
+  hand that compares the value they hold, so they count as a user `Equals` and decide first; when that
+  value is an inline array, its built-in `Equals` is reached: on .NET 10 `NotSupportedException`
+  propagates, on .NET 8 only element 0 is seen, also under the JIT (unit tests
+  `EnsureAssignable_WhenAValueTaskHoldsAnInlineArrayResult_LetsTheNotSupportedExceptionPropagate`,
+  `EnsureAssignable_WhenOnlyALaterElementOfAValueTaskInlineArrayResultChanged_DoesNotSeeIt`). Way out:
+  list the member as assignable.
+- **Native AOT, a record whose hand-written typed `Equals(R)` the trimmer hides** (found in review). The
+  record is then treated as one with a generated `Equals` and compared by its fields, so where that
+  `Equals` would tolerate a difference the call reports a violation that the JIT would not report; never
+  a silent pass (read from the code, not measured; [ADR-0021](0021-postconditions-under-trimming-and-aot.md),
+  amendment of this date). Way out: preserve the record type.
 - **Visual Basic anonymous types.** The look of IA3 follows only the fields behind `Key` properties, but
   once a field comparison starts for another reason, the member walk compares every member of the
   anonymous object, as it did before (found in review; no test pins it).
@@ -4295,13 +4316,14 @@ limitation on fixed-size buffers is above.
   records. Measured by a risk review at an intermediate commit of the branch (`f2d0f31`, before the look
   used a work list; not measured again): 2000 structs that share one 2000-node record chain took 3.3 s on
   .NET 8 and 4.9 s on .NET 10. After the first `Old` copy in a process that could not copy struct
-  elements (without dynamic code on .NET 9+ only), each compared pair is looked up in a weak table (up to
-  two lookups); before it, each pair reads a flag twice (read from the code, not measured).
+  elements (without dynamic code), each pair that the walk starts is looked up in a weak table (up to two
+  lookups), and the top level of each call makes up to four more; before it, each lookup reads a flag
+  (read from the code, not measured).
 
 **Unchanged.** B1 and B3 to B8 of `Old<T>()` (B2 is extended by IA4); R0 to R2 and R4 to R8 (R3 as
 above); rule S; D9; and the patterns, which apply as before except to an inline array at the top level,
-which is compared as a whole ([ADR-0026](0026-top-level-runtime-type-comparison.md), second Amendment). The smoke program has 169 checks (checks 161 to 169 are listed in the #84
-amendment of ADR-0021 dated 2026-11-10).
+which is compared as a whole ([ADR-0026](0026-top-level-runtime-type-comparison.md), second Amendment). The smoke checks of #84 are listed in
+the amendment of ADR-0021 dated 2026-11-10.
 
 ---
 
@@ -4358,4 +4380,4 @@ amendment of ADR-0021 dated 2026-11-10).
 | 2026-11-02 | Amended     | Fields-only comparison evaluated and not adopted (#46), so D9 stands; assignable patterns also match the property name of a backing field; decision in ADR-0025; 108 smoke checks. Decision unchanged. See Implementation Notes > eleventh Amendment. |
 | 2026-11-02 | Amended     | The top level compares the runtime type of the two values; R6 and R7 compare a sequence by the class chain of its runtime type; R8 also covers a nested class of yours that shows no declared member under Native AOT, and names the type in C# syntax (#40 item 2); decision in ADR-0026; 139 smoke checks. `Old<T>()` unchanged. See Implementation Notes > twelfth Amendment. |
 | 2026-11-08 | Amended     | A public property of a byref-like type is not compared, at any level, with no message; the fields behind it are; under Native AOT it does not count as a visible member, after the variant in which it counted was measured and rejected, and the "cannot compare" messages say so; for R6 it still counts as a member of yours (#40, the byref-like property); 160 smoke checks. `Old<T>()` unchanged. See Implementation Notes > thirteenth Amendment. |
-| 2026-11-10 | Amended     | An `[InlineArray]` struct is compared element by element (IA1), its built-in `Equals` never asked; holder structs and structs that hold one at run time are compared by their fields without their `Equals`; `Old<T>()` copies every element; R3 step 3 loses its `[InlineArray]` exclusion; the two Known Limitations on inline arrays are narrowed to fixed-size buffers; three limitations accepted by the user and three found in review recorded (#84); 169 smoke checks. Decision unchanged. See Implementation Notes > fourteenth Amendment. |
+| 2026-11-10 | Amended     | An `[InlineArray]` struct is compared element by element (IA1), its built-in `Equals` never asked; holder structs and structs that hold one at run time are compared by their fields without their `Equals`; `Old<T>()` copies every element; R3 step 3 loses its `[InlineArray]` exclusion; the two Known Limitations on inline arrays are narrowed to fixed-size buffers; seven limitations accepted by the user (spec revisions 12, 16, 17, 18, 19, 21 and 22) and four found in review recorded (#84); smoke checks listed in ADR-0021. Decision unchanged. See Implementation Notes > fourteenth Amendment. |

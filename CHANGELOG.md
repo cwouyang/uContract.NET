@@ -460,13 +460,14 @@ AOT](README.md#trimming-and-native-aot) in the README.
   case. (1) Nothing preserves the inline-array type, so reflection does not list its element field:
   preserve it with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`, list the
   member as assignable, or set `DBC_POST=off`. An `Equals` written by hand that says "unequal" gives
-  this exception too, where the JIT compares the elements. (2) On the .NET 8 runtime, struct elements:
-  list the member as assignable, run on the .NET 9 runtime or later, or set `DBC_POST=off`; preserving
-  the type does not help. (3) On the .NET 9 runtime or later, struct elements that hold references and
-  that an `Old` copy could not copy (the runtime offers no way without dynamic code to write them back,
-  so the copy shares what they refer to with the original; `Old` does not throw): list the member as
-  assignable, or set `DBC_POST=off`. Case 3 is decided before an `Equals` written by hand is asked, for
-  the inline array and for the structs that hold it by value at any depth. For a struct `T`, whose
+  this exception too, where the JIT compares the elements. (2) On the .NET 8 runtime, struct elements
+  that case 3 does not cover: list the member as assignable, run on the .NET 9 runtime or later, or set
+  `DBC_POST=off`; preserving the type does not help. (3) On any runtime, struct elements that hold
+  references and that an `Old` copy could not copy (no runtime offers a way without dynamic code to
+  write them back, so the copy shares what they refer to with the original; `Old` does not throw): list
+  the member as assignable, or set `DBC_POST=off`. Case 3 is decided before an `Equals` written by hand
+  is asked, for the inline array and for the structs that hold it by value at any depth, also for a
+  boxed struct passed as `T` = `object`, an interface or `ValueType`. For a struct `T`, whose
   copy carries no record of what was not copied, it refuses every such inline array that `T` holds by
   value, also for values that did not come from `Old`, and the message still says "Contract.Old could
   not copy"; a box held in a field or an inline-array element declared `object`, an interface or
@@ -474,7 +475,7 @@ AOT](README.md#trimming-and-native-aot) in the README.
   auto-property, recognised by its compiler-generated getter, counts as its backing field; a computed
   property does not, as its getter may box a field afresh, and neither does a C# 14 `field` property
   with a getter written by hand). Case 3 was
-  measured with unit tests that simulate a runtime without dynamic code on .NET
+  measured with unit tests that simulate a runtime without dynamic code on .NET 8 and .NET
   10; no Native AOT build on .NET 9 or later was run. The library uses dynamic code
   (`MakeGenericMethod`) in one place, for struct elements, only where it is supported; its `IL3050` is
   suppressed there with a justification, and the smoke program's Native AOT publish reports no warning.
@@ -556,35 +557,45 @@ AOT](README.md#trimming-and-native-aot) in the README.
   inline arrays, the elements after the first are invisible to reflection and to `ValueType.Equals`. A
   change there with an equal first element passes silently, on the .NET 8 and the .NET 10 runtimes.
   (ADR-0022)
-- Known limitations of the inline-array comparison (#84; ADR-0021, ADR-0022). A record that declares
-  its own field holding an inline array, under a base record whose typed `Equals(R)` is written by
-  hand, compares that field with the built-in `Equals`: on .NET 10 `NotSupportedException` propagates,
-  on .NET 8 only element 0 is seen; write the record's own typed `Equals`, or list the member as
-  assignable. Without dynamic code on the .NET 9 runtime or later, an `Equals` written by hand that is
-  asked first and reaches the inline array of an `Old` copy only through a reference (a struct's
-  `Equals` over a class, or under Native AOT the `Equals` of a class whose members reflection does not
-  show) can read the elements that the copy shares with the original and pass a change; list the member
-  as assignable. Under Native AOT a struct that has no `Equals` written by hand and that nothing
-  preserves cannot be looked into, so it is decided by its built-in `Equals`, also when it holds an
-  inline array: on .NET 8 a change in a later element passes (measured), on .NET 10 it throws
-  `NotSupportedException` (not measured); `[DynamicallyAccessedMembers]` on `T` does not preserve the
-  struct types of its fields, so preserve the struct with
-  `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]`, or list the member as
-  assignable (neither way out was measured). Without dynamic code on the .NET 9 runtime or later, for
-  a struct `T`, an inline array among the elements of a value-type sequence `T` holds by value
+- Known limitations of the inline-array comparison (#84; the full list, also in the ADR-0022
+  amendment of 2026-11-10). (1) A record that declares its own field holding an inline array, under a
+  base record whose typed `Equals(R)` is written by hand, compares that field with the built-in
+  `Equals`: on .NET 10 `NotSupportedException` propagates, on .NET 8 only element 0 is seen; write the
+  record's own typed `Equals`, or list the member as assignable. (2) Without dynamic code, an `Equals`
+  written by hand that is asked first and reaches the inline array of an `Old` copy only through a
+  reference (a struct's `Equals` over a class, or under Native AOT the `Equals` of a class whose members
+  reflection does not show) can read the elements that the copy shares with the original and pass a
+  change; list the member as assignable. (3) Under Native AOT a struct that has no `Equals` written by
+  hand, or a record class (whose `Equals` is compiler-generated), that nothing preserves cannot be
+  looked into, so it is decided by its own `Equals`, also when it holds an inline array: on .NET 8 a
+  change in a later element passes (measured), on .NET 10 it throws `NotSupportedException` (not
+  measured); `[DynamicallyAccessedMembers]` on `T` does not preserve the types of its fields, so
+  preserve the type with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]`, or list
+  the member as assignable (neither way out was measured). (4) Without dynamic code, for a struct `T`,
+  an inline array among the elements of a value-type sequence `T` holds by value
   (`ImmutableArray<object>`, `ArraySegment<object>`, a struct that implements `IEnumerable`) is
-  refused also when the values did not come from `Old` ("cannot compare", never a silent pass;
-  accepted); list the member as assignable. A computed property whose getter builds an object from a
-  field (`AsArray => [Buf]`) carries no `Old` record, so when that field is excused and `Old` could not
-  copy its struct elements, an in-place change of them passes through the property (accepted); list
-  the computed property as assignable too. A getter written by hand that is marked `[CompilerGenerated]`
-  (by you, a source generator or an IL weaver) is trusted as an auto-property's, so with its field
-  excused and `Old` unable to copy the struct elements of an inline array, an in-place change of them
-  can pass through it (accepted); do not mark hand-written getters `[CompilerGenerated]`, or list the
-  property as assignable too. After the first `Old` copy in a process that could not
-  copy struct elements, every compared pair costs up to two more weak-table lookups (read from the
-  code, not measured). A struct with a field declared as `object`, `ValueType`, an interface or a
-  class (other than `string`, an array or a delegate) has the run-time values of those fields looked at each time it is compared, and the look can
+  refused also when the values did not come from `Old` ("cannot compare", never a silent pass); list
+  the member as assignable. (5) A computed property whose getter builds an object from a field
+  (`AsArray => [Buf]`) carries no `Old` record, so when that field is excused and `Old` could not copy
+  its struct elements (no dynamic code, .NET 9 or later), an in-place change of them passes through the
+  property; list the computed property as assignable too. (6) A getter written by hand that is marked
+  `[CompilerGenerated]` (by you, a source generator or an IL weaver) is trusted as an auto-property's,
+  so with its field excused and `Old` unable to copy the struct elements of an inline array, an
+  in-place change of them can pass through it; do not mark hand-written getters `[CompilerGenerated]`,
+  or list the property as assignable too. (7) A framework struct whose `Equals` is written by hand and
+  forwards to the value it holds (`ValueTask<T>`, `SequencePosition`) decides first; when it holds an
+  inline array, .NET 10 throws `NotSupportedException` and .NET 8 sees element 0 only, also under the
+  JIT; list the member as assignable. These seven were accepted. Found in review: (8) under Native AOT a
+  record whose typed `Equals(R)` is written by hand but hidden by the trimmer is compared by its fields,
+  so a difference that `Equals` tolerates is reported (stricter, never a silent pass; not measured);
+  preserve the record. (9) Once a Visual Basic anonymous object is compared by its fields, all its
+  members are compared, not only its `Key` properties. (10) An inline array that implements
+  `IEnumerable`, passed at the top level against a sequence of another runtime type, is refused as a
+  sequence that is not a collection. (11) Cost: after the first `Old` copy in a process that could not
+  copy struct elements, each pair that the comparison starts costs up to two weak-table lookups, and
+  the top level of each call up to four more (read from the code, not measured). A struct with a field
+  declared as `object`, `ValueType`, an interface or a class (other than `string`, an array or a
+  delegate) has the run-time values of those fields looked at each time it is compared, and the look can
   walk a whole graph of records: 2000 such structs that share one 2000-node record chain took 3.3 s on
   .NET 8 and 4.9 s on .NET 10, measured at an intermediate commit of this change, before the look used
   a work list, and not measured again.

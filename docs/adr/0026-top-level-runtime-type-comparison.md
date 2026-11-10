@@ -296,6 +296,11 @@ element and never asks its built-in `Equals`, which sees only element 0 on the .
   (unit tests `EnsureAssignable_WhenTIsObjectAndOnlyALaterElementOfABoxedHolderStructChanged_ReportsTheField`,
   `EnsureAssignable_WhenTIsObjectAndABoxedHolderStructsHandWrittenEqualsSaysEqual_Passes`,
   `EnsureAssignable_WhenTIsObjectAndTheHandWrittenEqualsOfABoxedHolderStructThrows_LetsItPropagate`).
+  Without dynamic code, a boxed struct that holds by value an inline array whose struct elements an `Old`
+  copy left uncopied is refused before that user `Equals` is asked, by the rule of the third "cannot
+  compare" case in the [ADR-0021](0021-postconditions-under-trimming-and-aot.md) amendment of this date
+  (spec revision 22; unit test
+  `EnsureAssignable_WhenTIsObjectAndABoxedContentComparingStructHoldsAnInlineArrayOldLeftUncopied_CannotCompareItFirst`).
 - **Native AOT.** An inline array is still not covered by rule H3 (Details, item 4), but its elements can be
   read only when reflection lists its element field. When nothing preserves the inline-array type, the
   call throws "cannot compare", also for equal values; that and the other "cannot compare" cases of
@@ -311,7 +316,7 @@ These statements, each quoted by its opening words, no longer hold as written:
 - Details, item 4: "a primitive, an enum and an inline array need no metadata and are not covered". An
   inline array is not covered by H3, but it needs the metadata of its element field (see above).
 
-The decision is unchanged. The smoke program has 169 checks.
+The decision is unchanged. The smoke checks of #84 are listed in the ADR-0021 amendment of 2026-11-10.
 
 ---
 
