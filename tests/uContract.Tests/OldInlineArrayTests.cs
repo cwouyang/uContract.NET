@@ -169,7 +169,8 @@ public class OldInlineArrayTests
     }
 
     // The .NET 8 runtime reads and writes a struct element only with dynamic code, which Native AOT does not support:
-    // Old leaves the struct elements as it copies a field, and the comparison cannot compare them.
+    // Old leaves the struct elements as it copies a field, so the references inside them stay shared with the
+    // original, and the comparison refuses that inline array of the copy, as on the .NET 9 runtime or later.
     [RuntimeHelpersBoxFact(exists: false)]
     public void EnsureAssignable_WhenOldLeftStructElementsUncopiedWithoutDynamicCode_CannotCompareThem()
     {
@@ -179,15 +180,75 @@ public class OldInlineArrayTests
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bagged, old));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(
-            $"EnsureAssignable cannot compare {typeof(BagBuf3)} (reached through 'Bagged.Bags'): it is an inline array "
-                + $"of {typeof(Bag)}, a struct, whose elements this runtime reads only with dynamic code, and dynamic "
-                + "code is not supported here (Native AOT). Ways out: list 'Bags' as assignable (patterns are regular "
-                + "expressions matched against top-level member names, so use the plain member name); run on the "
-                + ".NET 9 runtime or later, which reads struct elements without dynamic code; or set DBC_POST=off "
-                + "(disables all postcondition checks).",
-            cannotCompare.Message
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("Bagged.Bags", "Bags"), cannotCompare.Message);
+    }
+
+    // A hand-written Equals asked before the elements are read would find the elements Old left shared equal, so on
+    // the .NET 8 runtime without dynamic code too the refusal comes first: for an inline array with its own Equals,
+    // and for a struct with its own Equals that holds one by value.
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenOldLeftTheElementsOfAnInlineArrayWithItsOwnEqualsUncopiedOnDotNet8_CannotCompareItFirst()
+    {
+        TolerantBagged bagged = new() { Bags = WithTolerantBags() };
+        TolerantBagged old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bagged));
+        bagged.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bagged, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<TolerantBagBuf3, Bag>("TolerantBagged.Bags", "Bags"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenAnUnchangedInlineArrayWithItsOwnEqualsIsUncopiedOnDotNet8_StillCannotCompareIt()
+    {
+        TolerantBagged bagged = new() { Bags = WithTolerantBags() };
+        TolerantBagged old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bagged));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bagged, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<TolerantBagBuf3, Bag>("TolerantBagged.Bags", "Bags"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenOldLeftAnInlineArrayInAContentComparingStructUncopiedOnDotNet8_CannotCompareItFirst()
+    {
+        ContentHolding holding = WithContentBags();
+        ContentHolding old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holding));
+        holding.Value.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holding, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("ContentHolding.Value.Bags", "Value"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenAnUnchangedInlineArrayInAContentComparingStructIsUncopiedOnDotNet8_StillCannotCompareIt()
+    {
+        ContentHolding holding = WithContentBags();
+        ContentHolding old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holding));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holding, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("ContentHolding.Value.Bags", "Value"), cannotCompare.Message);
+    }
+
+    // With dynamic code Old copies every element, and the content-comparing Equals sees the change.
+    [Fact]
+    public void EnsureAssignable_WhenAnInlineArrayInAContentComparingStructChangedAfterOldWithDynamicCode_ReportsTheField()
+    {
+        ContentHolding holding = WithContentBags();
+        ContentHolding old = Contract.Old(() => holding);
+        holding.Value.Bags[2].Items!.Add(Added);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(holding, old)
         );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
     // The .NET 9+ runtime reads a struct element without dynamic code but cannot write one back, so Old leaves the
@@ -917,6 +978,11 @@ public class OldInlineArrayTests
         };
     }
 
+    private static ContentHolding WithContentBags()
+    {
+        return new ContentHolding { Value = new ContentBagHolder { Bags = WithBags() } };
+    }
+
     private static TolerantBagBuf3 WithTolerantBags()
     {
         TolerantBagBuf3 buffer = new();
@@ -1209,6 +1275,11 @@ public class OldInlineArrayTests
 
             return true;
         }
+    }
+
+    private sealed class ContentHolding
+    {
+        public ContentBagHolder Value;
     }
 
     // Its Equals delegates to Inner's.

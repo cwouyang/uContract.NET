@@ -44,9 +44,6 @@ internal static class StructElements
     [MemberNotNullWhen(true, nameof(SizeOf), nameof(Box))]
     internal static bool ReadsWithoutDynamicCode => SizeOf is not null && Box is not null;
 
-    // Whether Read returns the elements: through RuntimeHelpers on the .NET 9 runtime or later, or with dynamic code.
-    internal static bool CanRead => ReadsWithoutDynamicCode || RuntimeFacts.IsDynamicCodeSupported;
-
     // The length elements of the struct type elementType at data, boxed. Null when neither way is available: the
     // .NET 8 runtime without dynamic code.
     internal static object?[]? Read(Type elementType, ref byte data, int length)

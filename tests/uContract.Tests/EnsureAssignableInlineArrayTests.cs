@@ -423,8 +423,29 @@ public class EnsureAssignableInlineArrayTests
         Assert.IsType<InvalidOperationException>(exception);
     }
 
+    // Struct elements that hold no reference: Old copies them whole, so only reading them needs dynamic code.
     [RuntimeHelpersBoxFact(exists: false)]
     public void EnsureAssignable_WhenTIsAnInlineArrayWhoseStructElementsCannotBeReadWithoutDynamicCode_CannotCompareIt()
+    {
+        GuidBuf2 actual = WithSecondGuid(SecondGuid);
+        GuidBuf2 expected = new();
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(GuidBuf2)} (reached through 'GuidBuf2'): "
+                + StructElementsNeedDynamicCode<Guid>()
+                + "Ways out: "
+                + RunOnNet9OrSetPostOff,
+            cannotCompare.Message
+        );
+    }
+
+    // Struct elements that hold references: on the .NET 8 runtime without dynamic code Old cannot copy them either, and
+    // a struct T carries no record of what was not copied, so the rule for a struct T refuses them as on .NET 9+.
+    [RuntimeHelpersBoxFact(exists: false)]
+    public void EnsureAssignable_WhenTIsAnInlineArrayWhoseStructElementsHoldReferencesWithoutDynamicCode_SaysOldCouldNotCopyThem()
     {
         BadgeBuf3 actual = WithLaterBadge("before");
         BadgeBuf3 expected = WithLaterBadge("after");
@@ -433,10 +454,11 @@ public class EnsureAssignableInlineArrayTests
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Equal(
-            $"EnsureAssignable cannot compare {typeof(BadgeBuf3)} (reached through 'BadgeBuf3'): "
-                + StructElementsNeedDynamicCode<Badge>()
-                + "Ways out: "
-                + RunOnNet9OrSetPostOff,
+            $"EnsureAssignable cannot compare {typeof(BadgeBuf3)} (reached through 'BadgeBuf3'): it is an inline "
+                + $"array of {typeof(Badge)}, a struct, whose elements Contract.Old could not copy: this runtime "
+                + "writes struct elements only with dynamic code, and dynamic code is not supported here (Native "
+                + "AOT), so the copy shares what they refer to with the original. Ways out: set DBC_POST=off "
+                + "(disables all postcondition checks).",
             cannotCompare.Message
         );
     }

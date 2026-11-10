@@ -11,7 +11,8 @@ namespace uContract;
 /// </summary>
 /// <remarks>
 ///     The objects are held weakly: recording them does not keep a copy alive. Nothing is looked up until a first copy
-///     has been recorded, which happens only without dynamic code on the .NET 9 runtime or later.
+///     has been recorded, which happens only without dynamic code (Native AOT), for an inline array of struct elements
+///     that hold references.
 /// </remarks>
 internal static class UncopiedInlineArrays
 {

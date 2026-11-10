@@ -13,9 +13,11 @@ namespace uContract;
 ///     visible to reflection is replaced by the copy of what it refers to. A struct field stays bitwise
 ///     except for the reference-typed fields inside it, replaced the same way at any nesting depth. An
 ///     array keeps its runtime type, rank and bounds, and its elements are replaced by the same rules. So are the
-///     elements of an inline array, read from its memory; struct elements only where the runtime can write them back
-///     (see <see cref="StructElements" />), and elsewhere element 0 alone, as a field: such a copy records which
-///     inline-array types it could not copy (see <see cref="UncopiedInlineArrays" />).
+///     elements of an inline array, read from its memory; struct elements that hold references only where the runtime
+///     can write them back, that is with dynamic code (see <see cref="StructElements" />). Without it, on any runtime,
+///     they stay as the field walk leaves them (element 0 copied as a field, the others bitwise, sharing what they
+///     refer to with the original), and the copy records which inline-array types it could not copy (see
+///     <see cref="UncopiedInlineArrays" />).
 /// </summary>
 /// <remarks>
 ///     Shared types (<see cref="SharedTypes" />, <see cref="string" /> included) are never cloned. An instance
@@ -60,13 +62,13 @@ internal static class DeepCopier
     }
 
     // True when a copy leaves the struct elements of an inline array of type uncopied on this runtime: they hold
-    // references, and the runtime can read struct elements but cannot write them back (the .NET 9 runtime or later
-    // without dynamic code; see StructElements). Old records such a type (see UncopiedInlineArrays), and the
-    // comparison refuses to compare it.
+    // references, and the runtime cannot write struct elements back (no dynamic code, on the .NET 8 runtime as on the
+    // .NET 9 runtime or later; see StructElements). Old records such a type (see UncopiedInlineArrays), and the
+    // comparison refuses to compare it before any Equals written by hand is asked, also on the .NET 8 runtime, which
+    // could not read the elements either: such an Equals would find the shared elements equal.
     internal static bool LeavesStructElementsUncopied(Type type)
     {
         return !StructElements.CanWrite
-            && StructElements.CanRead
             && HasStructElementsHoldingReferencesCache.GetOrAdd(type, HasStructElementsHoldingReferences);
     }
 
@@ -163,9 +165,8 @@ internal static class DeepCopier
 
     // The length struct elements at data, of an inline array of type, are read boxed, the references inside each box
     // are replaced, and the boxes are written back (see StructElements). False, changing nothing, where this runtime
-    // cannot write them. Where it can still read them, the copy records type as not copied (see
-    // LeavesStructElementsUncopied), so that the comparison refuses to compare it; where it cannot read them either
-    // (the .NET 8 runtime without dynamic code), the comparison refuses anyway.
+    // cannot write them: the copy then records type as not copied (see LeavesStructElementsUncopied), so that the
+    // comparison refuses to compare it.
     private static bool TryReplaceStructElements(
         Type type,
         Type elementType,
