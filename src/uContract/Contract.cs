@@ -1644,9 +1644,8 @@ public static class Contract
     // Returns true when the runtime type of the two values settled the comparison: a value that is compared as a
     // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array, an inline array
     // element by element as below the top level) or by reference (a shared type) is compared so whatever T is, and
-    // the patterns are not read; the built-in Equals of an inline array is not asked. Only an inline array whose
-    // element field reflection does not list (Native AOT) keeps the member route (see
-    // MemberComparison.IsInlineArrayComparedByElements). Two
+    // the patterns are not read; the built-in Equals of an inline array is not asked, also when reflection does not
+    // list its element field (Native AOT): the comparison then reports that it cannot compare it. Two
     // values of different runtime types where either is such a value are a violation, except two sequences, which are
     // left to _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the
     // address and the pointer type, as before; under another T a boxed pointer is compared by address only, as a member
@@ -1688,7 +1687,7 @@ public static class Contract
         if (
             _IsComparedAsWhole(actualType)
             || actual is System.Reflection.Pointer
-            || MemberComparison.IsInlineArrayComparedByElements(actualType)
+            || MemberComparison.IsInlineArray(actualType)
         )
         {
             _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), declaredType, actual, expected);
@@ -1812,7 +1811,7 @@ public static class Contract
     {
         return _IsComparedAsWhole(runtimeType)
             || SharedTypes.IsShared(runtimeType)
-            || MemberComparison.IsInlineArrayComparedByElements(runtimeType);
+            || MemberComparison.IsInlineArray(runtimeType);
     }
 
     // The top level compared member by member, by the members of the type _TopLevelType picks.

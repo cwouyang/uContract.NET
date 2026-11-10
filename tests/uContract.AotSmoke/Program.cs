@@ -783,6 +783,91 @@ internal sealed class SlidingWindow(int start)
     }
 }
 
+// ---- Inline arrays (issue #84). Nothing preserves a fixture unless its comment says so. ----
+
+// Preserved with DynamicDependency(All) by its check.
+[InlineArray(3)]
+internal struct KeptIntBuffer
+{
+    private int _element;
+}
+
+// Passed as T.
+internal sealed class KeptIntBufferHolder
+{
+    public KeptIntBuffer Buffer;
+}
+
+// Preserved with DynamicDependency(All) by its checks.
+[InlineArray(3)]
+internal struct KeptListBuffer
+{
+    private List<int> _element;
+}
+
+// Passed as T.
+internal sealed class KeptListBufferHolder
+{
+    public KeptListBuffer Buffer;
+}
+
+// Preserved with DynamicDependency(All), with its element type, by its check.
+internal struct KeptBadge
+{
+    public byte Tag;
+    public string? Name;
+}
+
+// Preserved with DynamicDependency(All) by its check.
+[InlineArray(3)]
+internal struct KeptBadgeBuffer
+{
+    private KeptBadge _element;
+}
+
+// Passed as T.
+internal sealed class KeptBadgeBufferHolder
+{
+    public KeptBadgeBuffer Buffer;
+}
+
+// Preserved with DynamicDependency(All) by its check. Equal by its hand-written Equals whatever its elements hold.
+[InlineArray(3)]
+internal struct KeptTolerantBuffer
+{
+    private int _element;
+
+    public override readonly bool Equals(object? obj) => obj is KeptTolerantBuffer;
+
+    public override readonly int GetHashCode() => 0;
+}
+
+// Passed as T.
+internal sealed class KeptTolerantBufferHolder
+{
+    public KeptTolerantBuffer Buffer;
+}
+
+// Nothing preserves it: its element field is hidden from reflection.
+[InlineArray(3)]
+internal struct UnseenIntBuffer
+{
+    private int _element;
+}
+
+// Passed as T, of EnsureAssignable and of Old; that preserves its field, not the fields of UnseenIntBuffer.
+internal sealed class UnseenIntBufferHolder
+{
+    public UnseenIntBuffer Buffer;
+}
+
+// Nothing preserves it; passed boxed, with T = object.
+[InlineArray(3)]
+internal struct UnseenBoxedBuffer
+{
+    private int _element;
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -2719,6 +2804,179 @@ public static class Program
             Expect.Value("violation:_start"),
             Expect.Value("none")
         );
+
+        // ---- Inline arrays (issue #84): compared element by element, or "cannot compare" where Native AOT cannot
+        // read the elements. ----
+
+        // Mutation: element 2 written. Visibility: DynamicDependency(All, typeof(KeptIntBuffer)) on the method that runs.
+        yield return new Check(
+            161,
+            "Preserved int inline array, later element changed",
+            KeptIntBufferLaterElementChanged,
+            Expect.Throws<PostconditionViolationException>("Buffer"),
+            Expect.Ok
+        );
+
+        // Mutation: none (distinct equal lists). Visibility: DynamicDependency(All, typeof(KeptListBuffer)).
+        yield return new Check(
+            162,
+            "Preserved List<int> inline array, distinct equal lists",
+            KeptListBufferEqualLists,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: element 2 written. Visibility: nothing preserves UnseenIntBuffer, so its element field is hidden.
+        yield return new Check(
+            163,
+            "Unpreserved inline array field",
+            UnseenIntBufferLaterElementChanged,
+            Expect.Throws<InvalidOperationException>([
+                .. NestedText("uContract.AotSmoke.UnseenIntBuffer", "UnseenIntBufferHolder.Buffer", "Buffer"),
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.UnseenIntBuffer))]",
+            ]),
+            Expect.Ok
+        );
+
+        // Mutation: none (two boxes of equal elements). Visibility: nothing preserves UnseenBoxedBuffer; T is object.
+        yield return new Check(
+            164,
+            "EnsureAssignable<object> unpreserved inline array",
+            UnseenBoxedBufferAsObject,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.UnseenBoxedBuffer",
+                "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.UnseenBoxedBuffer))]",
+                "DBC_POST=off"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: DynamicDependency(All) on KeptBadgeBuffer and KeptBadge. The .NET 8 runtime
+        // reads struct elements only with dynamic code.
+        yield return new Check(
+            165,
+            "Preserved inline array of struct elements",
+            KeptBadgeBufferUnchanged,
+            Expect.Throws<InvalidOperationException>(
+                "cannot compare uContract.AotSmoke.KeptBadgeBuffer",
+                "dynamic code",
+                "DBC_POST=off"
+            ),
+            Expect.Ok
+        );
+
+        // Mutation: Add on the list in element 2 of the original. Visibility: DynamicDependency(All,
+        // typeof(KeptListBuffer)); Old copies every element.
+        yield return new Check(
+            166,
+            "Old preserved List<int> inline array, element 2 changed in place",
+            OldKeptListBufferElementChangedInPlace,
+            Expect.Throws<PostconditionViolationException>("Buffer"),
+            Expect.Ok
+        );
+
+        // Mutation: element 2 written. Visibility: DynamicDependency(All, typeof(KeptTolerantBuffer)); its
+        // hand-written Equals says equal.
+        yield return new Check(
+            167,
+            "Preserved inline array with a hand-written Equals, elements differ",
+            KeptTolerantBufferElementChanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Mutation: none. Visibility: T (UnseenIntBufferHolder); nothing preserves UnseenIntBuffer. Old does not throw.
+        yield return new Check(
+            168,
+            "Old unpreserved inline array field",
+            OldUnseenIntBufferHolder,
+            Expect.Value("copied"),
+            Expect.Value("default")
+        );
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptIntBuffer))]
+    private static object? KeptIntBufferLaterElementChanged()
+    {
+        KeptIntBufferHolder actual = new();
+        KeptIntBufferHolder expected = new();
+        actual.Buffer[2] = 7;
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptListBuffer))]
+    private static object? KeptListBufferEqualLists()
+    {
+        KeptListBufferHolder actual = new();
+        KeptListBufferHolder expected = new();
+        for (int i = 0; i < 3; i++)
+        {
+            actual.Buffer[i] = [i];
+            expected.Buffer[i] = [i];
+        }
+
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenIntBufferLaterElementChanged()
+    {
+        UnseenIntBufferHolder actual = new();
+        UnseenIntBufferHolder expected = new();
+        actual.Buffer[2] = 7;
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static object? UnseenBoxedBufferAsObject()
+    {
+        UnseenBoxedBuffer actualBuffer = default;
+        UnseenBoxedBuffer expectedBuffer = default;
+        actualBuffer[2] = 7;
+        expectedBuffer[2] = 7;
+        object actual = actualBuffer;
+        object expected = expectedBuffer;
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptBadgeBuffer))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptBadge))]
+    private static object? KeptBadgeBufferUnchanged()
+    {
+        KeptBadgeBufferHolder actual = new();
+        KeptBadgeBufferHolder expected = new();
+        actual.Buffer[1] = new KeptBadge { Tag = 1, Name = "gold" };
+        expected.Buffer[1] = new KeptBadge { Tag = 1, Name = "gold" };
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptListBuffer))]
+    private static object? OldKeptListBufferElementChangedInPlace()
+    {
+        KeptListBufferHolder original = new();
+        for (int i = 0; i < 3; i++)
+        {
+            original.Buffer[i] = [i];
+        }
+
+        KeptListBufferHolder copy = Contract.Old(() => original);
+        original.Buffer[2].Add(9);
+        return NoResult(() => Contract.EnsureAssignable(original, copy));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptTolerantBuffer))]
+    private static object? KeptTolerantBufferElementChanged()
+    {
+        KeptTolerantBufferHolder actual = new();
+        KeptTolerantBufferHolder expected = new();
+        actual.Buffer[2] = 7;
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    private static string? OldUnseenIntBufferHolder()
+    {
+        UnseenIntBufferHolder original = new();
+        original.Buffer[0] = 1;
+        UnseenIntBufferHolder? copy = Contract.Old(() => original);
+        return copy is null ? null : "copied";
     }
 
     private static IEnumerable<int> UptoByLocalFunction(int last)

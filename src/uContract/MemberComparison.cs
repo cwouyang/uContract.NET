@@ -609,6 +609,11 @@ internal static class MemberComparison
             return CannotCompareUncopiedElements(hidden.Type, notCopied, path, listAsAssignable);
         }
 
+        if (hidden.ElementFieldHidden)
+        {
+            return CannotReadHiddenElements(hidden.Type, path, listAsAssignable);
+        }
+
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
             + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
@@ -650,6 +655,11 @@ internal static class MemberComparison
             return CannotCompareUncopiedElements(hidden.Type, notCopied, path);
         }
 
+        if (hidden.ElementFieldHidden)
+        {
+            return CannotReadHiddenElements(hidden.Type, path);
+        }
+
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
             + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
@@ -687,6 +697,33 @@ internal static class MemberComparison
                 + firstWayOut
                 + "run on the .NET 9 runtime or later, which reads struct elements without dynamic code; or set "
                 + "DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // The comparison met an inline array, reached through path, whose element field reflection does not list (under
+    // Native AOT, a type that nothing preserves). firstWayOut is empty, or a way out that ends with "; ".
+    private static InvalidOperationException CannotReadHiddenElements(
+        Type inlineArrayType,
+        string path,
+        string firstWayOut = ""
+    )
+    {
+        string cannotRead =
+            $"EnsureAssignable cannot compare {inlineArrayType} (reached through '{path}'): it is an inline array whose "
+            + "element field is not visible to reflection under Native AOT, so its element type is unknown and its "
+            + "elements cannot be read. ";
+        if (!CSharpTypeName.CanBeWritten(inlineArrayType))
+        {
+            return new InvalidOperationException(cannotRead + WaysOutForAnUnnamedType(inlineArrayType, firstWayOut));
+        }
+
+        return new InvalidOperationException(
+            cannotRead
+                + "Ways out: "
+                + firstWayOut
+                + "preserve it, for example with "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(inlineArrayType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(inlineArrayType)}; "
+                + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }
 
@@ -1271,7 +1308,8 @@ internal static class MemberComparison
 
         if (shape is not { ElementType: { } elementType })
         {
-            return false;
+            context.Hidden = new HiddenMembers(type) { ElementFieldHidden = true };
+            return true;
         }
 
         ref byte actualData = ref Unsafe.As<StrongBox<byte>>(actual).Value;
@@ -2220,6 +2258,10 @@ internal static class MemberComparison
         // Set when Type is an inline array whose elements, of this struct type, the Old copy being compared could not
         // copy (see UncopiedInlineArrays); its members are visible.
         public Type? ElementsNotCopied { get; init; }
+
+        // Set when Type is an inline array whose element field reflection does not list (under Native AOT, a type
+        // that nothing preserves), so its element type, and so its elements, are unknown.
+        public bool ElementFieldHidden { get; init; }
 
         public string PathBelowTopLevelMember { get; private set; } = "";
 
