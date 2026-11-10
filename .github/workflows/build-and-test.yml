@@ -32,6 +32,9 @@ jobs:
           # 'dotnet-version: 8.0.x' once resolved to a band global.json rejected, so builds
           # silently relied on the runner image happening to preinstall a matching SDK.
           global-json-file: global.json
+          # Installed only so the net8.0 tests can also run on the .NET 10 runtime (#84);
+          # global.json still selects the SDK.
+          dotnet-version: 10.0.x
 
       - name: Restore dotnet tools
         run: dotnet tool restore
@@ -46,6 +49,16 @@ jobs:
         run: dotnet build --no-restore -p:ContinuousIntegrationBuild=true
 
       - name: Test
+        run: dotnet test --no-build --verbosity normal
+
+      - name: List installed .NET runtimes
+        run: dotnet --list-runtimes
+
+      # The net8.0 tests roll forward to the .NET 10 runtime; some tests are gated on the
+      # runtime version, so the .NET 10 group only runs here (#84).
+      - name: Test on the .NET 10 runtime
+        env:
+          DOTNET_ROLL_FORWARD: LatestMajor
         run: dotnet test --no-build --verbosity normal
 
       # The package ships the Release build; test that configuration too.
