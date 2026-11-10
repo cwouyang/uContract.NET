@@ -71,6 +71,10 @@ the work is done).
 15. Revision during Act (Task 5 fix round 1, confirmed by the re-reviewer: when `T` is a struct, `Old` returns an
    unboxed value, so nothing can be recorded on it and revision 14's case still passes silently there): "struct T
    時比較端一律拒絕 (Recommended)" — B6's third case covers a struct `T` by a rule on the comparison side.
+16. Revision during Act (Task 5 risk review, confirmed 3/3 by probes on .NET 10 without dynamic code: a hand-written
+   `Equals` asked before B6's third case sees the elements `Old` left shared and returns `true`, a silent pass):
+   "能檢查的先擋，其餘記限制 (Recommended)" — B6's third case is checked before a user `Equals` where the library can
+   tell; the rest is a known limitation.
 
 ## Terms
 
@@ -175,6 +179,13 @@ struct element that holds references, and an element type that is itself an inli
   value (directly or through struct fields, or `T` itself), whose struct elements `Old` could not deep-copy, is not
   compared: the comparison throws as above, whether or not the values came from `Old`. Inline arrays that `T` reaches
   through a reference are covered by the record on the copy as above.
+  This case is checked **before** a user `Equals` is asked (an exception to "a user `Equals` decides first"), for the
+  inline array itself and for a struct that holds it by value (directly or through struct fields, as the holder rule of
+  B2 finds it): such a pair throws instead of asking that `Equals`. Known limitation (accepted by the user): a user
+  `Equals` of a class, or of a type that reaches the inline array only through a reference, is still asked first; the
+  library cannot tell what it reads, and when it reads the elements `Old` left shared it can return `true` for a
+  change. This happens only without dynamic code on the .NET 9 runtime or later; the way out is to list the member as
+  assignable, or to compare the elements in that `Equals` by something other than the shared references.
 
 The message names the inline-array type and the member path, and gives, in the style of the existing "cannot
 compare" messages (ADR-0021), only the ways out that work for its case:
