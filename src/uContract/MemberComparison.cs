@@ -1150,7 +1150,10 @@ internal static class MemberComparison
     // Equals, which for most classes (List<T>, arrays) compares by reference. An inline array is compared by
     // its elements instead (see TryStartInlineArray), and a struct without a hand-written Equals whose built-in
     // Equals would reach an inline array's on either side (see NeedsFieldComparison) by its fields: the built-in
-    // Equals of an inline array sees only element 0, and the .NET 10 runtime throws for it.
+    // Equals of an inline array sees only element 0, and the .NET 10 runtime throws for it. Before any Equals is
+    // asked, a pair that belongs to an Old copy which left struct elements uncopied (context.Uncopied) is refused
+    // when the struct holds such an inline array by value, through structs of any depth whatever their Equals (see
+    // FindUncopiedHeld): their Equals would find the shared elements equal.
     private static Walk? StartValues(
         object actual,
         object expected,
@@ -1229,12 +1232,14 @@ internal static class MemberComparison
             && (NeedsFieldComparison(actual, type) || NeedsFieldComparison(expected, type));
     }
 
-    // Two values of one inline-array type: a hand-written Equals that says "equal" decides; otherwise the n
-    // elements are compared pairwise, in index order, by the rules for two elements of an array. The built-in
-    // ValueType.Equals is not asked: it sees only element 0, and the .NET 10 runtime throws for it. An inline
-    // array of n elements of E is laid out as n consecutive values of E, so the elements are read from the
-    // memory of the box. Primitive, enum, pointer and function-pointer elements are compared in place (see
-    // TryCompareInPlace); reference and struct elements are walked, a struct element boxed (see StructElements.Read).
+    // Two values of one inline-array type: one whose struct elements the Old copy being compared could not copy
+    // (context.Uncopied) is refused first, before any Equals is asked (context.Hidden is set); then a hand-written
+    // Equals that says "equal" decides; otherwise the n elements are compared pairwise, in index order, by the rules
+    // for two elements of an array. The built-in ValueType.Equals is not asked: it sees only element 0, and the .NET
+    // 10 runtime throws for it. An inline array of n elements of E is laid out as n consecutive values of E, so the
+    // elements are read from the memory of the box. Primitive, enum, pointer and function-pointer elements are
+    // compared in place (see TryCompareInPlace); reference and struct elements are walked, a struct element boxed (see
+    // StructElements.Read).
     // Struct elements that this runtime cannot read leave the pair uncompared (context.Hidden is set), equal or not.
     // False leaves the pair to the rules for other value types: an inline array whose element field reflection does
     // not list (Native AOT).
@@ -1419,9 +1424,12 @@ internal static class MemberComparison
         return state;
     }
 
-    // The inline array that value, a struct, holds by value through the fields the holder rule follows (see
-    // HolderState: a field declared an inline array, or a nested struct without a hand-written Equals) and whose type
-    // isUncopied tells, as the comparison refuses it, with the path from value to it; null when there is none.
+    // The inline array that value, a struct, holds by value through the fields the holder rule lists (see
+    // CreateValueRoutes: a field declared an inline array, or a nested struct with routes of its own, followed to any
+    // depth whether or not it has a hand-written Equals, unlike HolderState, which stops at one: its Equals, say one
+    // that compares what the shared elements refer to, would find them equal too) and whose type isUncopied tells, as
+    // the comparison refuses it, with the path from value to it; null when there is none. Struct nesting by value is
+    // finite, so the recursion ends.
     private static HiddenMembers? FindUncopiedHeld(object value, Type type, Func<Type, bool> isUncopied)
     {
         ValueRoutes routes = ValueRoutesCache.GetOrAdd(type, CreateValueRoutes);
@@ -1443,7 +1451,6 @@ internal static class MemberComparison
         {
             if (
                 field.GetValue(value) is { } nested
-                && !HasUserEquals(nested, nested.GetType())
                 && FindUncopiedHeld(nested, nested.GetType(), isUncopied) is { } held
             )
             {

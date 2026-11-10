@@ -570,6 +570,62 @@ public class OldInlineArrayTests
         Assert.Null(exception);
     }
 
+    // An outer struct whose hand-written Equals delegates to an inner struct's, which compares the lists' contents,
+    // would find elements Old left shared equal, so the look for an uncopied inline array goes through every by-value
+    // struct, whatever its Equals.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldLeftAnInlineArrayBelowTwoStructsWithTheirOwnEqualsUncopied_CannotCompareItFirst()
+    {
+        DelegatingHolding holding = WithDelegatingBags();
+        DelegatingHolding old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holding));
+        holding.Value.Inner.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holding, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            OldCouldNotCopy<BagBuf3, Bag>("DelegatingHolding.Value.Inner.Bags", "Value"),
+            cannotCompare.Message
+        );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnInlineArrayBelowTwoStructsWithTheirOwnEqualsChangedAfterOldWithDynamicCode_LetsTheirEqualsReportIt()
+    {
+        DelegatingHolding holding = WithDelegatingBags();
+        DelegatingHolding old = Contract.Old(() => holding);
+        holding.Value.Inner.Bags[2].Items!.Add(Added);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(holding, old)
+        );
+
+        Assert.Equal(Violation + "  - Value", exception.Description);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnInlineArrayBelowATolerantEqualsTwoStructsDeepChangedAfterOldWithDynamicCode_LetsItPass()
+    {
+        DelegatingTolerantHolding holding = new()
+        {
+            Value = new DelegatingTolerantHolder { Inner = new TolerantHolder { Bags = WithBags() } },
+        };
+        DelegatingTolerantHolding old = Contract.Old(() => holding);
+        holding.Value.Inner.Bags[2].Items!.Add(Added);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(holding, old));
+
+        Assert.Null(exception);
+    }
+
+    private static DelegatingHolding WithDelegatingBags()
+    {
+        return new DelegatingHolding
+        {
+            Value = new DelegatingHolder { Inner = new ContentBagHolder { Bags = WithBags() } },
+        };
+    }
+
     private static TolerantBagBuf3 WithTolerantBags()
     {
         TolerantBagBuf3 buffer = new();
@@ -773,6 +829,63 @@ public class OldInlineArrayTests
     private sealed class TolerantClassHolding
     {
         public TolerantClass? Value;
+    }
+
+    // Its Equals compares the contents of the elements' lists, so two values sharing their lists are "equal".
+    private struct ContentBagHolder
+    {
+        private const int BagCount = 3;
+
+        public BagBuf3 Bags;
+
+        public override readonly bool Equals(object? obj) =>
+            obj is ContentBagHolder other && SameItems(Bags, other.Bags);
+
+        public override readonly int GetHashCode() => 0;
+
+        private static bool SameItems(BagBuf3 left, BagBuf3 right)
+        {
+            for (int i = 0; i < BagCount; i++)
+            {
+                if (!(left[i].Items ?? []).SequenceEqual(right[i].Items ?? []))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    // Its Equals delegates to Inner's.
+    private struct DelegatingHolder
+    {
+        public ContentBagHolder Inner;
+
+        public override readonly bool Equals(object? obj) => obj is DelegatingHolder other && Inner.Equals(other.Inner);
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    private sealed class DelegatingHolding
+    {
+        public DelegatingHolder Value;
+    }
+
+    // Its Equals delegates to Inner's, which says "equal" to any value of its type.
+    private struct DelegatingTolerantHolder
+    {
+        public TolerantHolder Inner;
+
+        public override readonly bool Equals(object? obj) =>
+            obj is DelegatingTolerantHolder other && Inner.Equals(other.Inner);
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    private sealed class DelegatingTolerantHolding
+    {
+        public DelegatingTolerantHolder Value;
     }
 
     private sealed class BaggedEntries
