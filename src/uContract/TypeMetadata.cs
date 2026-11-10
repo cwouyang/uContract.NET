@@ -27,7 +27,8 @@ internal sealed class TypeMetadata
     ///     <see cref="System.Runtime.CompilerServices.CompilerGeneratedAttribute" />: a record's hand-written typed
     ///     <c>Equals(T)</c>, which its generated <c>Equals(object)</c> calls. An <c>Equals</c> that takes
     ///     <c>object</c>, a base class or an interface of <c>T</c> does not count. The <c>Equals</c> an anonymous type
-    ///     declares is not marked (only the type is), so anonymous types are left out by name (see IsAnonymousType).
+    ///     declares is not marked (only the type is), so anonymous types are left out by name (see
+    ///     CSharpTypeName.IsAnonymousType).
     ///     Also true when a base class below the framework classes has the fact, whatever fields the type declares: a
     ///     derived record's generated typed <c>Equals</c> calls that of its base record, then compares the fields the
     ///     record declares with their own <c>Equals</c>. Set only in the cached metadata.

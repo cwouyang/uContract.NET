@@ -107,7 +107,7 @@ internal static class MemberComparison
                         && method.GetParameters() is [{ } parameter]
                         && parameter.ParameterType == t
                         && !method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                    ) && !IsAnonymousType(t);
+                    ) && !CSharpTypeName.IsAnonymousType(t);
         }
     }
 
@@ -1634,8 +1634,8 @@ internal static class MemberComparison
     }
 
     // Which Equals the class of box dispatches to, when it compares values but is not written by hand: a record
-    // class's [CompilerGenerated] Equals, the Equals of an anonymous type (see IsAnonymousType; its Equals is not
-    // marked), or the Equals of a System.Tuple<…>. A fact of the type, cached.
+    // class's [CompilerGenerated] Equals, the Equals of an anonymous type (see CSharpTypeName.IsAnonymousType; its
+    // Equals is not marked), or the Equals of a System.Tuple<…>. A fact of the type, cached.
     private static ClassEquals ClassEqualsOf(object box, Type type)
     {
         return ClassEqualsCache.GetOrAdd(
@@ -1657,31 +1657,13 @@ internal static class MemberComparison
                 return
                     (
                         equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                        || IsAnonymousType(declaring)
+                        || CSharpTypeName.IsAnonymousType(declaring)
                     ) && !GetOrCacheMetadata(declaring).HasHandWrittenTypedEquals
                     ? ClassEquals.CompilerGenerated
                     : ClassEquals.NotFollowed;
             },
             box
         );
-    }
-
-    // An anonymous type of C# or of Visual Basic: marked [CompilerGenerated] and named by the compiler with a name no
-    // source of that language can declare (<>f__AnonymousType… in C#, VB$AnonymousType_… in Visual Basic).
-    // [CompilerGenerated] alone does not tell it: a user or a source generator may mark a class of theirs with it.
-    private static bool IsAnonymousType(Type type)
-    {
-        return (
-                type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                && type.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal)
-            ) || IsVisualBasicAnonymousType(type);
-    }
-
-    // An anonymous type of Visual Basic (see IsAnonymousType).
-    private static bool IsVisualBasicAnonymousType(Type type)
-    {
-        return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-            && type.Name.StartsWith("VB$AnonymousType_", StringComparison.Ordinal);
     }
 
     // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's (see RouteOf). An
@@ -1759,7 +1741,7 @@ internal static class MemberComparison
     // ones (a non-Key property has a setter, and its field is writable).
     private static IEnumerable<MemberAccessor> FieldsEqualsCompares(Type type)
     {
-        bool keyFieldsOnly = IsVisualBasicAnonymousType(type);
+        bool keyFieldsOnly = CSharpTypeName.IsVisualBasicAnonymousType(type);
         MemberAccessor[] fields =
         [
             .. GetOrCacheMetadata(type)
