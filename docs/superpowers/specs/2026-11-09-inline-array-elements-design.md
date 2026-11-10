@@ -181,10 +181,11 @@ struct element that holds references, and an element type that is itself an inli
   through a reference are covered by the record on the copy as above.
   This case is checked **before** a user `Equals` is asked (an exception to "a user `Equals` decides first"), for the
   inline array itself and for a struct that holds it by value (directly or through struct fields, as the holder rule of
-  B2 finds it): such a pair throws instead of asking that `Equals`. Known limitation (accepted by the user): a user
-  `Equals` of a class, or of a type that reaches the inline array only through a reference, is still asked first; the
-  library cannot tell what it reads, and when it reads the elements `Old` left shared it can return `true` for a
-  change. This happens only without dynamic code on the .NET 9 runtime or later; the way out is to list the member as
+  B2 finds it): such a pair throws instead of asking that `Equals`. A class is compared by its members, not by its
+  `Equals`, so an inline array it holds is met and refused as above. Known limitation (accepted by the user): a user
+  `Equals` that is asked first while the inline array is reached only through a reference — a struct's hand-written
+  `Equals`, or the `Equals` of a class whose members reflection does not show (Native AOT) — can read the elements
+  `Old` left shared and return `true` for a change; the library cannot tell what it reads. This happens only without dynamic code on the .NET 9 runtime or later; the way out is to list the member as
   assignable, or to compare the elements in that `Equals` by something other than the shared references.
 
 The message names the inline-array type and the member path, and gives, in the style of the existing "cannot
