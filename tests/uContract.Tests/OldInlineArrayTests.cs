@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using uContract.Exceptions;
 
@@ -14,6 +16,9 @@ public class OldInlineArrayTests
     private const string Violation = "Fields were modified that are not marked as assignable:\n";
 
     private const int Added = 7;
+
+    // The inline-array field of the type that DefineFieldKeywordHolder emits.
+    private const string EmittedBufField = "Buf";
 
     [Fact]
     public void EnsureAssignable_WhenALaterListElementOfAnInlineArrayFieldChangedInPlaceAfterOld_ReportsTheField()
@@ -536,6 +541,66 @@ public class OldInlineArrayTests
         Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("PositionalHolder.Value", "Value"), cannotCompare.Message);
     }
 
+    // A property with a field named as a backing field but a getter written by hand (a C# 14 "field" property with a
+    // custom getter) may box afresh on every read, so it counts as computed. The SDK 8 compiler has no "field"
+    // keyword; the type is emitted: its getter boxes Buf on every read.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenAPropertyWithABackingFieldNameHasAHandWrittenGetterThatBoxesAnExcusedFieldOfAnOldCopy_CannotCompareIt()
+    {
+        Type type = DefineFieldKeywordHolder();
+        object held = Activator.CreateInstance(type)!;
+        type.GetField(EmittedBufField)!.SetValue(held, WithPublicBags());
+        object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => held));
+        ((PublicBagBuf3)type.GetField(EmittedBufField)!.GetValue(held)!)[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(held, old, "^Buf$"));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            OldCouldNotCopy<PublicBagBuf3, PublicBag>("FieldKeywordHolder.Value", "Value"),
+            cannotCompare.Message
+        );
+    }
+
+    // public class FieldKeywordHolder { public PublicBagBuf3 Buf; private object <Value>k__BackingField;
+    //     public object Value { get => (object)Buf; } }, with a getter that is not marked [CompilerGenerated].
+    private static Type DefineFieldKeywordHolder()
+    {
+        string name = $"Emitted{Guid.NewGuid():N}";
+        TypeBuilder builder = AssemblyBuilder
+            .DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.Run)
+            .DefineDynamicModule(name)
+            .DefineType(
+                "Emitted.FieldKeywordHolder",
+                TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class
+            );
+        FieldBuilder buf = builder.DefineField(EmittedBufField, typeof(PublicBagBuf3), FieldAttributes.Public);
+        builder.DefineField("<Value>k__BackingField", typeof(object), FieldAttributes.Private);
+        MethodBuilder getter = builder.DefineMethod(
+            "get_Value",
+            MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig,
+            typeof(object),
+            Type.EmptyTypes
+        );
+        ILGenerator il = getter.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldfld, buf);
+        il.Emit(OpCodes.Box, typeof(PublicBagBuf3));
+        il.Emit(OpCodes.Ret);
+        builder.DefineProperty("Value", PropertyAttributes.None, typeof(object), Type.EmptyTypes).SetGetMethod(getter);
+        builder.DefineDefaultConstructor(MethodAttributes.Public);
+        return builder.CreateType();
+    }
+
+    private static PublicBagBuf3 WithPublicBags()
+    {
+        PublicBagBuf3 buffer = new();
+        buffer[0] = new PublicBag { Items = [1] };
+        buffer[1] = new PublicBag { Items = [2] };
+        buffer[2] = new PublicBag { Items = [3] };
+        return buffer;
+    }
+
     // Known limitation (revision 19): Old records the objects it copies; an object a computed property builds from a
     // field on every read carries no record, so with that field excused, an in-place change of the elements Old left
     // shared passes through the property. Way out: list the computed property as assignable too.
@@ -955,6 +1020,18 @@ public class OldInlineArrayTests
     private struct ImmutableBoxes
     {
         public ImmutableArray<object> Items;
+    }
+
+    // Public, so that the type emitted by DefineFieldKeywordHolder can hold them.
+    public struct PublicBag
+    {
+        public IList<int>? Items { get; set; }
+    }
+
+    [InlineArray(3)]
+    public struct PublicBagBuf3
+    {
+        private PublicBag _element;
     }
 
     private struct AutoPropHolder

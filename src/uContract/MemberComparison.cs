@@ -192,11 +192,19 @@ internal static class MemberComparison
         return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
     }
 
-    // The compiler-generated backing field of property among fields, told by its name (see SourceName) and its
-    // declaring type; null for a property computed by its getter. The backing field of a property declared on a base
-    // class is not among fields, so such a property is treated as computed (see MemberAccessor.IsReferenceTypedField).
+    // The compiler-generated backing field of property, an auto-property, among fields, told by its name (see
+    // SourceName) and its declaring type; null for a property computed by its getter. An auto-property is told by its
+    // getter, marked [CompilerGenerated]: a C# 14 "field" property with a getter written by hand has a field of that
+    // name too, but its getter may box afresh, so it counts as computed. The backing field of a property declared on a
+    // base class is not among fields, so such a property is treated as computed (see
+    // MemberAccessor.IsReferenceTypedField).
     private static FieldInfo? BackingFieldOf(PropertyInfo property, FieldInfo[] fields)
     {
+        if (property.GetMethod?.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) != true)
+        {
+            return null;
+        }
+
         return Array.Find(
             fields,
             field =>
