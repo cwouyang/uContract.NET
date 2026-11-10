@@ -42,6 +42,9 @@ public static class Contract
     private static readonly ContractConfiguration Config = new();
     private static readonly AsyncLocal<bool> Entered = new();
 
+    // DeepCopier.LeavesStructElementsUncopied as a delegate, created once (see _UncopiedHeldByValue).
+    private static readonly Func<Type, bool> LeavesStructElementsUncopied = DeepCopier.LeavesStructElementsUncopied;
+
     /// <summary>
     ///     Validates a precondition and throws an exception if the condition is false.
     /// </summary>
@@ -418,6 +421,14 @@ public static class Contract
     ///     The copy is a read-only snapshot: delegates are shared, so raising an event on the copy notifies the
     ///     original's subscribers. Everything reachable is copied, so <c>Old(() =&gt; _balance)</c> is cheaper than
     ///     <c>Old(() =&gt; this)</c>.
+    ///     An inline array (a struct marked <see cref="InlineArrayAttribute" />) is copied element by element, as an
+    ///     array is: each reference element is replaced by its copy, and each struct element that holds references
+    ///     is read, has its references replaced and is written back, which needs dynamic code. Without dynamic code
+    ///     (Native AOT) the struct elements are left as a field walk leaves them: the references in element 0 are
+    ///     replaced, and the other elements share theirs with the original. This method does not throw then;
+    ///     <see cref="EnsureAssignable{T}" /> throws <see cref="InvalidOperationException" /> instead of comparing
+    ///     that inline array. Under Native AOT an inline array whose type nothing preserves is copied bitwise, and
+    ///     <see cref="EnsureAssignable{T}" /> cannot compare it either.
     ///     Native AOT and trimming: a field that the trimmer removed from reflection keeps its bitwise value, so
     ///     the object it refers to is shared with the original. The fields declared on <typeparamref name="T" />
     ///     are preserved; the private fields declared on its base classes may not be, and under Native AOT
@@ -1180,8 +1191,9 @@ public static class Contract
     ///     Also thrown under Native AOT when at the top level the runtime type of the values is not
     ///     <typeparamref name="T" />, they are not compared as a whole, and that runtime type shows no declared
     ///     member to reflection: for a class also when the two values are equal; for a value type only when its
-    ///     <c>Equals</c> reports them unequal (a primitive, an enum and an inline array are then a violation, as
-    ///     before), except two sequences of different runtime types, which ask no <c>Equals</c>: there a value
+    ///     <c>Equals</c> reports them unequal (a primitive and an enum are then a violation, as before; an inline
+    ///     array is compared by its elements, see the remarks), except two sequences of different runtime types,
+    ///     which ask no <c>Equals</c>: there a value
     ///     type throws as a class does, also when the two values are equal. No field, property, method or
     ///     constructor it declares is visible (a nested type or an event it declares does not count), which is how
     ///     Native AOT shows a type that nothing preserves (a framework collection included, when nothing in the
@@ -1237,6 +1249,13 @@ public static class Contract
     ///     Also thrown, in any build, when a value at the top level is a sequence built on a framework class that is
     ///     not a collection (see the remarks) and its runtime type is not <typeparamref name="T" />; it is not
     ///     enumerated.
+    ///     Also thrown, also when the two values are equal, when the elements of an inline array cannot be compared
+    ///     (see the remarks): under Native AOT when nothing preserves the inline-array type, so reflection does not
+    ///     list its element field; without dynamic code, on any runtime, when its elements are structs that hold
+    ///     references and a <see cref="Old{T}" /> copy could not copy them (asked before any <c>Equals</c> written
+    ///     by hand); and on the .NET 8 runtime without dynamic code when its elements are of another struct type
+    ///     than a primitive or an enum. The message names the inline-array type and the path, and gives only the
+    ///     ways out that work for that case.
     /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare the public instance properties (indexers and properties of a
@@ -1422,7 +1441,8 @@ public static class Contract
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or
     ///     <see cref="Array" />, and also when <typeparamref name="T" /> is any other type (<see cref="object" />,
     ///     an interface, a base class) and the two values are of one runtime type that is a string, a delegate
-    ///     type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type,
+    ///     type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, an array type, or an
+    ///     inline array (see below; also when <typeparamref name="T" /> is that inline-array type),
     ///     the two values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
     ///     delegate by its methods (not its targets, so the same method on another object is equal;
     ///     <see cref="Delegate" /> and <see cref="MulticastDelegate" /> count as delegate types, and two delegates of
@@ -1444,6 +1464,32 @@ public static class Contract
     ///     two boxes of one address as different pointer types (<c>int*</c> and <c>long*</c>) are equal. With
     ///     <typeparamref name="T" /> = <see cref="System.Reflection.Pointer" /> their members (the address and the
     ///     pointer type) are compared, as for any other class.
+    ///     An inline array (a struct marked <see cref="InlineArrayAttribute" />) is compared element by element
+    ///     wherever the comparison meets two values of one inline-array type: as <typeparamref name="T" /> or as the
+    ///     runtime type of the values under another <typeparamref name="T" />, and as a member, an element, a
+    ///     dictionary value or the value of an <see cref="object" /> member. When its <c>Equals</c> override is
+    ///     written by hand and returns true, the two are equal; otherwise its elements are compared pairwise, in
+    ///     index order, as the elements of an array are (pointers by address). Its built-in <c>Equals</c>, which
+    ///     sees only element 0 and throws <see cref="NotSupportedException" /> on the .NET 10 runtime, is never
+    ///     called. An override marked <see cref="CompilerGeneratedAttribute" />, one declared with <c>new</c>, and
+    ///     the <c>Equals</c> of a tuple or of <see cref="Nullable{T}" /> are not written by hand; a record whose own
+    ///     typed <c>Equals</c>, or that of a base record, is written by hand counts as written by hand. At the top
+    ///     level the patterns do not apply, and a violation says that the two values are not equal and are compared
+    ///     as that inline array element by element; below it, a difference is reported as the member that holds
+    ///     the inline array. A struct without an <c>Equals</c> written by hand whose built-in <c>Equals</c> would
+    ///     reach an inline array's (a field declared as an inline array, a nullable one, a record struct or tuple
+    ///     with one, a nested such struct, or a field declared <see cref="object" />, <see cref="ValueType" />, an
+    ///     interface or a class that holds one at run time, also inside a record class, a
+    ///     <c>System.Tuple&lt;…&gt;</c> or an anonymous object) is compared by its fields without asking that
+    ///     <c>Equals</c>. An exception thrown by an <c>Equals</c> written by hand propagates. A C# fixed-size buffer (<c>fixed int X[4]</c>) is not an inline
+    ///     array: only its element 0 is compared. The method throws <see cref="InvalidOperationException" /> when
+    ///     the elements cannot be compared (see the exceptions); without dynamic code, for a struct
+    ///     <typeparamref name="T" /> that holds such an inline array by value this happens also for values that did
+    ///     not come from <see cref="Old{T}" />, because a struct copy carries no record of what was not copied. The
+    ///     inline-array comparison has known limitations, some of them silent passes or a
+    ///     <see cref="NotSupportedException" /> from an <c>Equals</c> that reaches the built-in one of an inline
+    ///     array; the full list, with the way out for each, is in the CHANGELOG entry "Known limitations of the
+    ///     inline-array comparison" and in the ADR-0022 amendment of 2026-11-10.
     ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
     ///     delegate, a boxed pointer, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
     ///     (two <c>Stream</c>s, two <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever
@@ -1456,9 +1502,9 @@ public static class Contract
     ///     (<see cref="System.Collections.IEnumerable" /> other than a string), which are compared as below.
     ///     For every other <typeparamref name="T" /> the two values are compared by the members of their runtime
     ///     type (as <typeparamref name="T" /> = that type would compare them; a value of a value type other than
-    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; a primitive, an enum and an
-    ///     inline array by <c>Equals</c> alone, and one without a field is then a violation; its <c>Equals</c>
-    ///     override runs, and an exception it throws ends the call), and the patterns apply to those members.
+    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; a primitive and an enum by
+    ///     <c>Equals</c> alone, and one without a field is then a violation; its <c>Equals</c> override runs, and an
+    ///     exception it throws ends the call), and the patterns apply to those members.
     ///     When <typeparamref name="T" /> is a framework class other than <see cref="object" /> that the runtime
     ///     type derives from, the private fields of the base classes are compared up to and including
     ///     <typeparamref name="T" />. When <typeparamref name="T" /> is an
@@ -1569,7 +1615,7 @@ public static class Contract
 
             if (_IsComparedAsWhole(typeof(T)))
             {
-                _CompareAsWhole(typeof(T), actual, expected);
+                _CompareAsWhole(typeof(T), typeof(T), actual, expected);
                 return;
             }
 
@@ -1628,7 +1674,13 @@ public static class Contract
     // A string, a delegate type, a nullable value type, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, and
     // an array type or System.Array are compared as one pair, as a member of that type is. Asked of T first and
     // then, at the top level, of the runtime type of the two values (see _CompareByRuntimeType); the member
-    // metadata of the type is not read.
+    // metadata of the type is not read. An inline array is not among them, though it is compared as a whole too: it is
+    // added where the runtime type decides (see _IsDecidedByRuntimeType and _CompareByRuntimeType), which a T that is
+    // an inline-array type also reaches. The other callers need it left out: _KeepsTheDeclaredType never meets one,
+    // since _CompareByRuntimeType settles every pair whose runtime type is an inline array first, and
+    // _ThrowIfShowsNoDeclaredMember meets one only as one of two sequences of different runtime types (an inline array
+    // that implements IEnumerable), which is compared by its elements, so the rule for a runtime type that shows no
+    // declared member applies to it as to any such sequence.
     private static bool _IsComparedAsWhole(Type type)
     {
         return type == typeof(string)
@@ -1639,11 +1691,13 @@ public static class Contract
     }
 
     // Returns true when the runtime type of the two values settled the comparison: a value that is compared as a
-    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array) or by reference
-    // (a shared type) is compared so whatever T is, and the patterns are not read. Two values of different
-    // runtime types where either is such a value are a violation, except two sequences, which are left to
-    // _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the address and
-    // the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
+    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array, or an inline array,
+    // element by element as below the top level) or by reference (a shared type) is compared so whatever T is, and
+    // the patterns are not read. The built-in Equals of an inline array is not asked, also when reflection does not
+    // list its element field (Native AOT): the comparison then reports that it cannot compare it. Two values of
+    // different runtime types where either is such a value are a violation, except two sequences, which are left to
+    // _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the address
+    // and the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
     private static bool _CompareByRuntimeType(Type declaredType, object actual, object expected)
     {
         if (declaredType == typeof(System.Reflection.Pointer))
@@ -1663,7 +1717,7 @@ public static class Contract
         Type publicActualType = SharedTypes.PublicFrozenType(actualType);
         if (publicActualType != actualType && publicActualType == SharedTypes.PublicFrozenType(expectedType))
         {
-            _CompareAsWhole(publicActualType, actual, expected);
+            _CompareAsWhole(publicActualType, declaredType, actual, expected);
             return true;
         }
 
@@ -1678,9 +1732,13 @@ public static class Contract
         }
 
         // A boxed pointer is shared, but compared by address, as a member of it is (see MemberComparison.Start).
-        if (_IsComparedAsWhole(actualType) || actual is System.Reflection.Pointer)
+        if (
+            _IsComparedAsWhole(actualType)
+            || actual is System.Reflection.Pointer
+            || MemberComparison.IsInlineArray(actualType)
+        )
         {
-            _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), actual, expected);
+            _CompareAsWhole(SharedTypes.PublicFrozenType(actualType), declaredType, actual, expected);
             return true;
         }
 
@@ -1784,6 +1842,7 @@ public static class Contract
 
         List<string> differences = _FindDifferences(
             declaredType,
+            declaredType,
             [.. MemberComparison.GetOrCacheMetadata(declaredType).Members],
             actual,
             expected,
@@ -1798,7 +1857,9 @@ public static class Contract
 
     private static bool _IsDecidedByRuntimeType(Type runtimeType)
     {
-        return _IsComparedAsWhole(runtimeType) || SharedTypes.IsShared(runtimeType);
+        return _IsComparedAsWhole(runtimeType)
+            || SharedTypes.IsShared(runtimeType)
+            || MemberComparison.IsInlineArray(runtimeType);
     }
 
     // The top level compared member by member, by the members of the type _TopLevelType picks.
@@ -1838,6 +1899,7 @@ public static class Contract
 
         List<string> differences = _FindDifferences(
             comparedType,
+            declaredType,
             members,
             actual,
             expected,
@@ -1953,22 +2015,39 @@ public static class Contract
             || SharedTypes.IsShared(runtimeType);
     }
 
-    private static void _CompareAsWhole(Type type, object? actual, object? expected)
+    // Tells which inline-array types the comparison refuses among those a struct T holds by value. An Old copy of a
+    // struct T is an unboxed value with no record (see UncopiedInlineArrays), so every inline array whose struct
+    // elements a copy leaves uncopied (see DeepCopier.LeavesStructElementsUncopied) is refused there, whether or not
+    // the values came from Old. A box that T holds in a field (an auto-property counts as its backing field), or in an
+    // element of an inline array, declared a reference type is held through a reference: only the record on the box
+    // counts there (see MemberComparison.StartHeld). A property computed by its getter is not: the getter may box a
+    // field afresh. Null when T is not a struct, or where this runtime writes struct elements.
+    private static Func<Type, bool>? _UncopiedHeldByValue(Type declaredType)
     {
-        ComparisonContext context = new();
+        return declaredType.IsValueType && !StructElements.CanWrite ? LeavesStructElementsUncopied : null;
+    }
+
+    private static void _CompareAsWhole(Type type, Type declaredType, object? actual, object? expected)
+    {
+        ComparisonContext context = new() { UncopiedInTopLevel = _UncopiedHeldByValue(declaredType) };
 
         if (MemberComparison.AreEqual(actual, expected, context))
         {
             return;
         }
 
+        // A nullable value type is named by its underlying type when that is an inline array, as both values are.
+        Type underlying = Nullable.GetUnderlyingType(type) ?? type;
         if (context.Hidden is not null)
         {
-            throw MemberComparison.CannotCompareBelowWhole(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
+            throw MemberComparison.CannotCompareBelowWhole(underlying, context.Hidden);
         }
 
+        string comparedAs = MemberComparison.IsInlineArray(underlying)
+            ? $"{underlying} is an inline array, compared as a whole element by element"
+            : $"{type} is compared as a whole";
         throw new PostconditionViolationException(
-            $"actual and expected are not equal. {type} is compared as a whole, so assignable patterns do not apply."
+            $"actual and expected are not equal. {comparedAs}, so assignable patterns do not apply."
         );
     }
 
@@ -2050,10 +2129,11 @@ public static class Contract
         }
     }
 
-    // A primitive, an enum and an inline array, as a value of a type other than T, are decided by Equals alone.
+    // A primitive and an enum, as a value of a type other than T, are decided by Equals alone. (An inline array never
+    // comes here: see _CompareByRuntimeType.)
     private static bool _IsDecidedByEqualsAlone(Type type)
     {
-        return type.IsPrimitive || type.IsEnum || type.IsDefined(typeof(InlineArrayAttribute), inherit: false);
+        return type.IsPrimitive || type.IsEnum;
     }
 
     // The values can be passed as the runtime type only when both are of it.
@@ -2097,10 +2177,16 @@ public static class Contract
         List<MemberAccessor> members = [];
 
         // A boxed value of a value type other than T is compared as a member of that type is: its Equals
-        // decides first, and only when it says "unequal" are its fields compared. A primitive, an enum and an
-        // inline array are decided by Equals alone, and a value without a field is then unequal.
+        // decides first, and only when it says "unequal" are its fields compared; a struct whose built-in Equals
+        // would reach an inline array's is compared by its fields without it (see
+        // MemberComparison.IsComparedByFieldsWithoutEquals). A primitive and an enum are decided by Equals alone, and
+        // a value without a field is then unequal. (An inline array never comes here: see _CompareByRuntimeType.)
         bool asAMember = comparedType.IsValueType && comparedType != declaredType;
-        if (!asAMember || !Equals(actual, expected))
+        if (
+            !asAMember
+            || MemberComparison.IsComparedByFieldsWithoutEquals(actual, expected, comparedType)
+            || !_EqualsOfABoxedValueSaysEqual(comparedType, declaredType, actual, expected)
+        )
         {
             if (asAMember && _IsDecidedByEqualsAlone(comparedType))
             {
@@ -2110,7 +2196,7 @@ public static class Contract
                 );
             }
 
-            // Its Equals said "unequal", and its fields cannot be listed when it shows no declared member.
+            // Its Equals said "unequal" or was not asked; its fields cannot be listed when it shows no declared member.
             if (asAMember && MemberComparison.ShowsNoDeclaredMember(comparedType))
             {
                 throw _ShowsNoDeclaredMember(comparedType, declaredType);
@@ -2126,6 +2212,7 @@ public static class Contract
             }
 
             members.AddRange(asAMember ? metadata.Members.Where(m => m.IsField) : metadata.Members);
+            // Reached only after its Equals said "unequal": a struct compared without it has a field.
             if (asAMember && members.Count == 0)
             {
                 throw new PostconditionViolationException(
@@ -2146,8 +2233,35 @@ public static class Contract
         return members;
     }
 
+    // The Equals of a boxed value of a value type other than T, asked as it is for a member (see _TopLevelMembers).
+    // It is not asked, and false is returned, when the value holds by value an inline array whose struct elements an
+    // Old copy left uncopied (see MemberComparison.FindUncopiedHeld): that Equals would find the shared elements equal.
+    // The fields are then compared, so the patterns apply, and the walk refuses that inline array by the same rule
+    // (see _FindDifferences), naming the member that holds it as a way out.
+    private static bool _EqualsOfABoxedValueSaysEqual(
+        Type comparedType,
+        Type declaredType,
+        object actual,
+        object expected
+    )
+    {
+        Func<Type, bool>? isUncopied = _UncopiedAtTopLevel(declaredType, actual, expected);
+        return MemberComparison.FindUncopiedHeld(actual, expected, comparedType, isUncopied) is null
+            && Equals(actual, expected);
+    }
+
+    // The inline-array types refused at the top level: those recorded on an Old copy among the two values (see
+    // UncopiedInlineArrays), or else those a struct T holds by value (see _UncopiedHeldByValue).
+    private static Func<Type, bool>? _UncopiedAtTopLevel(Type declaredType, object actual, object expected)
+    {
+        return UncopiedInlineArrays.Of(actual)
+            ?? UncopiedInlineArrays.Of(expected)
+            ?? _UncopiedHeldByValue(declaredType);
+    }
+
     private static List<string> _FindDifferences(
         Type type,
+        Type declaredType,
         List<MemberAccessor> members,
         object actual,
         object expected,
@@ -2163,6 +2277,7 @@ public static class Contract
         // are the top-level pair here only when T is neither an array type nor System.Array (object, an
         // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
         context.EnterTopLevel(new ReferencePair(actual, expected));
+        context.UncopiedInTopLevel = _UncopiedAtTopLevel(declaredType, actual, expected);
 
         // A property of an interface T is compared even when a member of comparedType has its name: its getter
         // may be another implementation (an explicit one). It is not reported when a member of that name was
@@ -2181,7 +2296,7 @@ public static class Contract
             object? actualValue = member.GetValue(actual);
             object? expectedValue = member.GetValue(expected);
 
-            if (!MemberComparison.AreEqual(actualValue, expectedValue, context))
+            if (!MemberComparison.AreEqual(actualValue, expectedValue, context, member.IsReferenceTypedField))
             {
                 if (context.Hidden is not null)
                 {

@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace uContract;
 
@@ -20,6 +21,35 @@ internal static class MemberComparison
     private static readonly TypeCache<TypeMetadata> MetadataCache = new();
     private static readonly TypeCache<SequenceRule> SequenceRuleCache = new();
     private static readonly TypeCache<bool> NoDeclaredMemberCache = new();
+    private static readonly TypeCache<InlineArrayShape> InlineArrayShapeCache = new();
+    private static readonly TypeCache<bool> InlineArrayCache = new();
+    private static readonly TypeCache<ValueRoutes> ValueRoutesCache = new();
+    private static readonly TypeCache<bool> UserEqualsCache = new();
+    private static readonly TypeCache<ClassEquals> ClassEqualsCache = new();
+
+    private static readonly Type[] TupleDefinitions =
+    [
+        typeof(Tuple<>),
+        typeof(Tuple<,>),
+        typeof(Tuple<,,>),
+        typeof(Tuple<,,,>),
+        typeof(Tuple<,,,,>),
+        typeof(Tuple<,,,,,>),
+        typeof(Tuple<,,,,,,>),
+        typeof(Tuple<,,,,,,,>),
+    ];
+
+    private static readonly Type[] ValueTupleDefinitions =
+    [
+        typeof(ValueTuple<>),
+        typeof(ValueTuple<,>),
+        typeof(ValueTuple<,,>),
+        typeof(ValueTuple<,,,>),
+        typeof(ValueTuple<,,,,>),
+        typeof(ValueTuple<,,,,,>),
+        typeof(ValueTuple<,,,,,,>),
+        typeof(ValueTuple<,,,,,,,>),
+    ];
 
     // The public key tokens the assemblies of the .NET runtime and libraries are signed with: every token that
     // occurs in the .NET 8 shared frameworks (Microsoft.NETCore.App, Microsoft.AspNetCore.App and
@@ -43,17 +73,42 @@ internal static class MemberComparison
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule."
+        Justification = "Callers (EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Nested and element types are known only at run time; under Native AOT a type that exposes no members at all is reported by the \"no members visible\" rule, and a typed Equals the trimmer hides from reflection is not found, so a record's hand-written one is treated as generated."
     )]
     internal static TypeMetadata GetOrCacheMetadata(Type type)
     {
         // These binding flags must stay within what ComparedMembers preserves. Members are lost silently under
         // Native AOT if the flags are widened beyond ComparedMembers, or if the constant is narrowed; widening
-        // the constant alone loses nothing.
+        // the constant alone loses nothing. The typed Equals is not a compared member (see
+        // HasHandWrittenTypedEquals).
         return MetadataCache.GetOrAdd(
             type,
-            t => CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            t =>
+            {
+                TypeMetadata metadata = CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance));
+                metadata.HasHandWrittenTypedEquals =
+                    DeclaresHandWrittenTypedEquals(t)
+                    || (
+                        t.BaseType is { } baseType
+                        && !IsFrameworkClass(baseType)
+                        && GetOrCacheMetadata(baseType).HasHandWrittenTypedEquals
+                    );
+                return metadata;
+            }
         );
+
+        // True when t, not an anonymous type, declares a public Equals(t) that is not marked [CompilerGenerated]. A
+        // local function, so that the suppression above covers its reflection.
+        static bool DeclaresHandWrittenTypedEquals(Type t)
+        {
+            return t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Any(method =>
+                        string.Equals(method.Name, nameof(Equals), StringComparison.Ordinal)
+                        && method.GetParameters() is [{ } parameter]
+                        && parameter.ParameterType == t
+                        && !method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                    ) && !CSharpTypeName.IsAnonymousType(t);
+        }
     }
 
     // The members the top level compares for a runtime type other than T. When T is a framework class (other
@@ -119,7 +174,7 @@ internal static class MemberComparison
             ),
         ];
         List<MemberAccessor> members = comparedProperties
-            .Select(p => new MemberAccessor(p, ExistingGetter(p)))
+            .Select(p => new MemberAccessor(p, ExistingGetter(p)) { BackingField = BackingFieldOf(p, fields) })
             .Concat(fields.Select(f => new MemberAccessor(f)))
             .ToList();
 
@@ -135,6 +190,29 @@ internal static class MemberComparison
         QualifyCollidingNames(members);
 
         return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
+    }
+
+    // The compiler-generated backing field of property, an auto-property, among fields, told by its name (see
+    // SourceName) and its declaring type; null for a property computed by its getter. An auto-property is told by its
+    // getter, marked [CompilerGenerated]: a C# 14 "field" property with a getter written by hand has a field of that
+    // name too, but its getter may box afresh, so it counts as computed. The backing field of a property declared on a
+    // base class is not among fields, so such a property is treated as computed (see
+    // MemberAccessor.IsReferenceTypedField).
+    private static FieldInfo? BackingFieldOf(PropertyInfo property, FieldInfo[] fields)
+    {
+        if (property.GetMethod?.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) != true)
+        {
+            return null;
+        }
+
+        return Array.Find(
+            fields,
+            field =>
+                field.DeclaringType == property.DeclaringType
+                && SourceName(field.Name) is var name
+                && !string.Equals(name, field.Name, StringComparison.Ordinal)
+                && string.Equals(name, property.Name, StringComparison.Ordinal)
+        );
     }
 
     // Members of one raw name (ordinal), counted after the declarations of one virtual property are merged,
@@ -383,7 +461,13 @@ internal static class MemberComparison
     internal static bool ElementsAreEqual(IEnumerable actual, IEnumerable expected, ComparisonContext context)
     {
         Walk? walk = StartSequences(actual, expected);
-        return walk is not null && Run(walk, context);
+        if (walk is null)
+        {
+            return false;
+        }
+
+        walk.Uncopied = context.UncopiedInTopLevel;
+        return Run(walk, context);
     }
 
     // True for a public key token that the assemblies of the .NET runtime and libraries are signed with.
@@ -540,13 +624,18 @@ internal static class MemberComparison
         // Patterns are matched against raw names and source names (see IsAssignable), so the advice names the
         // member without its qualifier, and a qualified member shares that name with another member, which it excuses too.
         string sharedName = topLevelMember.IsQualified ? "; it also excuses the other members of that name" : "";
+        string listAsAssignable =
+            $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
+            + $"matched against top-level member names, so use the plain member name{sharedName}); ";
+        if (CannotCompareElements(hidden, path, listAsAssignable) is { } cannotCompareElements)
+        {
+            return cannotCompareElements;
+        }
+
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
             + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
             + "Their Equals reports them unequal (without an Equals override this only means they are different instances), and their members cannot be listed. ";
-        string listAsAssignable =
-            $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
-            + $"matched against top-level member names, so use the plain member name{sharedName}); ";
         if (!CSharpTypeName.CanBeWritten(hidden.Type))
         {
             return new InvalidOperationException(cannotList + WaysOutForAnUnnamedType(hidden.Type, listAsAssignable));
@@ -574,6 +663,11 @@ internal static class MemberComparison
     {
         string start = IsArrayTypeOrSystemArray(wholeType) ? "actual" : wholeType.Name;
         string path = $"{start}{hidden.PathBelowTopLevelMember}";
+        if (CannotCompareElements(hidden, path) is { } cannotCompareElements)
+        {
+            return cannotCompareElements;
+        }
+
         string cannotList =
             $"EnsureAssignable cannot compare {hidden.Type} (reached through '{path}'): "
             + WhatIsVisible(hidden.OnlyByRefLikePropertiesVisible)
@@ -591,6 +685,97 @@ internal static class MemberComparison
                 + ", preserve them, for example with "
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // The "cannot compare" exception for an inline array, reached through path, whose elements were left uncompared
+    // (see HiddenMembers: ElementsNeedDynamicCode, ElementsNotCopied, ElementFieldHidden); null when hidden is a type
+    // whose members are hidden instead. firstWayOut is empty, or a way out that ends with "; ".
+    private static InvalidOperationException? CannotCompareElements(
+        HiddenMembers hidden,
+        string path,
+        string firstWayOut = ""
+    )
+    {
+        if (hidden.ElementsNeedDynamicCode is { } elementType)
+        {
+            return CannotReadStructElements(hidden.Type, elementType, path, firstWayOut);
+        }
+
+        if (hidden.ElementsNotCopied is { } notCopied)
+        {
+            return CannotCompareUncopiedElements(hidden.Type, notCopied, path, firstWayOut);
+        }
+
+        return hidden.ElementFieldHidden ? CannotReadHiddenElements(hidden.Type, path, firstWayOut) : null;
+    }
+
+    // The comparison met an inline array of struct elements, reached through path, that this runtime reads only with
+    // dynamic code (see StructElements.Read). firstWayOut is empty, or a way out that ends with "; ". Preserving the
+    // type is not offered: the elements stay unreadable whatever is preserved, so no way out names a type in C#.
+    private static InvalidOperationException CannotReadStructElements(
+        Type inlineArrayType,
+        Type elementType,
+        string path,
+        string firstWayOut = ""
+    )
+    {
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {inlineArrayType} (reached through '{path}'): it is an inline array of "
+                + $"{elementType}, a struct, whose elements this runtime reads only with dynamic code, and dynamic code "
+                + "is not supported here (Native AOT). Ways out: "
+                + firstWayOut
+                + "run on the .NET 9 runtime or later, which reads struct elements without dynamic code; or set "
+                + "DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // The comparison met an inline array, reached through path, whose element field reflection does not list (under
+    // Native AOT, a type that nothing preserves). firstWayOut is empty, or a way out that ends with "; ".
+    private static InvalidOperationException CannotReadHiddenElements(
+        Type inlineArrayType,
+        string path,
+        string firstWayOut = ""
+    )
+    {
+        string cannotRead =
+            $"EnsureAssignable cannot compare {inlineArrayType} (reached through '{path}'): it is an inline array whose "
+            + "element field is not visible to reflection under Native AOT, so its element type is unknown and its "
+            + "elements cannot be read. ";
+        if (!CSharpTypeName.CanBeWritten(inlineArrayType))
+        {
+            return new InvalidOperationException(cannotRead + WaysOutForAnUnnamedType(inlineArrayType, firstWayOut));
+        }
+
+        return new InvalidOperationException(
+            cannotRead
+                + "Ways out: "
+                + firstWayOut
+                + "preserve it, for example with "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(inlineArrayType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(inlineArrayType)} "
+                + "(if its elements are structs, the .NET 8 runtime still cannot read them without dynamic code); "
+                + "or set DBC_POST=off (disables all postcondition checks)."
+        );
+    }
+
+    // The comparison met an inline array of struct elements, reached through path, that the Old copy being compared
+    // could not copy (see UncopiedInlineArrays). firstWayOut is empty, or a way out that ends with "; ". Preserving the
+    // type is not offered: the elements stay uncopied whatever is preserved.
+    private static InvalidOperationException CannotCompareUncopiedElements(
+        Type inlineArrayType,
+        Type elementType,
+        string path,
+        string firstWayOut = ""
+    )
+    {
+        return new InvalidOperationException(
+            $"EnsureAssignable cannot compare {inlineArrayType} (reached through '{path}'): it is an inline array of "
+                + $"{elementType}, a struct, whose elements Contract.Old could not copy: this runtime writes struct "
+                + "elements only with dynamic code, and dynamic code is not supported here (Native AOT), so the copy "
+                + "shares what they refer to with the original. Ways out: "
+                + firstWayOut
+                + (firstWayOut.Length == 0 ? "set" : "or set")
+                + " DBC_POST=off (disables all postcondition checks)."
         );
     }
 
@@ -681,9 +866,22 @@ internal static class MemberComparison
 
     // A false return with context.Hidden set means "could not compare" (a type with no visible members
     // blocked the comparison), not "different". Callers must check it before reporting a difference.
-    internal static bool AreEqual(object? actual, object? expected, ComparisonContext context)
+    // heldByReference: the pair is held in a field, or an auto-property whose backing field is, declared a reference
+    // type (see Walk.ChildHeldByReference).
+    internal static bool AreEqual(
+        object? actual,
+        object? expected,
+        ComparisonContext context,
+        bool heldByReference = false
+    )
     {
-        Walk? walk = Start(actual, expected, context, out bool equal);
+        Walk? walk = StartHeld(
+            actual,
+            expected,
+            heldByReference ? null : context.UncopiedInTopLevel,
+            context,
+            out bool equal
+        );
         return walk is null ? equal : Run(walk, context);
     }
 
@@ -705,7 +903,13 @@ internal static class MemberComparison
                 Step step = walk.Next();
                 if (step == Step.Child)
                 {
-                    Walk? child = Start(walk.ChildActual, walk.ChildExpected, context, out equal);
+                    Walk? child = StartHeld(
+                        walk.ChildActual,
+                        walk.ChildExpected,
+                        walk.ChildHeldByReference ? null : walk.Uncopied,
+                        context,
+                        out equal
+                    );
                     if (child is not null)
                     {
                         walks.Push(child);
@@ -729,6 +933,37 @@ internal static class MemberComparison
                 return equal;
             }
         }
+    }
+
+    // Start, for a pair held by an object whose Old copy could not copy the inline-array types uncopiedInHolder (null
+    // when there are none): a pair of objects tells for itself whether it belongs to such a copy (see
+    // UncopiedInlineArrays), and a pair of values read from a struct is held where that struct is held. The walk
+    // returned passes this on to the pairs it holds by value; a box held in a field (an auto-property counts as its
+    // backing field), or in an element of an inline array, declared a reference type (object, an interface,
+    // ValueType) is held through a reference, and callers pass null for it, so only its own record counts (the rule for
+    // a struct T covers only what T holds by value; see Contract._UncopiedHeldByValue). A property computed by its
+    // getter counts as held by value whatever its declared type: the getter may box a field afresh on every read, and
+    // such a box has no record. Elements of other sequences and dictionaries are
+    // held by value when they are value types at run time: their declared element type is not tracked.
+    private static Walk? StartHeld(
+        object? actual,
+        object? expected,
+        Func<Type, bool>? uncopiedInHolder,
+        ComparisonContext context,
+        out bool equal
+    )
+    {
+        context.Uncopied =
+            UncopiedInlineArrays.Of(actual)
+            ?? UncopiedInlineArrays.Of(expected)
+            ?? (actual is ValueType ? uncopiedInHolder : null);
+        Walk? walk = Start(actual, expected, context, out equal);
+        if (walk is not null)
+        {
+            walk.Uncopied = context.Uncopied;
+        }
+
+        return walk;
     }
 
     // Decides a pair that needs no walk into it (equal is the outcome), or returns the walk that compares it.
@@ -785,7 +1020,7 @@ internal static class MemberComparison
         // elements (see StartSequences).
         if (actualType.IsValueType && actualType == expectedType)
         {
-            return StartValues(actual, expected, actualType, out equal);
+            return StartValues(actual, expected, actualType, context, out equal);
         }
 
         return StartReferences(actual, expected, context, out equal);
@@ -1005,11 +1240,55 @@ internal static class MemberComparison
 
     // A value type decides equality first; when it says "unequal", its elements (for ArraySegment<T> or
     // ImmutableArray<T>) or its fields are compared, because ValueType.Equals calls each field's own
-    // Equals, which for most classes (List<T>, arrays) compares by reference.
-    private static Walk? StartValues(object actual, object expected, Type type, out bool equal)
+    // Equals, which for most classes (List<T>, arrays) compares by reference. An inline array is compared by
+    // its elements instead (see StartInlineArray), and a struct without a hand-written Equals whose built-in
+    // Equals would reach an inline array's on either side (see NeedsFieldComparison) by its fields: the built-in
+    // Equals of an inline array sees only element 0, and the .NET 10 runtime throws for it. Before any Equals is
+    // asked, a pair that belongs to an Old copy which left struct elements uncopied (context.Uncopied) is refused
+    // when the struct holds such an inline array by value, through structs of any depth, whatever the Equals of the
+    // struct and of those structs (see FindUncopiedHeld): an Equals would find the shared elements equal. For a
+    // struct T, context.Uncopied covers what T holds by value also when the values did not come from Old: a struct
+    // copy carries no record (see Contract._UncopiedHeldByValue).
+    private static Walk? StartValues(
+        object actual,
+        object expected,
+        Type type,
+        ComparisonContext context,
+        out bool equal
+    )
     {
+        // A primitive or an enum is decided by its Equals alone; it is never an inline array or a holder.
+        if (type.IsPrimitive || type.IsEnum)
+        {
+            equal = Equals(actual, expected);
+            return null;
+        }
+
+        if (IsInlineArray(type))
+        {
+            return StartInlineArray(actual, expected, type, context, out equal);
+        }
+
+        if (IsStructComparedByFieldsWithoutEquals(actual, expected, type))
+        {
+            equal = false;
+            return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
+        }
+
+        // A struct that holds, by value, an inline array whose struct elements an Old copy left uncopied is refused
+        // before its Equals is asked, whatever that Equals is: it would find the shared elements equal (see
+        // FindUncopiedHeld). A struct without a hand-written Equals that is a holder was sent to its fields above, and
+        // its inline array is refused there (see StartInlineArray). For a struct T this holds also for values that
+        // did not come from Old (see Contract._UncopiedHeldByValue).
+        if (FindUncopiedHeld(actual, expected, type, context.Uncopied) is { } held)
+        {
+            context.Hidden = held;
+            equal = false;
+            return null;
+        }
+
         equal = Equals(actual, expected);
-        if (equal || type.IsPrimitive || type.IsEnum)
+        if (equal)
         {
             return null;
         }
@@ -1029,14 +1308,592 @@ internal static class MemberComparison
             return new CollectionWalk(actualItems, expectedItems);
         }
 
-        // Reflection shows only the first element of an inline array, so it has no fully visible fields.
-        if (type.IsDefined(typeof(InlineArrayAttribute), inherit: false))
+        // A value type without visible fields has only its Equals to decide, and it said "unequal".
+        return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
+    }
+
+    // True when two values of type, a struct that is not an inline array, are compared by their fields without
+    // asking its Equals: it has no hand-written Equals, and its built-in Equals would reach an inline array's on
+    // either side (see NeedsFieldComparison).
+    internal static bool IsComparedByFieldsWithoutEquals(object actual, object expected, Type type)
+    {
+        return !type.IsPrimitive
+            && !type.IsEnum
+            && !IsInlineArray(type)
+            && IsStructComparedByFieldsWithoutEquals(actual, expected, type);
+    }
+
+    // As IsComparedByFieldsWithoutEquals, for a type already known to be neither a primitive, an enum nor an inline
+    // array.
+    private static bool IsStructComparedByFieldsWithoutEquals(object actual, object expected, Type type)
+    {
+        return !HasUserEquals(actual, type)
+            && (NeedsFieldComparison(actual, type) || NeedsFieldComparison(expected, type));
+    }
+
+    // Two values of one inline-array type: one whose struct elements the Old copy being compared could not copy
+    // (context.Uncopied; for an inline array that a struct T holds by value, also when the values did not come from
+    // Old) is refused first, before any Equals is asked (context.Hidden is set); then a hand-written
+    // Equals that says "equal" decides; otherwise the n elements are compared pairwise, in index order, by the rules
+    // for two elements of an array. The built-in ValueType.Equals is not asked: it sees only element 0, and the .NET
+    // 10 runtime throws for it. An inline array of n elements of E is laid out as n consecutive values of E, so the
+    // elements are read from the memory of the box. Primitive, enum, pointer and function-pointer elements are
+    // compared in place (see TryCompareInPlace); reference and struct elements are walked, a struct element boxed (see
+    // StructElements.Read).
+    // Struct elements that this runtime cannot read, and elements of a type reflection does not list (Native AOT),
+    // leave the pair uncompared (context.Hidden is set), equal or not.
+    private static CollectionWalk? StartInlineArray(
+        object actual,
+        object expected,
+        Type type,
+        ComparisonContext context,
+        out bool equal
+    )
+    {
+        equal = false;
+        InlineArrayShape shape = InlineArrayShapeOf(type);
+
+        // Elements an Old copy left shared would look equal to a hand-written Equals, so the refusal comes first.
+        if (shape is { ElementType: { } uncopiedElementType } && context.Uncopied?.Invoke(type) == true)
+        {
+            context.Hidden = new HiddenMembers(type) { ElementsNotCopied = uncopiedElementType };
+            return null;
+        }
+
+        if (HasUserEquals(actual, type) && Equals(actual, expected))
+        {
+            equal = true;
+            return null;
+        }
+
+        if (shape is not { ElementType: { } elementType })
+        {
+            context.Hidden = new HiddenMembers(type) { ElementFieldHidden = true };
+            return null;
+        }
+
+        ref byte actualData = ref Unsafe.As<StrongBox<byte>>(actual).Value;
+        ref byte expectedData = ref Unsafe.As<StrongBox<byte>>(expected).Value;
+        if (TryCompareInPlace(elementType, ref actualData, ref expectedData, shape.Length, out equal))
         {
             return null;
         }
 
-        // A value type without visible fields has only its Equals to decide, and it said "unequal".
-        return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
+        if (
+            ReadElements(elementType, ref actualData, shape.Length) is not { } actualElements
+            || ReadElements(elementType, ref expectedData, shape.Length) is not { } expectedElements
+        )
+        {
+            context.Hidden = new HiddenMembers(type) { ElementsNeedDynamicCode = elementType };
+            return null;
+        }
+
+        return new CollectionWalk(actualElements, expectedElements, !elementType.IsValueType);
+    }
+
+    // The length elements of elementType at data: a reference element as the reference it holds, a struct element
+    // boxed (see StructElements.Read). Null when this runtime cannot read struct elements.
+    private static object?[]? ReadElements(Type elementType, ref byte data, int length)
+    {
+        return elementType.IsValueType
+            ? StructElements.Read(elementType, ref data, length)
+            : MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, object?>(ref data), length).ToArray();
+    }
+
+    // True when type overrides Equals(object) by hand. A delegate bound to the virtual object.Equals on the box
+    // resolves to the method the box dispatches to: an override declared on type, or else the built-in
+    // ValueType.Equals, also when type hides it with an Equals declared with "new". An override marked
+    // [CompilerGenerated] is not written by hand, unless it is a record's that calls a typed Equals written by hand.
+    private static bool OverridesEquals(object box, Type type)
+    {
+        Func<object?, bool> equals = box.Equals;
+        return equals.Method.DeclaringType == type
+            && (
+                !equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                || GetOrCacheMetadata(type).HasHandWrittenTypedEquals
+            );
+    }
+
+    // True when the Equals type dispatches to is written by hand (see OverridesEquals), a fact of the type that box,
+    // a value of type, serves to ask. The Equals of a System.ValueTuple<…> only calls the Equals of each item, so
+    // it counts as built-in. (A Nullable<T> is never boxed: a field declared Nullable<T> holds a boxed T or null.)
+    private static bool HasUserEquals(object box, Type type)
+    {
+        return UserEqualsCache.GetOrAdd(
+            type,
+            static (t, b) =>
+                OverridesEquals(b, t)
+                && !(t.IsGenericType && ValueTupleDefinitions.Contains(t.GetGenericTypeDefinition())),
+            box
+        );
+    }
+
+    // True when the built-in Equals of a value of type, a struct without a hand-written Equals that is not an inline
+    // array, would reach the built-in Equals of an inline array: the struct is a holder (see HolderState), or a
+    // field declared object, an interface or ValueType holds, on this side, an inline array or a struct that needs
+    // this itself (see PushHeldValues). Which fields to look at is a fact of the type (see CreateValueRoutes).
+    // The held values still to look at wait in pending, not on the call stack, so a long chain of held values (a
+    // linked list of records) does not overflow it. looked holds the held values already looked at in this look,
+    // created on the first one, so a value that refers back to itself (through one box or object or more) is looked
+    // at once: a cycle alone needs no field comparison.
+    private static bool NeedsFieldComparison(object value, Type type)
+    {
+        Stack<object>? pending = null;
+        HashSet<object>? looked = null;
+        if (NeedsFieldComparison(value, type, ref pending))
+        {
+            return true;
+        }
+
+        while (pending is { Count: > 0 })
+        {
+            if (NeedsFieldComparisonAsHeld(pending.Pop(), ref pending, ref looked))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // True when value is a holder; otherwise the run-time values it holds are put in pending (see PushHeldValues).
+    private static bool NeedsFieldComparison(object value, Type type, ref Stack<object>? pending)
+    {
+        ValueRoutes routes = ValueRoutesCache.GetOrAdd(type, CreateValueRoutes);
+        if (routes.IsEmpty)
+        {
+            return false;
+        }
+
+        if (HolderState(routes, value) == Holder.Yes)
+        {
+            return true;
+        }
+
+        PushHeldValues(routes, value, ref pending);
+        return false;
+    }
+
+    // A struct is a holder when a field declared (a Nullable<> of) an inline array, or a field declared (a
+    // Nullable<> of) a holder struct without a hand-written Equals, belongs to it. That is a fact of the type, cached
+    // once known; the value only serves to ask the nested structs whether their Equals is written by hand. A
+    // Nullable<> field that is null leaves it unknown for now: the built-in Equals never reaches its Equals then.
+    private static Holder HolderState(ValueRoutes routes, object value)
+    {
+        Holder state = routes.Holder;
+        if (state != Holder.Unknown)
+        {
+            return state;
+        }
+
+        state = routes.InlineArrays.Length > 0 ? Holder.Yes : Holder.No;
+        foreach (MemberAccessor field in routes.Nested)
+        {
+            if (state == Holder.Yes)
+            {
+                break;
+            }
+
+            if (field.GetValue(value) is not { } nested)
+            {
+                state = Holder.Unknown;
+                continue;
+            }
+
+            Type nestedType = nested.GetType();
+            if (HasUserEquals(nested, nestedType))
+            {
+                continue;
+            }
+
+            Holder nestedState = HolderState(ValueRoutesCache.GetOrAdd(nestedType, CreateValueRoutes), nested);
+            if (nestedState != Holder.No)
+            {
+                state = nestedState;
+            }
+        }
+
+        if (state != Holder.Unknown)
+        {
+            routes.Holder = state;
+        }
+
+        return state;
+    }
+
+    // The inline array that either value of a pair of type, a struct, holds by value and that isUncopied tells (see
+    // the overload for one value below); null when there is none or isUncopied is null. The one rule that keeps the
+    // Equals of a struct from being asked, below the top level (see StartValues) and at it (see
+    // Contract._EqualsOfABoxedValueSaysEqual).
+    internal static HiddenMembers? FindUncopiedHeld(
+        object actual,
+        object expected,
+        Type type,
+        Func<Type, bool>? isUncopied
+    )
+    {
+        return isUncopied is null
+            ? null
+            : FindUncopiedHeld(actual, type, isUncopied) ?? FindUncopiedHeld(expected, type, isUncopied);
+    }
+
+    // The inline array that value, a struct, holds by value through the fields the holder rule lists (see
+    // CreateValueRoutes: a field declared an inline array, or a nested struct with routes of its own, followed to any
+    // depth whether or not it has a hand-written Equals, unlike HolderState, which stops at one: its Equals, say one
+    // that compares what the shared elements refer to, would find them equal too) and whose type isUncopied tells, as
+    // the comparison refuses it, with the path from value to it; null when there is none. Struct nesting by value is
+    // finite, so the recursion ends.
+    private static HiddenMembers? FindUncopiedHeld(object value, Type type, Func<Type, bool> isUncopied)
+    {
+        ValueRoutes routes = ValueRoutesCache.GetOrAdd(type, CreateValueRoutes);
+        foreach (MemberAccessor field in routes.InlineArrays)
+        {
+            if (
+                field.GetValue(value) is { } array
+                && isUncopied(array.GetType())
+                && InlineArrayShapeOf(array.GetType()).ElementType is { } elementType
+            )
+            {
+                HiddenMembers held = new(array.GetType()) { ElementsNotCopied = elementType };
+                held.Prepend("." + field.PathName);
+                return held;
+            }
+        }
+
+        foreach (MemberAccessor field in routes.Nested)
+        {
+            if (
+                field.GetValue(value) is { } nested
+                && FindUncopiedHeld(nested, nested.GetType(), isUncopied) is { } held
+            )
+            {
+                held.Prepend("." + field.PathName);
+                return held;
+            }
+        }
+
+        return null;
+    }
+
+    // Puts in pending the run-time values of the fields declared object, an interface, ValueType or a class, of value
+    // and of its nested structs that have no hand-written Equals. Nested structs go no deeper than their declared
+    // types do.
+    private static void PushHeldValues(ValueRoutes routes, object value, ref Stack<object>? pending)
+    {
+        foreach (MemberAccessor field in routes.RunTime)
+        {
+            if (field.GetValue(value) is { } held)
+            {
+                (pending ??= new Stack<object>()).Push(held);
+            }
+        }
+
+        foreach (MemberAccessor field in routes.Nested)
+        {
+            if (field.GetValue(value) is { } nested && !HasUserEquals(nested, nested.GetType()))
+            {
+                PushHeldValues(ValueRoutesCache.GetOrAdd(nested.GetType(), CreateValueRoutes), nested, ref pending);
+            }
+        }
+    }
+
+    // A held value is the same object on every read (a box read from an object field is not copied), so it is
+    // recorded in looked before it is looked into, and a value already recorded is not looked into again. The values
+    // it holds in turn are put in pending.
+    private static bool NeedsFieldComparisonAsHeld(object held, ref Stack<object>? pending, ref HashSet<object>? looked)
+    {
+        Type type = held.GetType();
+        if (type.IsValueType && (type.IsPrimitive || type.IsEnum))
+        {
+            return false;
+        }
+
+        if (IsInlineArray(type))
+        {
+            return true;
+        }
+
+        ClassEquals classEquals = type.IsValueType ? ClassEquals.NotFollowed : ClassEqualsOf(held, type);
+        bool followed = type.IsValueType ? !HasUserEquals(held, type) : classEquals != ClassEquals.NotFollowed;
+        if (!followed)
+        {
+            return false;
+        }
+
+        looked ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
+        if (!looked.Add(held))
+        {
+            return false;
+        }
+
+        if (classEquals == ClassEquals.Tuple)
+        {
+            PushTupleItems((ITuple)held, ref pending);
+            return false;
+        }
+
+        return NeedsFieldComparison(held, type, ref pending);
+    }
+
+    // The Equals of a System.Tuple<…> compares its items, which a class derived from it does not show as fields of
+    // its own (they are private fields of the framework base class), so they are read through ITuple.
+    private static void PushTupleItems(ITuple tuple, ref Stack<object>? pending)
+    {
+        for (int i = 0; i < tuple.Length; i++)
+        {
+            if (tuple[i] is { } item)
+            {
+                (pending ??= new Stack<object>()).Push(item);
+            }
+        }
+    }
+
+    // Which Equals the class of box dispatches to, when it compares values but is not written by hand: a record
+    // class's [CompilerGenerated] Equals, the Equals of an anonymous type (see CSharpTypeName.IsAnonymousType; its
+    // Equals is not marked), or the Equals of a System.Tuple<…>. A fact of the type, cached.
+    private static ClassEquals ClassEqualsOf(object box, Type type)
+    {
+        return ClassEqualsCache.GetOrAdd(
+            type,
+            static (_, b) =>
+            {
+                Func<object?, bool> equals = b.Equals;
+                Type? declaring = equals.Method.DeclaringType;
+                if (declaring is null || declaring == typeof(object))
+                {
+                    return ClassEquals.NotFollowed;
+                }
+
+                if (declaring.IsGenericType && TupleDefinitions.Contains(declaring.GetGenericTypeDefinition()))
+                {
+                    return ClassEquals.Tuple;
+                }
+
+                return
+                    (
+                        equals.Method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                        || CSharpTypeName.IsAnonymousType(declaring)
+                    ) && !GetOrCacheMetadata(declaring).HasHandWrittenTypedEquals
+                    ? ClassEquals.CompilerGenerated
+                    : ClassEquals.NotFollowed;
+            },
+            box
+        );
+    }
+
+    // The fields of a struct (or of a followed class) that can lead its Equals to an inline array's (see RouteOf). An
+    // inline array has none: its elements are compared by StartInlineArray.
+    private static ValueRoutes CreateValueRoutes(Type type)
+    {
+        if (IsInlineArray(type))
+        {
+            return ValueRoutes.None;
+        }
+
+        List<MemberAccessor> inlineArrays = [];
+        List<MemberAccessor> nested = [];
+        List<MemberAccessor> runTime = [];
+        foreach (MemberAccessor field in FieldsEqualsCompares(type))
+        {
+            switch (RouteOf(field.MemberType))
+            {
+                case Route.InlineArray:
+                    inlineArrays.Add(field);
+                    break;
+                case Route.RunTime:
+                    runTime.Add(field);
+                    break;
+                case Route.Nested:
+                    nested.Add(field);
+                    break;
+            }
+        }
+
+        return inlineArrays.Count + nested.Count + runTime.Count == 0
+            ? ValueRoutes.None
+            : new ValueRoutes([.. inlineArrays], [.. nested], [.. runTime]);
+    }
+
+    // How a field declared fieldType can lead an Equals to an inline array's: it is (a Nullable<> of) an inline array;
+    // it is declared object, ValueType, an interface or a class other than string, an array or a delegate, so only
+    // its run-time value tells; or it is (a Nullable<> of) a struct that has routes of its own. A pointer or a
+    // function pointer leads nowhere: reflection reports a pointer type as a class (Type.IsClass), but the field holds
+    // an address, which the built-in Equals compares as bits.
+    private static Route RouteOf(Type fieldType)
+    {
+        Type declared = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
+        if (IsInlineArray(declared))
+        {
+            return Route.InlineArray;
+        }
+
+        if (
+            declared == typeof(object)
+            || declared == typeof(ValueType)
+            || declared.IsInterface
+            || (
+                declared.IsClass
+                && !declared.IsPointer
+                && !declared.IsFunctionPointer
+                && declared != typeof(string)
+                && !declared.IsArray
+                && !typeof(Delegate).IsAssignableFrom(declared)
+            )
+        )
+        {
+            return Route.RunTime;
+        }
+
+        return
+            declared.IsValueType
+            && !declared.IsPrimitive
+            && !declared.IsEnum
+            && !ValueRoutesCache.GetOrAdd(declared, CreateValueRoutes).IsEmpty
+            ? Route.Nested
+            : Route.None;
+    }
+
+    // The fields of type in its cached members, and the fields declared on each base class up to the first framework
+    // class that those members leave out: a derived record's members leave out the backing field, declared on a base
+    // record, of a positional property it compares as a property, yet the base record's Equals compares that field.
+    // The Equals of a Visual Basic anonymous type compares only its Key properties: their fields are its only read-only
+    // ones (a non-Key property has a setter, and its field is writable).
+    private static IEnumerable<MemberAccessor> FieldsEqualsCompares(Type type)
+    {
+        bool keyFieldsOnly = CSharpTypeName.IsVisualBasicAnonymousType(type);
+        MemberAccessor[] fields =
+        [
+            .. GetOrCacheMetadata(type)
+                .Members.Where(member => member.IsField && (!keyFieldsOnly || member.IsReadOnlyField)),
+        ];
+        IEnumerable<MemberAccessor> result = fields;
+        for (
+            Type? baseType = type.BaseType;
+            baseType is not null && !IsFrameworkClass(baseType);
+            baseType = baseType.BaseType
+        )
+        {
+            Type declaring = baseType;
+            result = result.Concat(
+                GetOrCacheMetadata(declaring)
+                    .Members.Where(member =>
+                        member.IsField
+                        && member.DeclaringType == declaring
+                        && !fields.Any(listed =>
+                            listed.DeclaringType == declaring
+                            && string.Equals(listed.RawName, member.RawName, StringComparison.Ordinal)
+                        )
+                    )
+            );
+        }
+
+        return result;
+    }
+
+    // The element type and length of the inline-array type type (see InlineArrayShape), a fact of the type that is
+    // cached.
+    internal static InlineArrayShape InlineArrayShapeOf(Type type)
+    {
+        return InlineArrayShapeCache.GetOrAdd(type, CreateInlineArrayShape);
+    }
+
+    // True when type is marked [InlineArray], a fact of the type that is cached.
+    internal static bool IsInlineArray(Type type)
+    {
+        return InlineArrayCache.GetOrAdd(type, static t => t.IsDefined(typeof(InlineArrayAttribute), inherit: false));
+    }
+
+    // An inline array declares exactly one instance field, whose type is the element type. The field is read from
+    // the cached members of the type (see GetOrCacheMetadata); under Native AOT the trimmer may hide it, which
+    // leaves the element type unknown.
+    private static InlineArrayShape CreateInlineArrayShape(Type type)
+    {
+        MemberAccessor[] fields = [.. GetOrCacheMetadata(type).Members.Where(member => member.IsField)];
+        Type? elementType = fields.Length == 1 ? fields[0].MemberType : null;
+        return new InlineArrayShape(elementType, type.GetCustomAttribute<InlineArrayAttribute>(inherit: false)!.Length);
+    }
+
+    // True for elements of a type that is compared in place (see InPlaceOf); equal then tells whether the length
+    // elements at actualData and at expectedData are the same. A float or a double is compared by its own Equals,
+    // as a boxed one is: NaN equals NaN, and 0.0 equals -0.0. Each of the other types is equal by its Equals exactly
+    // when its bits are equal (an enum compares its underlying integers), so the memory is compared as integers of
+    // the element's size.
+    private static bool TryCompareInPlace(
+        Type elementType,
+        ref byte actualData,
+        ref byte expectedData,
+        int length,
+        out bool equal
+    )
+    {
+        InPlace inPlace = InPlaceOf(elementType);
+        equal = inPlace switch
+        {
+            InPlace.Float => HaveSameElements<float>(ref actualData, ref expectedData, length),
+            InPlace.Double => HaveSameElements<double>(ref actualData, ref expectedData, length),
+            InPlace.Bits8 => HaveSameElements<byte>(ref actualData, ref expectedData, length),
+            InPlace.Bits16 => HaveSameElements<ushort>(ref actualData, ref expectedData, length),
+            InPlace.Bits32 => HaveSameElements<uint>(ref actualData, ref expectedData, length),
+            InPlace.Bits64 => HaveSameElements<ulong>(ref actualData, ref expectedData, length),
+            InPlace.NativeBits => HaveSameElements<nuint>(ref actualData, ref expectedData, length),
+            _ => false,
+        };
+        return inPlace != InPlace.No;
+    }
+
+    // How elements of elementType are compared in place: bool, char, an integer type (nint and nuint included), an
+    // enum, float or double are, and a pointer or a function pointer by the address it holds, as a pointer member and
+    // an array of pointers or of function pointers are (see Start, TryGetAddresses); any other type is not.
+    private static InPlace InPlaceOf(Type elementType)
+    {
+        if (elementType.IsPointer || elementType.IsFunctionPointer)
+        {
+            return InPlace.NativeBits;
+        }
+
+        if (elementType == typeof(float))
+        {
+            return InPlace.Float;
+        }
+
+        if (elementType == typeof(double))
+        {
+            return InPlace.Double;
+        }
+
+        Type bitsType = elementType.IsEnum ? elementType.GetEnumUnderlyingType() : elementType;
+        if (bitsType == typeof(bool) || bitsType == typeof(byte) || bitsType == typeof(sbyte))
+        {
+            return InPlace.Bits8;
+        }
+
+        if (bitsType == typeof(char) || bitsType == typeof(short) || bitsType == typeof(ushort))
+        {
+            return InPlace.Bits16;
+        }
+
+        if (bitsType == typeof(int) || bitsType == typeof(uint))
+        {
+            return InPlace.Bits32;
+        }
+
+        if (bitsType == typeof(long) || bitsType == typeof(ulong))
+        {
+            return InPlace.Bits64;
+        }
+
+        return bitsType == typeof(nint) || bitsType == typeof(nuint) ? InPlace.NativeBits : InPlace.No;
+    }
+
+    // The memory at each reference is read as length elements of T, which is in bounds only when T has the
+    // size of the element type; TryCompareInPlace picks T so. SequenceEqual compares the elements with
+    // IEquatable<T>.Equals.
+    private static bool HaveSameElements<T>(ref byte actualData, ref byte expectedData, int length)
+        where T : unmanaged, IEquatable<T>
+    {
+        return MemoryMarshal
+            .CreateReadOnlySpan(ref Unsafe.As<byte, T>(ref actualData), length)
+            .SequenceEqual(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, T>(ref expectedData), length));
     }
 
     private static bool IsComparedByElements(Type type)
@@ -1118,13 +1975,10 @@ internal static class MemberComparison
         return true;
     }
 
-    // True for two arrays of one runtime type, of any rank, whose element type is bool, char, an integer type
-    // (nint and nuint included), an enum, float or double; equal then tells whether they hold the same
-    // elements. A float or a double is compared by its own Equals, as a boxed one is: NaN equals NaN, and 0.0
-    // equals -0.0. Each of the other types is equal by its Equals exactly when its bits are equal (an enum
-    // compares its underlying integers), so the memory of the two arrays is compared as integers of the
-    // element's size. Both arrays have the same rank, and the same length and lower bound in every dimension
-    // (see StartReferences), so they hold the same number of elements in the same order.
+    // True for two arrays of one runtime type, of any rank, whose elements are compared in place (see the
+    // overload that takes the element type); equal then tells whether they hold the same elements. Both arrays
+    // have the same rank, and the same length and lower bound in every dimension (see StartReferences), so they
+    // hold the same number of elements in the same order.
     private static bool TryCompareInPlace(object actual, object expected, out bool equal)
     {
         equal = false;
@@ -1139,62 +1993,13 @@ internal static class MemberComparison
             return false;
         }
 
-        Type? elementType = arrayType.GetElementType();
-        if (elementType == typeof(float))
-        {
-            equal = HaveSameElements<float>(actualArray, expectedArray);
-            return true;
-        }
-
-        if (elementType == typeof(double))
-        {
-            equal = HaveSameElements<double>(actualArray, expectedArray);
-            return true;
-        }
-
-        Type? bitsType = elementType is { IsEnum: true } ? elementType.GetEnumUnderlyingType() : elementType;
-        if (bitsType == typeof(bool) || bitsType == typeof(byte) || bitsType == typeof(sbyte))
-        {
-            equal = HaveSameElements<byte>(actualArray, expectedArray);
-        }
-        else if (bitsType == typeof(char) || bitsType == typeof(short) || bitsType == typeof(ushort))
-        {
-            equal = HaveSameElements<ushort>(actualArray, expectedArray);
-        }
-        else if (bitsType == typeof(int) || bitsType == typeof(uint))
-        {
-            equal = HaveSameElements<uint>(actualArray, expectedArray);
-        }
-        else if (bitsType == typeof(long) || bitsType == typeof(ulong))
-        {
-            equal = HaveSameElements<ulong>(actualArray, expectedArray);
-        }
-        else if (bitsType == typeof(nint) || bitsType == typeof(nuint))
-        {
-            equal = HaveSameElements<nuint>(actualArray, expectedArray);
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    // The memory of each array is read as elements of T, which is in bounds only when T has the size of the
-    // array's element type; TryCompareInPlace picks T so. SequenceEqual compares the elements with
-    // IEquatable<T>.Equals.
-    private static bool HaveSameElements<T>(Array actual, Array expected)
-        where T : unmanaged, IEquatable<T>
-    {
-        return AsSpan<T>(actual).SequenceEqual(AsSpan<T>(expected));
-    }
-
-    private static ReadOnlySpan<T> AsSpan<T>(Array array)
-        where T : unmanaged
-    {
-        ref byte first = ref MemoryMarshal.GetArrayDataReference(array);
-        return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, T>(ref first), array.Length);
+        return TryCompareInPlace(
+            arrayType.GetElementType()!,
+            ref MemoryMarshal.GetArrayDataReference(actualArray),
+            ref MemoryMarshal.GetArrayDataReference(expectedArray),
+            actualArray.Length,
+            out equal
+        );
     }
 
     private static bool AreSequencesComparedByElementsOnly(object actual, object expected)
@@ -1264,7 +2069,16 @@ internal static class MemberComparison
 
         public object? ChildActual { get; private set; }
 
+        // Tells which inline-array types the Old copy holding this pair could not copy (see StartHeld).
+        public Func<Type, bool>? Uncopied { get; set; }
+
         public object? ChildExpected { get; private set; }
+
+        // True when the current child is held in a field (an auto-property counts as its backing field), or an element
+        // of an inline array, declared a reference type (object, an interface, ValueType), so that a boxed value there
+        // is held through a reference, not by value (see StartHeld). Never for a property computed by its getter: the
+        // getter may box a field afresh.
+        public bool ChildHeldByReference { get; private set; }
 
         // The path segment of the current child, prepended when the child could not be compared.
         public abstract string ChildSegment { get; }
@@ -1286,10 +2100,11 @@ internal static class MemberComparison
             }
         }
 
-        protected Step Child(object? actual, object? expected)
+        protected Step Child(object? actual, object? expected, bool heldByReference = false)
         {
             ChildActual = actual;
             ChildExpected = expected;
+            ChildHeldByReference = heldByReference;
             return Step.Child;
         }
     }
@@ -1319,14 +2134,18 @@ internal static class MemberComparison
                 }
 
                 _comparedAny = true;
-                return Child(member.GetValue(actual), member.GetValue(expected));
+                return Child(member.GetValue(actual), member.GetValue(expected), member.IsReferenceTypedField);
             }
 
             return _comparedAny || !fieldsOnly ? Step.Equal : Step.Different;
         }
     }
 
-    private sealed class CollectionWalk(object?[] actual, object?[] expected) : Walk
+    // elementsHeldByReference: the elements, of an inline array, are declared a reference type, so a boxed element is
+    // held through a reference (see StartHeld). False where the declared element type is a value type or is not known
+    // (the elements of other sequences).
+    private sealed class CollectionWalk(object?[] actual, object?[] expected, bool elementsHeldByReference = false)
+        : Walk
     {
         private int _index = -1;
 
@@ -1340,7 +2159,9 @@ internal static class MemberComparison
             }
 
             _index++;
-            return _index < actual.Length ? Child(actual[_index], expected[_index]) : Step.Equal;
+            return _index < actual.Length
+                ? Child(actual[_index], expected[_index], elementsHeldByReference)
+                : Step.Equal;
         }
     }
 
@@ -1362,7 +2183,9 @@ internal static class MemberComparison
                 step = members.Next();
             }
 
-            return step == Step.Child ? Child(_current.ChildActual, _current.ChildExpected) : step;
+            return step == Step.Child
+                ? Child(_current.ChildActual, _current.ChildExpected, _current.ChildHeldByReference)
+                : step;
         }
     }
 
@@ -1403,6 +2226,71 @@ internal static class MemberComparison
         }
     }
 
+    // What StartInlineArray and DeepCopier need of an inline-array type: its element type (null when reflection
+    // does not list its one element field; its elements are then neither compared nor copied one by one) and its
+    // length.
+    internal sealed record InlineArrayShape(Type? ElementType, int Length);
+
+    private enum InPlace
+    {
+        No,
+        Float,
+        Double,
+        Bits8,
+        Bits16,
+        Bits32,
+        Bits64,
+        NativeBits,
+    }
+
+    private enum Holder
+    {
+        Unknown,
+        Yes,
+        No,
+    }
+
+    // How a field can lead an Equals to an inline array's (see RouteOf).
+    private enum Route
+    {
+        None,
+        InlineArray,
+        Nested,
+        RunTime,
+    }
+
+    // How the Equals of a class compares (see ClassEqualsOf): only CompilerGenerated and Tuple are followed.
+    private enum ClassEquals
+    {
+        NotFollowed,
+        CompilerGenerated,
+        Tuple,
+    }
+
+    // What NeedsFieldComparison looks at in a struct: fields declared (a Nullable<> of) an inline array, fields
+    // declared (a Nullable<> of) a struct that has routes of its own, and fields declared object, an interface or
+    // ValueType. Holder caches HolderState once it is known.
+    private sealed class ValueRoutes(MemberAccessor[] inlineArrays, MemberAccessor[] nested, MemberAccessor[] runTime)
+    {
+        private int _holder;
+
+        public static ValueRoutes None { get; } = new([], [], []);
+
+        public MemberAccessor[] InlineArrays { get; } = inlineArrays;
+
+        public MemberAccessor[] Nested { get; } = nested;
+
+        public MemberAccessor[] RunTime { get; } = runTime;
+
+        public bool IsEmpty => InlineArrays.Length + Nested.Length + RunTime.Length == 0;
+
+        public Holder Holder
+        {
+            get => (Holder)Volatile.Read(ref _holder);
+            set => Volatile.Write(ref _holder, (int)value);
+        }
+    }
+
     // OwnMembers is cached for every caller, so it is read-only.
     internal sealed record SequenceRule(bool HasFrameworkClass, IReadOnlyList<MemberAccessor> OwnMembers)
     {
@@ -1431,6 +2319,18 @@ internal static class MemberComparison
         // a byref-like type. False for a type that shows no declared member while the members it inherits stay
         // visible (see ShowsNoDeclaredMember).
         public bool OnlyByRefLikePropertiesVisible { get; init; }
+
+        // Set when Type is an inline array whose elements, of this struct type, this runtime reads only with dynamic
+        // code, which is not supported (see StructElements.Read); its members are visible.
+        public Type? ElementsNeedDynamicCode { get; init; }
+
+        // Set when Type is an inline array whose elements, of this struct type, the Old copy being compared could not
+        // copy (see UncopiedInlineArrays); its members are visible.
+        public Type? ElementsNotCopied { get; init; }
+
+        // Set when Type is an inline array whose element field reflection does not list (under Native AOT, a type
+        // that nothing preserves), so its element type, and so its elements, are unknown.
+        public bool ElementFieldHidden { get; init; }
 
         public string PathBelowTopLevelMember { get; private set; } = "";
 

@@ -81,6 +81,11 @@ internal sealed class MemberAccessor
     public Type DeclaringType { get; }
 
     /// <summary>
+    ///     Gets the type of the field or of the property.
+    /// </summary>
+    public Type MemberType => _field?.FieldType ?? _property!.PropertyType;
+
+    /// <summary>
     ///     Names the member with the given declaring type name in <see cref="Name" /> and
     ///     <see cref="PathName" />.
     /// </summary>
@@ -101,6 +106,24 @@ internal sealed class MemberAccessor
     ///     True when the member is a field that is not public.
     /// </summary>
     public bool IsNonPublicField => _field is { IsPublic: false };
+
+    /// <summary>
+    ///     Gets the compiler-generated backing field of an auto-property (a positional member of a record struct is
+    ///     one), when it is listed with the property; null for a field and for a property computed by its getter.
+    /// </summary>
+    public FieldInfo? BackingField { get; init; }
+
+    /// <summary>
+    ///     True when the member is a field, or an auto-property whose backing field is, declared a reference type
+    ///     (object, an interface, ValueType, a class): a box it holds is the one stored in that field. A property
+    ///     computed by its getter is never one: the getter may box a field afresh on every read.
+    /// </summary>
+    public bool IsReferenceTypedField => (_field ?? BackingField) is { FieldType.IsValueType: false };
+
+    /// <summary>
+    ///     True when the member is a read-only field (<c>readonly</c> in C#, <c>ReadOnly</c> in Visual Basic).
+    /// </summary>
+    public bool IsReadOnlyField => _field is { IsInitOnly: true };
 
     /// <summary>
     ///     True when the member is a property without a getter to read it with.

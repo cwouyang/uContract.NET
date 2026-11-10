@@ -627,28 +627,36 @@ public class EnsureAssignableRuntimeTypeTests
             Contract.EnsureAssignable(actual, expected)
         );
 
-        Assert.Equal(DecidedByEquals<Triple, object>(), exception.Description);
+        Assert.Equal(ComparedAsAnInlineArray<Triple>(), exception.Description);
     }
 
-    // As for a member (see EnsureAssignable_WhenInlineArrayFirstElementIsEqual_DoesNotSeeLaterElements):
-    // ValueType.Equals sees only element 0 of an inline array, and decides it alone.
+    // A boxed inline array is compared as a whole, element by element, as an array is: its built-in Equals,
+    // which sees only element 0 (and throws on .NET 10), is not asked.
     [Fact]
-    public void EnsureAssignable_WhenTIsObjectAndOnlyTheSecondElementOfABoxedInlineArrayChanged_DoesNotSeeIt()
+    public void EnsureAssignable_WhenTIsObjectAndOnlyTheSecondElementOfABoxedInlineArrayChanged_ReportsTheTwoAsNotEqual()
     {
         Triple actualBuffer = new();
         actualBuffer[1] = Changed;
         object actual = actualBuffer;
         object expected = new Triple();
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal(ComparedAsAnInlineArray<Triple>(), exception.Description);
     }
 
     private static string DecidedByEquals<TRuntime, TDeclared>()
     {
         return $"actual and expected are not equal. They are compared as {typeof(TRuntime)} by its Equals alone, "
             + $"which reports them unequal; T is {typeof(TDeclared)}.";
+    }
+
+    private static string ComparedAsAnInlineArray<TRuntime>()
+    {
+        return $"actual and expected are not equal. {typeof(TRuntime)} is an inline array, compared as a whole "
+            + "element by element, so assignable patterns do not apply.";
     }
 
     [InlineArray(3)]

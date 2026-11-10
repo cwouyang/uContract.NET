@@ -6,6 +6,9 @@ using uContract.Exceptions;
 
 namespace uContract.Tests;
 
+// Some tests turn dynamic code off, process-wide state, so this class shares the collection of the other tests that
+// mutate process-wide state.
+[Collection("EnvironmentVariables")]
 public class EnsureAssignableRobustnessTests
 {
     [Fact]
@@ -399,10 +402,10 @@ public class EnsureAssignableRobustnessTests
         Assert.Equal("Fields were modified that are not marked as assignable:\n  - B", exception.Description);
     }
 
-    // An inline array exposes only its first element to reflection, so its fields are never compared:
-    // when its Equals says "unequal", it is reported even if every element has equal content.
+    // The elements of an inline array are compared by the rules for two elements of an array: two distinct
+    // lists with equal elements are equal.
     [Fact]
-    public void EnsureAssignable_WhenInlineArrayHoldsDistinctListsWithEqualElements_ReportsTheMember()
+    public void EnsureAssignable_WhenInlineArrayHoldsDistinctListsWithEqualElements_DoesNotReportIt()
     {
         Buffered actual = new();
         actual.B[0] = [1];
@@ -411,16 +414,14 @@ public class EnsureAssignableRobustnessTests
         expected.B[0] = [1];
         expected.B[1] = [2];
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
-            Contract.EnsureAssignable(actual, expected)
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
-        Assert.Equal("Fields were modified that are not marked as assignable:\n  - B", exception.Description);
+        Assert.Null(exception);
     }
 
-    // Pins a documented limitation shared with 2.0.0: ValueType.Equals and reflection see only element 0.
+    // ValueType.Equals and reflection see only element 0 of an inline array; its elements are read instead.
     [Fact]
-    public void EnsureAssignable_WhenInlineArrayFirstElementIsEqual_DoesNotSeeLaterElements()
+    public void EnsureAssignable_WhenOnlyALaterStringElementOfAnInlineArrayChanged_ReportsTheMember()
     {
         Labelled actual = new();
         actual.Labels[0] = "x";
@@ -429,15 +430,17 @@ public class EnsureAssignableRobustnessTests
         expected.Labels[0] = "x";
         expected.Labels[1] = "after";
 
-        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(actual, expected)
+        );
 
-        Assert.Null(exception);
+        Assert.Equal("Fields were modified that are not marked as assignable:\n  - Labels", exception.Description);
     }
 
-    // Only ArraySegment<T> and ImmutableArray<T> are compared by their elements; a user-defined inline
-    // array is not, even when it is enumerable, so it follows the inline-array rule above.
+    // A user-defined inline array, even an enumerable one, is compared by its elements as an inline array, as
+    // above, not by what it enumerates.
     [Fact]
-    public void EnsureAssignable_WhenEnumerableInlineArrayHoldsDistinctListsWithEqualElements_ReportsTheMember()
+    public void EnsureAssignable_WhenEnumerableInlineArrayHoldsDistinctListsWithEqualElements_DoesNotReportIt()
     {
         Sequenced actual = new();
         actual.S[0] = [1];
@@ -446,11 +449,9 @@ public class EnsureAssignableRobustnessTests
         expected.S[0] = [1];
         expected.S[1] = [2];
 
-        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
-            Contract.EnsureAssignable(actual, expected)
-        );
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
 
-        Assert.Equal("Fields were modified that are not marked as assignable:\n  - S", exception.Description);
+        Assert.Null(exception);
     }
 
     [Fact]

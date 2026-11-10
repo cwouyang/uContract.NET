@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace uContract;
 
@@ -11,7 +12,12 @@ namespace uContract;
 ///     bitwise clone, so every instance field keeps the original's value; then each reference-typed field
 ///     visible to reflection is replaced by the copy of what it refers to. A struct field stays bitwise
 ///     except for the reference-typed fields inside it, replaced the same way at any nesting depth. An
-///     array keeps its runtime type, rank and bounds, and its elements are replaced by the same rules.
+///     array keeps its runtime type, rank and bounds, and its elements are replaced by the same rules. So are the
+///     elements of an inline array, read from its memory; struct elements that hold references only where the runtime
+///     can write them back, that is with dynamic code (see <see cref="StructElements" />). Without it, on any runtime,
+///     they stay as the field walk leaves them (element 0 copied as a field, the others bitwise, sharing what they
+///     refer to with the original), and the copy records which inline-array types it could not copy (see
+///     <see cref="UncopiedInlineArrays" />).
 /// </summary>
 /// <remarks>
 ///     Shared types (<see cref="SharedTypes" />, <see cref="string" /> included) are never cloned. An instance
@@ -24,6 +30,7 @@ internal static class DeepCopier
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
 
     private static readonly TypeCache<bool> HoldsReferencesCache = new();
+    private static readonly TypeCache<bool> HasStructElementsHoldingReferencesCache = new();
 
     internal static T Copy<T>(T value)
     {
@@ -32,32 +39,56 @@ internal static class DeepCopier
             return value;
         }
 
-        Dictionary<object, object> copies = new(ReferenceEqualityComparer.Instance);
-        Stack<object> pending = new();
-        object copy = CopyOf(value, copies, pending);
-        while (pending.TryPop(out object? clone))
+        Copying copying = new();
+        object copy = CopyOf(value, copying);
+        while (copying.Pending.TryPop(out object? clone))
         {
             if (clone is Array array)
             {
-                ReplaceElements(array, copies, pending);
+                ReplaceElements(array, copying);
             }
             else
             {
-                ReplaceReferenceFields(clone, copies, pending);
+                ReplaceReferenceFields(clone, copying);
             }
+        }
+
+        if (copying.Uncopied is { } uncopied)
+        {
+            UncopiedInlineArrays.Record(copying.Copies.Values, uncopied);
         }
 
         return (T)copy;
     }
 
-    private static object CopyOf(object original, Dictionary<object, object> copies, Stack<object> pending)
+    // True when a copy leaves the struct elements of an inline array of type uncopied on this runtime: they hold
+    // references, and the runtime cannot write struct elements back (no dynamic code, on the .NET 8 runtime as on the
+    // .NET 9 runtime or later; see StructElements). Old records such a type (see UncopiedInlineArrays), and the
+    // comparison refuses to compare it before any Equals written by hand is asked, also on the .NET 8 runtime, which
+    // could not read the elements either: such an Equals would find the shared elements equal.
+    internal static bool LeavesStructElementsUncopied(Type type)
+    {
+        return !StructElements.CanWrite
+            && HasStructElementsHoldingReferencesCache.GetOrAdd(type, HasStructElementsHoldingReferences);
+    }
+
+    // True when type is an inline array whose element type, as reflection lists it, is a struct that holds a
+    // reference (see HoldsReferences).
+    private static bool HasStructElementsHoldingReferences(Type type)
+    {
+        return MemberComparison.IsInlineArray(type)
+            && MemberComparison.InlineArrayShapeOf(type) is { ElementType: { IsValueType: true } elementType }
+            && HoldsReferences(elementType);
+    }
+
+    private static object CopyOf(object original, Copying copying)
     {
         if (SharedTypes.IsShared(original.GetType()))
         {
             return original;
         }
 
-        if (copies.TryGetValue(original, out object? copy))
+        if (copying.Copies.TryGetValue(original, out object? copy))
         {
             return copy;
         }
@@ -67,8 +98,8 @@ internal static class DeepCopier
 #pragma warning disable CA1816 // The clone is a fresh object that this copier owns; it is not an IDisposable pattern.
         GC.SuppressFinalize(copy);
 #pragma warning restore CA1816
-        copies.Add(original, copy);
-        pending.Push(copy);
+        copying.Copies.Add(original, copy);
+        copying.Pending.Push(copy);
         return copy;
     }
 
@@ -77,8 +108,13 @@ internal static class DeepCopier
         "IL2075",
         Justification = "Callers (Old/EnsureAssignable) are annotated with [RequiresUnreferencedCode]. Under Native AOT a field the trimmer hides from reflection is not visited, so the object it refers to stays bitwise: the copy shares it with the original."
     )]
-    private static void ReplaceReferenceFields(object clone, Dictionary<object, object> copies, Stack<object> pending)
+    private static void ReplaceReferenceFields(object clone, Copying copying)
     {
+        if (TryReplaceInlineArrayElements(clone, copying))
+        {
+            return;
+        }
+
         for (Type? type = clone.GetType(); type is not null; type = type.BaseType)
         {
             foreach (FieldInfo field in type.GetFields(DeclaredInstanceFields))
@@ -88,13 +124,85 @@ internal static class DeepCopier
                     continue;
                 }
 
-                field.SetValue(clone, Replacement(value, field.FieldType, copies, pending));
+                field.SetValue(clone, Replacement(value, field.FieldType, copying));
             }
         }
     }
 
+    // A boxed inline array: reflection lists only its element 0, so every element is replaced here, from the memory
+    // of the box. False leaves the box to the field walk.
+    private static bool TryReplaceInlineArrayElements(object box, Copying copying)
+    {
+        Type type = box.GetType();
+        if (!MemberComparison.IsInlineArray(type))
+        {
+            return false;
+        }
+
+        MemberComparison.InlineArrayShape shape = MemberComparison.InlineArrayShapeOf(type);
+        if (shape is not { ElementType: { } elementType } || !HoldsReferences(elementType))
+        {
+            return false;
+        }
+
+        ref byte data = ref Unsafe.As<StrongBox<byte>>(box).Value;
+        if (elementType.IsValueType)
+        {
+            return TryReplaceStructElements(type, elementType, ref data, shape.Length, copying);
+        }
+
+        Span<object?> elements = MemoryMarshal.CreateSpan(ref Unsafe.As<byte, object?>(ref data), shape.Length);
+        for (int i = 0; i < elements.Length; i++)
+        {
+            if (elements[i] is { } element)
+            {
+                elements[i] = CopyOf(element, copying);
+            }
+        }
+
+        return true;
+    }
+
+    // The length struct elements at data, of an inline array of type, are read boxed, the references inside each box
+    // are replaced, and the boxes are written back (see StructElements). False, changing nothing, where this runtime
+    // cannot write them: the copy then records type as not copied (see LeavesStructElementsUncopied), so that the
+    // comparison refuses to compare it.
+    private static bool TryReplaceStructElements(
+        Type type,
+        Type elementType,
+        ref byte data,
+        int length,
+        Copying copying
+    )
+    {
+        if (LeavesStructElementsUncopied(type))
+        {
+            (copying.Uncopied ??= []).Add(type);
+            return false;
+        }
+
+        if (!StructElements.CanWrite)
+        {
+            return false;
+        }
+
+        object?[] elements = StructElements.Read(elementType, ref data, length)!;
+
+        // A Nullable<> element without a value is read as null, and written back as null.
+        for (int i = 0; i < length; i++)
+        {
+            if (elements[i] is { } element)
+            {
+                elements[i] = Replacement(element, elementType, copying);
+            }
+        }
+
+        StructElements.Write(elementType, ref data, elements);
+        return true;
+    }
+
     // The clone already has the original's runtime type, rank and bounds; only its elements are replaced.
-    private static void ReplaceElements(Array clone, Dictionary<object, object> copies, Stack<object> pending)
+    private static void ReplaceElements(Array clone, Copying copying)
     {
         Type elementType = clone.GetType().GetElementType()!;
         if (!HoldsReferences(elementType))
@@ -120,25 +228,20 @@ internal static class DeepCopier
                 continue;
             }
 
-            clone.SetValue(Replacement(element, elementType, copies, pending), indices);
+            clone.SetValue(Replacement(element, elementType, copying), indices);
         } while (Advance(clone, indices));
     }
 
     // A struct (field or element) arrives boxed: the references inside the box are replaced and the box is
     // stored back. This recurses once per level of struct nesting, which the type bounds, not the graph.
-    private static object Replacement(
-        object value,
-        Type declaredType,
-        Dictionary<object, object> copies,
-        Stack<object> pending
-    )
+    private static object Replacement(object value, Type declaredType, Copying copying)
     {
         if (!declaredType.IsValueType)
         {
-            return CopyOf(value, copies, pending);
+            return CopyOf(value, copying);
         }
 
-        ReplaceReferenceFields(value, copies, pending);
+        ReplaceReferenceFields(value, copying);
         return value;
     }
 
@@ -197,4 +300,16 @@ internal static class DeepCopier
 
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "MemberwiseClone")]
     private static extern object CloneBitwise(object original);
+
+    // The state of one copy: the copy of each instance copied so far, by reference, and the clones whose fields or
+    // elements are still to be replaced.
+    private sealed class Copying
+    {
+        public Dictionary<object, object> Copies { get; } = new(ReferenceEqualityComparer.Instance);
+
+        public Stack<object> Pending { get; } = new();
+
+        // The inline-array types whose struct elements could not be copied; null while there are none.
+        public HashSet<Type>? Uncopied { get; set; }
+    }
 }
