@@ -297,10 +297,12 @@ element and never asks its built-in `Equals`, which sees only element 0 on the .
   `EnsureAssignable_WhenTIsObjectAndABoxedHolderStructsHandWrittenEqualsSaysEqual_Passes`,
   `EnsureAssignable_WhenTIsObjectAndTheHandWrittenEqualsOfABoxedHolderStructThrows_LetsItPropagate`).
   Without dynamic code, a boxed struct that holds by value an inline array whose struct elements an `Old`
-  copy left uncopied is refused before that user `Equals` is asked, by the rule of the third "cannot
-  compare" case in the [ADR-0021](0021-postconditions-under-trimming-and-aot.md) amendment of this date
-  (spec revision 22; unit test
-  `EnsureAssignable_WhenTIsObjectAndABoxedContentComparingStructHoldsAnInlineArrayOldLeftUncopied_CannotCompareItFirst`).
+  copy left uncopied is not decided by that user `Equals`: its fields are compared, so the patterns apply,
+  and the inline array is refused by the rule of the third "cannot compare" case in the
+  [ADR-0021](0021-postconditions-under-trimming-and-aot.md) amendment of this date, with the member that
+  holds it as a way out (spec revision 22; unit tests
+  `EnsureAssignable_WhenTIsObjectAndABoxedContentComparingStructHoldsAnInlineArrayOldLeftUncopied_CannotCompareItFirst`,
+  `EnsureAssignable_WhenTIsObjectAndTheChangedInlineArrayOfABoxedContentComparingStructOldLeftUncopiedIsAssignable_Passes`).
 - **Native AOT.** An inline array is still not covered by rule H3 (Details, item 4), but its elements can be
   read only when reflection lists its element field. When nothing preserves the inline-array type, the
   call throws "cannot compare", also for equal values; that and the other "cannot compare" cases of

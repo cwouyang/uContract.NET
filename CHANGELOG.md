@@ -467,7 +467,8 @@ AOT](README.md#trimming-and-native-aot) in the README.
   write them back, so the copy shares what they refer to with the original; `Old` does not throw): list
   the member as assignable, or set `DBC_POST=off`. Case 3 is decided before an `Equals` written by hand
   is asked, for the inline array and for the structs that hold it by value at any depth, also for a
-  boxed struct passed as `T` = `object`, an interface or `ValueType`. For a struct `T`, whose
+  boxed struct passed as `T` = `object`, an interface or `ValueType` (its fields are then compared, so
+  the patterns apply and the member that holds the inline array can be listed). For a struct `T`, whose
   copy carries no record of what was not copied, it refuses every such inline array that `T` holds by
   value, also for values that did not come from `Old`, and the message still says "Contract.Old could
   not copy"; a box held in a field or an inline-array element declared `object`, an interface or
