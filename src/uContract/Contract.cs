@@ -1251,11 +1251,11 @@ public static class Contract
     ///     enumerated.
     ///     Also thrown, also when the two values are equal, when the elements of an inline array cannot be compared
     ///     (see the remarks): under Native AOT when nothing preserves the inline-array type, so reflection does not
-    ///     list its element field; on the .NET 8 runtime without dynamic code when its elements are of a struct type
-    ///     other than a primitive or an enum; and
-    ///     without dynamic code on the .NET 9 runtime or later when its elements are structs that hold references
-    ///     and a <see cref="Old{T}" /> copy could not copy them. The message names the inline-array type and the
-    ///     path, and gives only the ways out that work for that case.
+    ///     list its element field; without dynamic code, on any runtime, when its elements are structs that hold
+    ///     references and a <see cref="Old{T}" /> copy could not copy them (asked before any <c>Equals</c> written
+    ///     by hand); and on the .NET 8 runtime without dynamic code when its elements are of another struct type
+    ///     than a primitive or an enum. The message names the inline-array type and the path, and gives only the
+    ///     ways out that work for that case.
     /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare the public instance properties (indexers and properties of a
@@ -1483,20 +1483,13 @@ public static class Contract
     ///     <c>System.Tuple&lt;…&gt;</c> or an anonymous object) is compared by its fields without asking that
     ///     <c>Equals</c>. An exception thrown by an <c>Equals</c> written by hand propagates. A C# fixed-size buffer (<c>fixed int X[4]</c>) is not an inline
     ///     array: only its element 0 is compared. The method throws <see cref="InvalidOperationException" /> when
-    ///     the elements cannot be compared (see the exceptions); without dynamic code on the .NET 9 runtime or later,
-    ///     for a struct <typeparamref name="T" /> that holds such an inline array by value this happens also for
-    ///     values that did not come from <see cref="Old{T}" />, because a struct copy carries no record of what was
-    ///     not copied. Known limitations: a record that declares its own field holding an inline array under a base
-    ///     record whose typed <c>Equals</c> is written by hand compares that field with the built-in
-    ///     <c>Equals</c> (.NET 10: <see cref="NotSupportedException" />; .NET 8: element 0 only), so write the
-    ///     record's own typed <c>Equals</c> or list the member as assignable; without dynamic code on the .NET 9
-    ///     runtime or later, an <c>Equals</c> written by hand that is asked first and reaches the inline array of an
-    ///     <see cref="Old{T}" /> copy only through a reference can read elements the copy shares with the original;
-    ///     and under Native AOT a struct without such an <c>Equals</c> whose fields nothing preserves is decided by
-    ///     its built-in <c>Equals</c> also when it holds an inline array (.NET 8: element 0 only, measured;
-    ///     .NET 10: <see cref="NotSupportedException" />, not measured): preserve it with
-    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]</c>, or list the member as
-    ///     assignable (neither way out was measured).
+    ///     the elements cannot be compared (see the exceptions); without dynamic code, for a struct
+    ///     <typeparamref name="T" /> that holds such an inline array by value this happens also for values that did
+    ///     not come from <see cref="Old{T}" />, because a struct copy carries no record of what was not copied. The
+    ///     inline-array comparison has known limitations, some of them silent passes or a
+    ///     <see cref="NotSupportedException" /> from an <c>Equals</c> that reaches the built-in one of an inline
+    ///     array; the full list, with the way out for each, is in the CHANGELOG entry "Known limitations of the
+    ///     inline-array comparison" and in the ADR-0022 amendment of 2026-11-10.
     ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
     ///     delegate, a boxed pointer, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
     ///     (two <c>Stream</c>s, two <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever

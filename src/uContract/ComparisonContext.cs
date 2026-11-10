@@ -35,8 +35,10 @@ internal sealed class ComparisonContext
     public MemberComparison.HiddenMembers? Hidden { get; set; }
 
     /// <summary>
-    ///     Tells which inline-array types the <see cref="Contract.Old{T}" /> copy holding the pair being started
-    ///     could not copy (see <see cref="UncopiedInlineArrays" />); null when the pair is not held by such a copy.
+    ///     Tells which inline-array types the comparison refuses in the pair being started: those the
+    ///     <see cref="Contract.Old{T}" /> copy holding it could not copy (see <see cref="UncopiedInlineArrays" />),
+    ///     or, for what a struct <c>T</c> holds by value, those any copy would leave uncopied, also when the values
+    ///     did not come from <c>Old</c> (see <c>Contract._UncopiedHeldByValue</c>); null when neither applies.
     /// </summary>
     public Func<Type, bool>? Uncopied { get; set; }
 
