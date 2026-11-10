@@ -24,7 +24,8 @@ jobs:
           # silently relied on the runner image happening to preinstall a matching SDK.
           global-json-file: global.json
           # Installed only so the net8.0 tests can also run on the .NET 10 runtime (#84);
-          # global.json still selects the SDK.
+          # global.json still selects the SDK. 10.0.x floats on purpose: the tests run on the
+          # latest .NET 10 patch, as users' applications do.
           dotnet-version: 10.0.x
 
       - name: Validate version
@@ -50,6 +51,9 @@ jobs:
       - name: Test on the .NET 10 runtime
         env:
           DOTNET_ROLL_FORWARD: LatestMajor
+          # Fails TestRuntimeVersionTests unless the tests really run on .NET 10: without that
+          # runtime they would fall back to .NET 8 and skip the gated tests silently.
+          UCONTRACT_EXPECTED_RUNTIME_MAJOR: "10"
         run: dotnet test -c Release --no-build --verbosity normal
 
       - name: Pack
