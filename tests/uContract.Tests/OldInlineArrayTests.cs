@@ -504,6 +504,81 @@ public class OldInlineArrayTests
         return bagged;
     }
 
+    // A hand-written Equals over elements Old left shared would find them equal, so the refusal comes first.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldLeftTheElementsOfAnInlineArrayWithItsOwnEqualsUncopied_CannotCompareItFirst()
+    {
+        TolerantBagged bagged = new() { Bags = WithTolerantBags() };
+        TolerantBagged old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => bagged));
+        bagged.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(bagged, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<TolerantBagBuf3, Bag>("TolerantBagged.Bags", "Bags"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldLeftAnInlineArrayInAStructWithItsOwnEqualsUncopied_CannotCompareItFirst()
+    {
+        TolerantHolding holding = new() { Value = new TolerantHolder { Bags = WithBags() } };
+        TolerantHolding old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holding));
+        holding.Value.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holding, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("TolerantHolding.Value.Bags", "Value"), cannotCompare.Message);
+    }
+
+    // A class is compared by its members whatever its Equals says (its Equals is asked only when reflection shows none
+    // of its members, under Native AOT), so the walk meets the inline array and refuses it.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenOldLeftAnInlineArrayInAClassWithItsOwnEqualsUncopied_CannotCompareIt()
+    {
+        TolerantClassHolding holding = new() { Value = new TolerantClass { Bags = WithBags() } };
+        TolerantClassHolding old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holding));
+        holding.Value!.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holding, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("TolerantClassHolding.Value.Bags", "Value"), cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAnInlineArrayWithItsOwnEqualsChangedAfterOldWithDynamicCode_LetsItsEqualsDecide()
+    {
+        TolerantBagged bagged = new() { Bags = WithTolerantBags() };
+        TolerantBagged old = Contract.Old(() => bagged);
+        bagged.Bags[2].Items!.Add(Added);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(bagged, old));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenAStructWithItsOwnEqualsHoldingAnInlineArrayChangedAfterOldWithDynamicCode_LetsItsEqualsDecide()
+    {
+        TolerantHolding holding = new() { Value = new TolerantHolder { Bags = WithBags() } };
+        TolerantHolding old = Contract.Old(() => holding);
+        holding.Value.Bags[2].Items!.Add(Added);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(holding, old));
+
+        Assert.Null(exception);
+    }
+
+    private static TolerantBagBuf3 WithTolerantBags()
+    {
+        TolerantBagBuf3 buffer = new();
+        buffer[0] = new Bag { Items = [1] };
+        buffer[1] = new Bag { Items = [2] };
+        buffer[2] = new Bag { Items = [3] };
+        return buffer;
+    }
+
     private static string OldCouldNotCopy<TInlineArray, TElement>(string path, string member)
     {
         return $"EnsureAssignable cannot compare {typeof(TInlineArray)} (reached through '{path}'): it is an inline "
@@ -654,6 +729,50 @@ public class OldInlineArrayTests
     private sealed class NBagged
     {
         public NBagBuf3 Bags;
+    }
+
+    // Each Equals below says "equal" to any value of its type.
+    [InlineArray(3)]
+    private struct TolerantBagBuf3
+    {
+        private Bag _element;
+
+        public override readonly bool Equals(object? obj) => obj is TolerantBagBuf3;
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    private sealed class TolerantBagged
+    {
+        public TolerantBagBuf3 Bags;
+    }
+
+    private struct TolerantHolder
+    {
+        public BagBuf3 Bags;
+
+        public override readonly bool Equals(object? obj) => obj is TolerantHolder;
+
+        public override readonly int GetHashCode() => 0;
+    }
+
+    private sealed class TolerantHolding
+    {
+        public TolerantHolder Value;
+    }
+
+    private sealed class TolerantClass
+    {
+        public BagBuf3 Bags;
+
+        public override bool Equals(object? obj) => obj is TolerantClass;
+
+        public override int GetHashCode() => 0;
+    }
+
+    private sealed class TolerantClassHolding
+    {
+        public TolerantClass? Value;
     }
 
     private sealed class BaggedEntries

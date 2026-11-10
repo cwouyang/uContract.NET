@@ -1171,6 +1171,20 @@ internal static class MemberComparison
             return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
         }
 
+        // A struct with a hand-written Equals that holds, by value, an inline array whose elements an Old copy left
+        // shared would find it equal, so the refusal comes first (see FindUncopiedHeld).
+        if (
+            context.Uncopied is { } isUncopied
+            && !type.IsPrimitive
+            && !type.IsEnum
+            && (FindUncopiedHeld(actual, type, isUncopied) ?? FindUncopiedHeld(expected, type, isUncopied)) is { } held
+        )
+        {
+            context.Hidden = held;
+            equal = false;
+            return null;
+        }
+
         equal = Equals(actual, expected);
         if (equal || type.IsPrimitive || type.IsEnum)
         {
@@ -1234,23 +1248,25 @@ internal static class MemberComparison
     )
     {
         elements = null;
+        equal = false;
         InlineArrayShape shape = InlineArrayShapeOf(type);
+
+        // Elements an Old copy left shared would look equal to a hand-written Equals, so the refusal comes first.
+        if (shape is { ElementType: { } uncopiedElementType } && context.Uncopied?.Invoke(type) == true)
+        {
+            context.Hidden = new HiddenMembers(type) { ElementsNotCopied = uncopiedElementType };
+            return true;
+        }
+
         if (OverridesEquals(actual, type) && Equals(actual, expected))
         {
             equal = true;
             return true;
         }
 
-        equal = false;
         if (shape is not { ElementType: { } elementType })
         {
             return false;
-        }
-
-        if (context.Uncopied?.Invoke(type) == true)
-        {
-            context.Hidden = new HiddenMembers(type) { ElementsNotCopied = elementType };
-            return true;
         }
 
         ref byte actualData = ref Unsafe.As<StrongBox<byte>>(actual).Value;
@@ -1401,6 +1417,42 @@ internal static class MemberComparison
         }
 
         return state;
+    }
+
+    // The inline array that value, a struct, holds by value through the fields the holder rule follows (see
+    // HolderState: a field declared an inline array, or a nested struct without a hand-written Equals) and whose type
+    // isUncopied tells, as the comparison refuses it, with the path from value to it; null when there is none.
+    private static HiddenMembers? FindUncopiedHeld(object value, Type type, Func<Type, bool> isUncopied)
+    {
+        ValueRoutes routes = ValueRoutesCache.GetOrAdd(type, CreateValueRoutes);
+        foreach (MemberAccessor field in routes.InlineArrays)
+        {
+            if (
+                field.GetValue(value) is { } array
+                && isUncopied(array.GetType())
+                && InlineArrayShapeOf(array.GetType()).ElementType is { } elementType
+            )
+            {
+                HiddenMembers held = new(array.GetType()) { ElementsNotCopied = elementType };
+                held.Prepend("." + field.PathName);
+                return held;
+            }
+        }
+
+        foreach (MemberAccessor field in routes.Nested)
+        {
+            if (
+                field.GetValue(value) is { } nested
+                && !HasUserEquals(nested, nested.GetType())
+                && FindUncopiedHeld(nested, nested.GetType(), isUncopied) is { } held
+            )
+            {
+                held.Prepend("." + field.PathName);
+                return held;
+            }
+        }
+
+        return null;
     }
 
     // Puts in pending the run-time values of the fields declared object, an interface, ValueType or a class, of value
