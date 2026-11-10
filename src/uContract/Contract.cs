@@ -2234,9 +2234,10 @@ public static class Contract
     }
 
     // The Equals of a boxed value of a value type other than T, asked as it is for a member (see _TopLevelMembers).
-    // Before it is asked, the value is refused when it holds by value an inline array whose struct elements an Old copy
-    // left uncopied, as below the top level (see MemberComparison.FindUncopiedHeld): its Equals would find the shared
-    // elements equal.
+    // It is not asked, and false is returned, when the value holds by value an inline array whose struct elements an
+    // Old copy left uncopied (see MemberComparison.FindUncopiedHeld): that Equals would find the shared elements equal.
+    // The fields are then compared, so the patterns apply, and the walk refuses that inline array by the same rule
+    // (see _FindDifferences), naming the member that holds it as a way out.
     private static bool _EqualsOfABoxedValueSaysEqual(
         Type comparedType,
         Type declaredType,
@@ -2245,12 +2246,8 @@ public static class Contract
     )
     {
         Func<Type, bool>? isUncopied = _UncopiedAtTopLevel(declaredType, actual, expected);
-        if (MemberComparison.FindUncopiedHeld(actual, expected, comparedType, isUncopied) is { } held)
-        {
-            throw MemberComparison.CannotCompareBelowWhole(comparedType, held);
-        }
-
-        return Equals(actual, expected);
+        return MemberComparison.FindUncopiedHeld(actual, expected, comparedType, isUncopied) is null
+            && Equals(actual, expected);
     }
 
     // The inline-array types refused at the top level: those recorded on an Old copy among the two values (see

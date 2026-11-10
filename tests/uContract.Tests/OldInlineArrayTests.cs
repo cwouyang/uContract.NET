@@ -976,7 +976,9 @@ public class OldInlineArrayTests
     }
 
     // At the top level, a boxed struct passed under T = object or an interface is compared as a member is, its Equals
-    // first; the refusal of an inline array it holds by value that Old could not copy comes before that Equals too.
+    // first. When it holds by value an inline array whose struct elements Old could not copy, its Equals is not asked:
+    // its fields are compared, so the patterns apply, and the inline array is refused there, with the member as a way
+    // out.
     [Fact]
     public void EnsureAssignable_WhenTIsObjectAndABoxedContentComparingStructHoldsAnInlineArrayOldLeftUncopied_CannotCompareItFirst()
     {
@@ -987,7 +989,7 @@ public class OldInlineArrayTests
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holder, old));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(OldCouldNotCopyAtTheTopLevel<BagBuf3, Bag>("ContentBagHolder.Bags"), cannotCompare.Message);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("ContentBagHolder.Bags", "Bags"), cannotCompare.Message);
     }
 
     [Fact]
@@ -1000,7 +1002,7 @@ public class OldInlineArrayTests
         Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holder, old));
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
-        Assert.Equal(OldCouldNotCopyAtTheTopLevel<BagBuf3, Bag>("ContentBagHolder.Bags"), cannotCompare.Message);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("ContentBagHolder.Bags", "Bags"), cannotCompare.Message);
     }
 
     [Fact]
@@ -1015,9 +1017,57 @@ public class OldInlineArrayTests
 
         InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
         Assert.Equal(
-            OldCouldNotCopyAtTheTopLevel<BagBuf3, Bag>($"{tuple.GetType().Name}.Item1.Bags"),
+            OldCouldNotCopy<BagBuf3, Bag>($"{tuple.GetType().Name}.Item1.Bags", "Item1"),
             cannotCompare.Message
         );
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheInlineArrayOfABoxedContentComparingStructOldLeftUncopiedIsAssignable_Passes()
+    {
+        object holder = new ContentBagHolder { Bags = WithBags() };
+        object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holder));
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holder, old, "Bags"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndTheChangedInlineArrayOfABoxedContentComparingStructOldLeftUncopiedIsAssignable_Passes()
+    {
+        object holder = new ContentBagHolder { Bags = WithBags() };
+        object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holder));
+        ((ContentBagHolder)holder).Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holder, old, "Bags"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndTheChangedInlineArrayOfABoxedContentComparingStructOldLeftUncopiedIsAssignable_Passes()
+    {
+        IHoldsBags holder = new ContentBagHolder { Bags = WithBags() };
+        IHoldsBags old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holder));
+        ((ContentBagHolder)holder).Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holder, old, "Bags"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndABoxedTupleItemHoldingAnInlineArrayOldLeftUncopiedIsAssignable_Passes()
+    {
+        ContentBagHolder held = new() { Bags = WithBags() };
+        object tuple = (held, Added);
+        object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => tuple));
+        held.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(tuple, old, "^Item1$"));
+
+        Assert.Null(exception);
     }
 
     // With dynamic code Old copies every element, and the content-comparing Equals sees the change.
