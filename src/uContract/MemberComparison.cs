@@ -1703,7 +1703,9 @@ internal static class MemberComparison
 
     // How a field declared fieldType can lead an Equals to an inline array's: it is (a Nullable<> of) an inline array;
     // it is declared object, ValueType, an interface or a class other than string, an array or a delegate, so only
-    // its run-time value tells; or it is (a Nullable<> of) a struct that has routes of its own.
+    // its run-time value tells; or it is (a Nullable<> of) a struct that has routes of its own. A pointer or a
+    // function pointer leads nowhere: reflection reports a pointer type as a class (Type.IsClass), but the field holds
+    // an address, which the built-in Equals compares as bits.
     private static Route RouteOf(Type fieldType)
     {
         Type declared = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
@@ -1718,6 +1720,8 @@ internal static class MemberComparison
             || declared.IsInterface
             || (
                 declared.IsClass
+                && !declared.IsPointer
+                && !declared.IsFunctionPointer
                 && declared != typeof(string)
                 && !declared.IsArray
                 && !typeof(Delegate).IsAssignableFrom(declared)
