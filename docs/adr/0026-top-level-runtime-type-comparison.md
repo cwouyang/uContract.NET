@@ -8,6 +8,7 @@
 - **Deciders**: Project maintainer (cwouyang)
 - **Status Date**: 2026-11-02
 - **Amended**: 2026-11-08 — on SDK 8.0.427 a one-element collection expression is built as another class; see the Amendment under Implementation Notes
+- **Amended**: 2026-11-10 — an inline array at the top level is compared as a whole, element by element, whatever `T` is, and the patterns do not apply to it; it is no longer "decided by `Equals` alone" (#84); see the second Amendment under Implementation Notes
 
 ---
 
@@ -257,6 +258,61 @@ one-element collection expression held as `IReadOnlyList<T>` or `IEnumerable<T>`
   member too.
 - The decision is unchanged.
 
+### Amendment (2026-11-10): An inline array at the top level is compared as a whole, element by element (#84)
+
+[Issue #84](https://github.com/cwouyang/uContract.NET/issues/84) compares an `[InlineArray]` struct element by
+element and never asks its built-in `Equals`, which sees only element 0 on the .NET 8 runtime and throws
+`NotSupportedException` on the .NET 10 runtime; [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)
+(fourteenth Amendment) records the rules B1, B2 and B2a, the measurements and the limits. At the top level:
+
+- **An inline array is compared as a whole.** When `T` is an inline-array type, or `T` is another type
+  (`object`, an interface that the inline array implements) and the runtime type of both values is one
+  inline-array type, the two values are compared as a whole by B1, as two arrays are
+  (`Contract._CompareByRuntimeType` sends every inline array to `_CompareAsWhole`). The patterns do not
+  apply and are not examined: before, `T` = the inline-array type compared its one field, so a pattern that
+  named that field could excuse element 0 (spec author's call, approved with the spec). The violation reads
+  "actual and expected are not equal. {type} is an inline array, compared as a whole element by element,
+  so assignable patterns do not apply." (unit tests
+  `EnsureAssignable_WhenTIsAnInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual`,
+  `EnsureAssignable_WhenTIsAnInlineArrayAndAPatternNamesItsElementField_StillReportsTheTwoAsNotEqual`).
+  `T` = a `Nullable<>` of an inline array keeps the rule for a nullable value type and its message, "… is
+  compared as a whole, so assignable patterns do not apply." (unit test
+  `EnsureAssignable_WhenTIsANullableInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual`); its
+  values are compared by B1.
+- **An inline array that implements `IEnumerable`** follows B1 like any inline array, not the rule for a
+  value-type sequence that keeps the declared `T` (Details, item 1): with `T` = `object` two such values of
+  distinct lists with equal contents pass, and a changed later list is reported (unit tests
+  `EnsureAssignable_WhenTIsObjectAndAnEnumerableInlineArrayHoldsDistinctListsWithEqualContents_Passes`,
+  `EnsureAssignable_WhenTIsObjectAndALaterListOfAnEnumerableInlineArrayChanged_ReportsTheTwoAsNotEqual`).
+  Against a sequence of another runtime type it is still one of "two sequences of different runtime
+  types": as a sequence that is not a collection it throws `InvalidOperationException` (unit test
+  `EnsureAssignable_WhenTIsObjectAndAnEnumerableInlineArrayMeetsAListWithTheSameContents_CannotCompareIt`).
+  Against a value of another runtime type that is not a sequence (a boxed `int`) it is a
+  different-runtime-types violation (unit test
+  `EnsureAssignable_WhenTIsObjectAndABoxedInlineArrayMeetsABoxedInt_ReportsDifferentRuntimeTypes`).
+- **A holder struct** (B2) and a struct of B2a, boxed as another `T`, are compared by their fields without
+  their built-in `Equals` (`_TopLevelMembers` asks `MemberComparison.IsComparedByFieldsWithoutEquals`
+  before `Equals`); one with a user `Equals` is decided by it first, and an exception it throws propagates
+  (unit tests `EnsureAssignable_WhenTIsObjectAndOnlyALaterElementOfABoxedHolderStructChanged_ReportsTheField`,
+  `EnsureAssignable_WhenTIsObjectAndABoxedHolderStructsHandWrittenEqualsSaysEqual_Passes`,
+  `EnsureAssignable_WhenTIsObjectAndTheHandWrittenEqualsOfABoxedHolderStructThrows_LetsItPropagate`).
+- **Native AOT.** An inline array is still not covered by rule H3 (Details, item 4), but its elements can be
+  read only when reflection lists its element field. When nothing preserves the inline-array type, the
+  call throws "cannot compare", also for equal values; that and the other "cannot compare" cases of
+  inline arrays are in the [ADR-0021](0021-postconditions-under-trimming-and-aot.md) amendment of this date
+  (smoke check 164: two boxes of equal elements with `T` = `object`).
+
+These statements, each quoted by its opening words, no longer hold as written:
+
+- Details, item 1: "A boxed value type other than `T`, other than such a sequence, is compared as a member
+  is: its `Equals` first, then its fields. A primitive, an enum and an inline array are decided by `Equals`
+  alone." An inline array is compared as a whole by B1, and a holder struct by its fields without its
+  `Equals`. A primitive and an enum are still decided by `Equals` alone.
+- Details, item 4: "a primitive, an enum and an inline array need no metadata and are not covered". An
+  inline array is not covered by H3, but it needs the metadata of its element field (see above).
+
+The decision is unchanged. The smoke program has 169 checks.
+
 ---
 
 ## References
@@ -283,3 +339,4 @@ one-element collection expression held as `IReadOnlyList<T>` or `IEnumerable<T>`
 | 2026-11-03 | Accepted    | Amendment 8, 「開第 3 輪，全部修」: the `IEnumerator` clause also requires a `<` or a `$` in the name; one definition of a compiler-generated name for the rule and the messages; the `typeof` fix for a `file` class says it must be written inside the file that declares the class; wording for a compiler-generated type inside a generic argument; smoke check 147. |
 | 2026-11-03 | Accepted    | Amendment 9, 「開第 4 輪，連同剩下的 Minor」: the `IEnumerator` clause checks the declaring chain too, so the iterator of a local function that captures a variable is compared by its elements; a type with `file` classes of more than one file in its generic arguments names no `typeof`; a seam test only the elements rule can satisfy; smoke checks 148 to 152. |
 | 2026-11-08 | Amended     | SDK 8.0.427 builds a one-element collection expression as `<>z__ReadOnlySingleElementList<T>` (8.0.204: `<>z__ReadOnlyArray<T>`); the `<>` rule covers both. Decision unchanged. See Implementation Notes > Amendment. |
+| 2026-11-10 | Amended     | An inline array at the top level, as `T` or as the runtime type under another `T`, is compared as a whole, element by element, and the patterns do not apply; a holder struct boxed as another `T` is compared by its fields without its `Equals` (#84; rules in ADR-0022). Decision unchanged. See Implementation Notes > second Amendment. |

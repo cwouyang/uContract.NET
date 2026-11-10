@@ -20,6 +20,7 @@
 - **Amended**: 2026-11-02 — fields-only comparison was evaluated in #46 and is not adopted, so D9 stands and the statements that defer work to #46 are settled; an assignable pattern is also matched against the property name of a compiler-generated backing field ([ADR-0025](0025-fields-only-comparison-not-adopted.md)); the smoke program has 108 checks; see the eleventh Amendment under Implementation Notes
 - **Amended**: 2026-11-02 — the top level of `EnsureAssignable<T>()` compares the runtime type of the two values, so "the top level comparing the members of `typeof(T)`" no longer holds; R6 and R7 compare a sequence by the class chain of its runtime type; under Native AOT R8 also covers a nested class of yours that shows no declared member, and its message names the type in C# syntax; two different instances of a shared type as `T` are a violation by reference (#40 item 2, [ADR-0026](0026-top-level-runtime-type-comparison.md)); the smoke program has 139 checks; see the twelfth Amendment under Implementation Notes
 - **Amended**: 2026-11-08 — `EnsureAssignable<T>()` leaves out a public property of a byref-like type (`Span<T>`, `ReadOnlySpan<T>`, a `ref struct`), which reflection cannot read and which made it throw `NotSupportedException`; the fields behind it are still compared, and under Native AOT it does not count as a visible member (a variant in which it counted was measured and rejected), and the "cannot compare" messages say so; for R6 it still counts as a member declared on a class of yours; D9 and the "untouched" statement on the byref-like property in the #52 amendment are qualified (#40); the smoke program has 160 checks; see the thirteenth Amendment under Implementation Notes
+- **Amended**: 2026-11-10 — an `[InlineArray]` struct is compared element by element wherever the comparison meets two values of one inline-array type, and its built-in `Equals` is never asked; a struct whose built-in `Equals` would reach an inline array's is compared by its fields without it; `Old<T>()` copies every element of an inline array; R3 step 3 loses its `[InlineArray]` exclusion, and the Known Limitations on `[InlineArray]` structs and on inline arrays of references are narrowed to fixed-size buffers (#84); the smoke program has 169 checks; see the fourteenth Amendment under Implementation Notes
 
 ---
 
@@ -4103,6 +4104,172 @@ other than the "cannot compare" messages for a type that lists properties of a b
 smoke program has 160 checks (checks 140 to 152 are listed in the #40 amendment of ADR-0021 dated
 2026-11-02).
 
+### Amendment (2026-11-10): Inline arrays are compared element by element, and Old copies every element (#84)
+
+[Issue #84](https://github.com/cwouyang/uContract.NET/issues/84). An inline array is a struct marked
+`[System.Runtime.CompilerServices.InlineArray(n)]`: it declares one instance field, its length is `n`, and
+its element type is the type of that field. A spike on master at `bc06f35` (archived outside the
+repository with the work of #84, `spike-report.md`) measured, with a probe of every shape below and the
+element types `int`, `string`, `List<int>` and a struct that holds a `string`:
+
+- On the .NET 10 runtime (10.0.14), `EnsureAssignable<T>()` threw `NotSupportedException` ("Calling
+  built-in Equals() or GetHashCode() on type marked as InlineArray is invalid.") whenever the comparison
+  met an inline array: as a field or property of a class, an element of an array or a `List<>`, the value
+  of an `object` field, a boxed value with `T` = `object`, a field of a struct (the struct's built-in
+  `Equals` asks the inline array's), and an `Old` copy. It threw for equal values too. The package targets
+  `net8.0`, and an application on .NET 10 runs it on that runtime, so this was a defect of the released
+  library.
+- On the .NET 8 runtime (8.0.33) the same comparisons saw only element 0: `ValueType.Equals` and
+  reflection see only the one declared field. A change of element 2 alone passed. With `T` = the inline
+  array, its one field was compared, so element 0 only, on both runtimes.
+- `Old<T>()` copied element 0 as a field, so elements 1 to `n - 1` were shared with the original. An
+  unchanged pair of `List<int>` elements was reported on every call (element 0 is a new list, compared by
+  reference by the built-in `Equals`), and with an element-by-element comparison alone an in-place change
+  of element 2 would have passed.
+
+**Decision.** The maintainer chose to compare an inline array element by element on both runtimes ("A
+逐元素，這張就做"; the other options were to emulate .NET 8 and to always report "cannot compare"). The
+required result is the same on the .NET 8 and .NET 10 runtimes under the JIT; under Native AOT it is that
+result or a "cannot compare" `InvalidOperationException`, never a silent pass that the JIT would report and
+never `NotSupportedException`, apart from the limitations below. The rules:
+
+- **B1 — Inline array.** Wherever the comparison meets two values of one inline-array type (a field or
+  property, an element of an array, a `List<>` or another sequence, a dictionary value, the value of an
+  `object`-typed member, and the top level, see [ADR-0026](0026-top-level-runtime-type-comparison.md)): if
+  the type has a user `Equals` and it returns `true`, the pair is equal; otherwise the `n` elements are
+  compared pairwise, in index order, by the rules for two elements of an array. Primitive and enum
+  elements are compared in place with their `Equals` (`float` and `double` as a boxed one is: `NaN` equals
+  `NaN`, `0.0` equals `-0.0`; read from the code, not tested), pointer and function-pointer elements by
+  address, reference elements by
+  these rules, and struct elements boxed, by these rules (an element that is itself an inline array by
+  B1). The built-in `ValueType.Equals` and `GetHashCode` of an inline array are never called
+  (`MemberComparison.StartInlineArray`). A difference is reported as the member that holds the inline
+  array (`- Buffer`), with no element index, as for an array.
+- **User `Equals`.** An `Equals(object)` override written by hand in the type. Not a user `Equals`: the
+  built-in `ValueType.Equals`, an override marked `[CompilerGenerated]` (a record struct's and a record
+  class's), an `Equals` declared with `new`, and the `Equals` of `System.ValueTuple<…>`,
+  `System.Nullable<T>` and `System.Tuple<…>`, which only call the `Equals` of the values they hold.
+  Exception: a record (struct or class) whose own typed `Equals(R)`, or that of a record class it derives
+  from, is written by hand has a user `Equals`: its `[CompilerGenerated]` `Equals(object)` calls that
+  method, which then decides first, and an exception it throws propagates. The maintainer chose this after
+  measurements of a record with a hand-written typed `Equals` ("手寫 Equals(R) 算使用者 Equals", then
+  "基底手寫的也算").
+- **B2 — Holder struct.** A struct that is not an inline array, has no user `Equals`, and has an instance
+  field declared as an inline array, as a `Nullable<>` of one, or as (a `Nullable<>` of) a nested holder
+  struct. This includes a `record struct` and a `ValueTuple<…>` with an inline-array item. Its built-in
+  `Equals`, which asks the inline array's, is never called: it is compared by its fields, as R3 step 3
+  does, and its inline-array fields follow B1. A struct with a user `Equals` keeps R3: its `Equals`
+  decides first, and an exception it throws propagates.
+- **B2a — An inline array found only at run time.** A struct that is neither a holder struct nor one with a
+  user `Equals` can hold an inline array or a holder struct in a field declared as `object`, `ValueType`,
+  an interface or a class, directly, in such a field of a nested struct without a user `Equals`, or inside
+  a class whose `Equals` compares values without being a user `Equals`: a record class (a property it
+  inherits from a base record included), a `System.Tuple<…>` or a class derived from one (its items are
+  read through `ITuple`), and a C# or Visual Basic anonymous type, recognised by its compiler-given name
+  (`<>f__AnonymousType…`, `VB$AnonymousType_…`), not by `[CompilerGenerated]` alone. For a Visual Basic
+  anonymous type, whose `Equals` compares only its `Key` properties, only the fields behind those
+  properties are looked at. Before its built-in `Equals` is asked, the comparison looks at the run-time
+  values of those fields (which fields to look at is cached per type), and when either side holds an
+  inline array or a holder struct there, the pair is compared by its fields as in B2. A class with no
+  `Equals` override, or with a user `Equals`, is not followed. No `NotSupportedException` is caught: an
+  exception thrown by a user `Equals` at any depth propagates as before. The look keeps the values it has
+  looked at, so a value that refers back to itself is looked at once, and it uses a work list, not
+  recursion. The maintainer chose to look at the run-time values instead of catching the exception ("改成
+  先看執行期值，不接例外"), after a review measured that the catch also swallowed a `NotSupportedException`
+  thrown by a user `Equals`, and to follow such classes ("也沿著這類類別追").
+- **B4 — `Old<T>()` copies every element.** An inline array that holds references is copied element by
+  element, the way an array element is: each reference element is replaced by its copy (an element shared
+  by two places is copied once), and each struct element that holds references is read boxed, its
+  references replaced, and written back. A `Nullable<>` element without a value stays without a value.
+  Writing a struct element back needs dynamic code; without it, see the third "cannot compare" case in the
+  [ADR-0021](0021-postconditions-under-trimming-and-aot.md) amendment of this date. Primitive and enum
+  elements stay bitwise. `Old<T>()` still throws nothing of its own.
+
+Each statement of this ADR that the change settles or qualifies is quoted by its opening words:
+
+- R3, step 3: "otherwise, if the type has fields visible to reflection and is not `[InlineArray]`, its
+  fields are compared by these rules". An inline array no longer reaches R3: B1 decides it, and the
+  exclusion is gone. For a holder struct and for a struct of B2a, steps 1 and 2 are skipped and step 3
+  applies. "An exception thrown by `Equals` propagates." Still true for a user `Equals`; the built-in
+  `Equals` of an inline array or a holder struct is no longer asked, so it throws nothing.
+- Known Limitations: "**`[InlineArray]` structs and fixed-size buffers** (accepted by the user).
+  Reflection and `ValueType.Equals` see only the first element." It now holds for C# fixed-size buffers
+  (`fixed int X[4]`) only, which are not inline arrays: a change of a later element with an equal element
+  0 still passes, on both runtimes (measured: unit test
+  `EnsureAssignable_WhenOnlyALaterElementOfAFixedSizeBufferChanged_DoesNotSeeIt`). B2's "`fixed` buffers
+  stay bitwise" holds as before.
+- Known Limitations: "**Inline arrays of references.** With an `Old` copy, an `[InlineArray]` of
+  reference-type elements is reported on every call". It no longer holds: an unchanged pair passes and an
+  in-place change of any element is reported (unit tests
+  `EnsureAssignable_WhenAnInlineArrayOfListsIsUnchangedAfterOld_DoesNotReportIt` and
+  `EnsureAssignable_WhenALaterListElementOfAnInlineArrayFieldChangedInPlaceAfterOld_ReportsTheField`). What
+  replaces it is the "cannot compare" case for struct elements that `Old<T>()` could not copy
+  ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date).
+
+**What was measured.** Unit tests in `EnsureAssignableInlineArrayTests` and `OldInlineArrayTests` (1679
+tests in the suite; 1652 ran on the .NET 8.0.33 runtime and 1671 on the .NET 10.0.14 runtime with
+`DOTNET_ROLL_FORWARD=LatestMajor`, all passed; the others skip by runtime: `BuiltInInlineArrayEqualsFact`
+for the shapes whose result differs by runtime, and `RuntimeHelpersBoxFact` for the .NET 9+ paths). They
+cover `int`, enum, `string`, `Guid`, `decimal`, `int?`, struct, generic, pointer, function-pointer and
+inline-array elements, lengths 1 and 64, element 0 and only a later element changed, a field, a property,
+an array, a `List<>`, a dictionary value and an `object` field, a user `Equals` that says "equal" and one
+that says "unequal", an `Equals` declared with `new` and a `[CompilerGenerated]` one, a record struct, a
+tuple, a `Nullable<>` of an inline array and of a holder struct, structs two deep, the classes B2a
+follows (a real Visual Basic build was checked by the reviewers), cyclic boxes, a long record chain, and
+`Old` copies unchanged and changed in place. Without dynamic code the unit tests simulate it with
+`TestRuntime.WithoutDynamicCode` under the JIT. The suite had six failures on master on the .NET 10
+runtime and has none here; tests that pinned element 0 or the old top-level result were rewritten to the
+new result. Native
+AOT: smoke checks 161 to 169, listed in the ADR-0021 amendment of this date.
+
+**Limits.**
+
+- **A record's own inline array under a hand-written base `Equals`** (accepted by the user). When a record
+  declares its own field that holds an inline array (or reaches one) and a base record's typed `Equals` is
+  written by hand, the record has a user `Equals` (the rule above), and its compiler-generated part still
+  compares that field with the built-in `Equals`: on .NET 10 `NotSupportedException` propagates, as any
+  exception from a user `Equals`; on .NET 8 only element 0 is seen (unit tests
+  `EnsureAssignable_WhenADerivedRecordsOwnInlineArrayUnderAHandWrittenBaseEqualsIsReached_LetsTheNotSupportedExceptionPropagate`,
+  `EnsureAssignable_WhenOnlyALaterElementOfADerivedRecordsOwnInlineArrayUnderAHandWrittenBaseEqualsChanged_DoesNotSeeIt`).
+  The base's hand-written `Equals` is not reached then. Ways out: write the derived record's own typed
+  `Equals`, or list the member as assignable. The maintainer chose this simple rule over a narrower one
+  that made other records report an inline array that the base `Equals` ignores ("改回簡單規則，記一個限制").
+- **A user `Equals` asked first through a reference.** Without dynamic code on the .NET 9 runtime or later,
+  a user `Equals` that is asked before the comparison reaches an inline array whose struct elements `Old`
+  left shared, and that reaches it only through a reference (a struct's hand-written `Equals` over a class
+  or a boxed value, or, under Native AOT, the `Equals` of a class whose members reflection does not show),
+  can read the shared elements and return `true` for a change. Measured as a silent pass by the risk
+  review's probes before the refusal was moved ahead of a user `Equals` where it can be told (ADR-0021);
+  the remaining route is read from the code, and no test pins it. A class whose members are listed is
+  compared by its members, not its `Equals`, so its inline array is reached and refused (unit test
+  `EnsureAssignable_WhenOldLeftAnInlineArrayInAClassWithItsOwnEqualsUncopied_CannotCompareIt`). Ways out:
+  list the member as assignable, or compare the elements in that `Equals` by something other than the
+  shared references.
+- **Native AOT, a struct that nothing preserves.** A struct with no user `Equals` whose fields reflection
+  does not list cannot be looked into, so it is decided by its built-in `Equals` as before, also when it
+  holds an inline array ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date;
+  smoke check 169).
+- **Visual Basic anonymous types.** The look of B2a follows only the fields behind `Key` properties, but
+  once a field comparison starts for another reason, the member walk compares every member of the
+  anonymous object, as it did before (found in review; no test pins it).
+- **An inline array that implements `IEnumerable`**, compared at the top level with a sequence of another
+  runtime type (a `List<>` of the same contents), follows the existing rule for two sequences of different
+  runtime types ([ADR-0026](0026-top-level-runtime-type-comparison.md), Details 3): it is a sequence that is
+  not a collection, so the call throws `InvalidOperationException` (unit test
+  `EnsureAssignable_WhenTIsObjectAndAnEnumerableInlineArrayMeetsAListWithTheSameContents_CannotCompareIt`).
+  Its built-in `Equals` is not asked. The same pair below the top level was not tested.
+- **Cost.** A struct that may hold a value at run time (a field declared `object`, an interface or a
+  class) has those values looked at on every comparison of it; the look can walk a whole graph of
+  records. Measured by a risk review at an intermediate commit of the branch (`f2d0f31`, before the look
+  used a work list; not measured again): 2000 structs that share one 2000-node record chain took 3.3 s on
+  .NET 8 and 4.9 s on .NET 10. After the first `Old` copy in a process that could not copy struct
+  elements (without dynamic code on .NET 9+ only), each compared pair is looked up in a weak table (up to
+  two lookups); before it, each pair reads a flag twice (read from the code, not measured).
+
+**Unchanged.** B1 to B3 and B5 to B8 of `Old<T>()` apart from inline arrays, R0 to R2 and R4 to R8, rule
+S, D9 and the patterns. The smoke program has 169 checks (checks 161 to 169 are listed in the #84
+amendment of ADR-0021 dated 2026-11-10).
+
 ---
 
 ## References
@@ -4158,3 +4325,4 @@ smoke program has 160 checks (checks 140 to 152 are listed in the #40 amendment 
 | 2026-11-02 | Amended     | Fields-only comparison evaluated and not adopted (#46), so D9 stands; assignable patterns also match the property name of a backing field; decision in ADR-0025; 108 smoke checks. Decision unchanged. See Implementation Notes > eleventh Amendment. |
 | 2026-11-02 | Amended     | The top level compares the runtime type of the two values; R6 and R7 compare a sequence by the class chain of its runtime type; R8 also covers a nested class of yours that shows no declared member under Native AOT, and names the type in C# syntax (#40 item 2); decision in ADR-0026; 139 smoke checks. `Old<T>()` unchanged. See Implementation Notes > twelfth Amendment. |
 | 2026-11-08 | Amended     | A public property of a byref-like type is not compared, at any level, with no message; the fields behind it are; under Native AOT it does not count as a visible member, after the variant in which it counted was measured and rejected, and the "cannot compare" messages say so; for R6 it still counts as a member of yours (#40, the byref-like property); 160 smoke checks. `Old<T>()` unchanged. See Implementation Notes > thirteenth Amendment. |
+| 2026-11-10 | Amended     | An `[InlineArray]` struct is compared element by element (B1), its built-in `Equals` never asked; holder structs and structs that hold one at run time are compared by their fields without their `Equals`; `Old<T>()` copies every element; R3 step 3 loses its `[InlineArray]` exclusion; the two Known Limitations on inline arrays are narrowed to fixed-size buffers; four accepted limitations recorded (#84); 169 smoke checks. Decision unchanged. See Implementation Notes > fourteenth Amendment. |
