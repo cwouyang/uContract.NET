@@ -771,7 +771,12 @@ public class OldInlineArrayTests
 
     private static string OldCouldNotCopyAtTheTopLevel<TInlineArray, TElement>()
     {
-        return $"EnsureAssignable cannot compare {typeof(TInlineArray)} (reached through '{typeof(TInlineArray).Name}'): "
+        return OldCouldNotCopyAtTheTopLevel<TInlineArray, TElement>(typeof(TInlineArray).Name);
+    }
+
+    private static string OldCouldNotCopyAtTheTopLevel<TInlineArray, TElement>(string path)
+    {
+        return $"EnsureAssignable cannot compare {typeof(TInlineArray)} (reached through '{path}'): "
             + $"it is an inline array of {typeof(TElement)}, a struct, whose elements Contract.Old could not copy: this "
             + "runtime writes struct elements only with dynamic code, and dynamic code is not supported here (Native "
             + "AOT), so the copy shares what they refer to with the original. Ways out: set DBC_POST=off (disables all "
@@ -968,6 +973,99 @@ public class OldInlineArrayTests
         Exception? exception = Record.Exception(() => Contract.EnsureAssignable(holding, old));
 
         Assert.Null(exception);
+    }
+
+    // At the top level, a boxed struct passed under T = object or an interface is compared as a member is, its Equals
+    // first; the refusal of an inline array it holds by value that Old could not copy comes before that Equals too.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndABoxedContentComparingStructHoldsAnInlineArrayOldLeftUncopied_CannotCompareItFirst()
+    {
+        object holder = new ContentBagHolder { Bags = WithBags() };
+        object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holder));
+        ((ContentBagHolder)holder).Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holder, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopyAtTheTopLevel<BagBuf3, Bag>("ContentBagHolder.Bags"), cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsAnInterfaceAndABoxedContentComparingStructHoldsAnInlineArrayOldLeftUncopied_CannotCompareItFirst()
+    {
+        IHoldsBags holder = new ContentBagHolder { Bags = WithBags() };
+        IHoldsBags old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => holder));
+        ((ContentBagHolder)holder).Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(holder, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopyAtTheTopLevel<BagBuf3, Bag>("ContentBagHolder.Bags"), cannotCompare.Message);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndABoxedTupleHoldsAContentComparingStructWhoseInlineArrayOldLeftUncopied_CannotCompareItFirst()
+    {
+        ContentBagHolder held = new() { Bags = WithBags() };
+        object tuple = (held, Added);
+        object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => tuple));
+        held.Bags[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(tuple, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(
+            OldCouldNotCopyAtTheTopLevel<BagBuf3, Bag>($"{tuple.GetType().Name}.Item1.Bags"),
+            cannotCompare.Message
+        );
+    }
+
+    // With dynamic code Old copies every element, and the content-comparing Equals sees the change.
+    [Fact]
+    public void EnsureAssignable_WhenTIsObjectAndABoxedContentComparingStructChangedAfterOldWithDynamicCode_ReportsItsField()
+    {
+        object holder = new ContentBagHolder { Bags = WithBags() };
+        object old = Contract.Old(() => holder);
+        ((ContentBagHolder)holder).Bags[2].Items!.Add(Added);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(holder, old)
+        );
+
+        Assert.Equal(ListedFromContentBagHolder("Bags", typeof(object)), exception.Description);
+    }
+
+    // Values that did not come from Old carry no record: the Equals decides as under the JIT.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsObjectAndBoxedContentComparingStructsNotFromOldDifferWithoutDynamicCode_ReportsTheField()
+    {
+        object actual = new ContentBagHolder { Bags = WithBags() };
+        ContentBagHolder changed = new() { Bags = WithBags() };
+        changed.Bags[2].Items!.Add(Added);
+        object expected = changed;
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        PostconditionViolationException violation = Assert.IsType<PostconditionViolationException>(exception);
+        Assert.Equal(ListedFromContentBagHolder("Bags", typeof(object)), violation.Description);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsObjectAndEqualBoxedContentComparingStructsNotFromOldWithoutDynamicCode_Passes()
+    {
+        object actual = new ContentBagHolder { Bags = WithBags() };
+        object expected = new ContentBagHolder { Bags = WithBags() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    private static string ListedFromContentBagHolder(string member, Type declaredType)
+    {
+        return Violation
+            + $"  - {member}\nMembers were listed from the runtime type {typeof(ContentBagHolder)}, not from T "
+            + $"({declaredType}).";
     }
 
     private static DelegatingHolding WithDelegatingBags()
@@ -1251,8 +1349,10 @@ public class OldInlineArrayTests
         public TolerantClass? Value;
     }
 
+    private interface IHoldsBags;
+
     // Its Equals compares the contents of the elements' lists, so two values sharing their lists are "equal".
-    private struct ContentBagHolder
+    private struct ContentBagHolder : IHoldsBags
     {
         private const int BagCount = 3;
 

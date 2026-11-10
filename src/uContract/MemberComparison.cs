@@ -1280,10 +1280,7 @@ internal static class MemberComparison
         // FindUncopiedHeld). A struct without a hand-written Equals that is a holder was sent to its fields above, and
         // its inline array is refused there (see StartInlineArray). For a struct T this holds also for values that
         // did not come from Old (see Contract._UncopiedHeldByValue).
-        if (
-            context.Uncopied is { } isUncopied
-            && (FindUncopiedHeld(actual, type, isUncopied) ?? FindUncopiedHeld(expected, type, isUncopied)) is { } held
-        )
+        if (FindUncopiedHeld(actual, expected, type, context.Uncopied) is { } held)
         {
             context.Hidden = held;
             equal = false;
@@ -1530,6 +1527,21 @@ internal static class MemberComparison
     // that compares what the shared elements refer to, would find them equal too) and whose type isUncopied tells, as
     // the comparison refuses it, with the path from value to it; null when there is none. Struct nesting by value is
     // finite, so the recursion ends.
+    // As FindUncopiedHeld below, for either value of a pair of type; null also when isUncopied is null. The one rule
+    // that refuses a struct before its Equals is asked, below the top level (see StartValues) and at it (see
+    // Contract._TopLevelMembers).
+    internal static HiddenMembers? FindUncopiedHeld(
+        object actual,
+        object expected,
+        Type type,
+        Func<Type, bool>? isUncopied
+    )
+    {
+        return isUncopied is null
+            ? null
+            : FindUncopiedHeld(actual, type, isUncopied) ?? FindUncopiedHeld(expected, type, isUncopied);
+    }
+
     private static HiddenMembers? FindUncopiedHeld(object value, Type type, Func<Type, bool> isUncopied)
     {
         ValueRoutes routes = ValueRoutesCache.GetOrAdd(type, CreateValueRoutes);

@@ -2192,7 +2192,7 @@ public static class Contract
         if (
             !asAMember
             || MemberComparison.IsComparedByFieldsWithoutEquals(actual, expected, comparedType)
-            || !Equals(actual, expected)
+            || !_EqualsOfABoxedValueSaysEqual(comparedType, declaredType, actual, expected)
         )
         {
             if (asAMember && _IsDecidedByEqualsAlone(comparedType))
@@ -2240,6 +2240,35 @@ public static class Contract
         return members;
     }
 
+    // The Equals of a boxed value of a value type other than T, asked as it is for a member (see _TopLevelMembers).
+    // Before it is asked, the value is refused when it holds by value an inline array whose struct elements an Old copy
+    // left uncopied, as below the top level (see MemberComparison.FindUncopiedHeld): its Equals would find the shared
+    // elements equal.
+    private static bool _EqualsOfABoxedValueSaysEqual(
+        Type comparedType,
+        Type declaredType,
+        object actual,
+        object expected
+    )
+    {
+        Func<Type, bool>? isUncopied = _UncopiedAtTopLevel(declaredType, actual, expected);
+        if (MemberComparison.FindUncopiedHeld(actual, expected, comparedType, isUncopied) is { } held)
+        {
+            throw MemberComparison.CannotCompareBelowWhole(comparedType, held);
+        }
+
+        return Equals(actual, expected);
+    }
+
+    // The inline-array types refused at the top level: those recorded on an Old copy among the two values (see
+    // UncopiedInlineArrays), or else those a struct T holds by value (see _UncopiedHeldByValue).
+    private static Func<Type, bool>? _UncopiedAtTopLevel(Type declaredType, object actual, object expected)
+    {
+        return UncopiedInlineArrays.Of(actual)
+            ?? UncopiedInlineArrays.Of(expected)
+            ?? _UncopiedHeldByValue(declaredType);
+    }
+
     private static List<string> _FindDifferences(
         Type type,
         Type declaredType,
@@ -2258,8 +2287,7 @@ public static class Contract
         // are the top-level pair here only when T is neither an array type nor System.Array (object, an
         // interface): a T that is an array type or System.Array is compared as a whole and never comes here.
         context.EnterTopLevel(new ReferencePair(actual, expected));
-        context.UncopiedInTopLevel =
-            UncopiedInlineArrays.Of(actual) ?? UncopiedInlineArrays.Of(expected) ?? _UncopiedHeldByValue(declaredType);
+        context.UncopiedInTopLevel = _UncopiedAtTopLevel(declaredType, actual, expected);
 
         // A property of an interface T is compared even when a member of comparedType has its name: its getter
         // may be another implementation (an explicit one). It is not reported when a member of that name was
