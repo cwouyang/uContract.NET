@@ -471,8 +471,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   value, also for values that did not come from `Old`, and the message still says "Contract.Old could
   not copy"; a box held in a field or an inline-array element declared `object`, an interface or
   `ValueType` is held through a reference, so only the record on an `Old` copy refuses it (an
-  auto-property counts as its backing field; a computed property does not, as its getter may box a
-  field afresh). Case 3 was
+  auto-property, recognised by its compiler-generated getter, counts as its backing field; a computed
+  property does not, as its getter may box a field afresh, and neither does a C# 14 `field` property
+  with a getter written by hand). Case 3 was
   measured with unit tests that simulate a runtime without dynamic code on .NET
   10; no Native AOT build on .NET 9 or later was run. The library uses dynamic code
   (`MakeGenericMethod`) in one place, for struct elements, only where it is supported; its `IL3050` is
