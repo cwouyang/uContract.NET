@@ -470,8 +470,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   copy carries no record of what was not copied, it refuses every such inline array that `T` holds by
   value, also for values that did not come from `Old`, and the message still says "Contract.Old could
   not copy"; a box held in a field or an inline-array element declared `object`, an interface or
-  `ValueType` is held through a reference, so only the record on an `Old` copy refuses it (a property
-  is not: its getter may box a field afresh). Case 3 was
+  `ValueType` is held through a reference, so only the record on an `Old` copy refuses it (an
+  auto-property counts as its backing field; a computed property does not, as its getter may box a
+  field afresh). Case 3 was
   measured with unit tests that simulate a runtime without dynamic code on .NET
   10; no Native AOT build on .NET 9 or later was run. The library uses dynamic code
   (`MakeGenericMethod`) in one place, for struct elements, only where it is supported; its `IL3050` is
@@ -569,10 +570,13 @@ AOT](README.md#trimming-and-native-aot) in the README.
   struct types of its fields, so preserve the struct with
   `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]`, or list the member as
   assignable (neither way out was measured). Without dynamic code on the .NET 9 runtime or later, for
-  a struct `T`, an inline array among the elements of a sequence `T` holds whose element type is not
-  tracked per element (`ImmutableArray<object>`, `ArraySegment<object>`, other enumerated sequences)
-  is refused also when the values did not come from `Old` ("cannot compare", never a silent pass;
-  accepted); list the member as assignable. After the first `Old` copy in a process that could not
+  a struct `T`, an inline array among the elements of a value-type sequence `T` holds by value
+  (`ImmutableArray<object>`, `ArraySegment<object>`, a struct that implements `IEnumerable`) is
+  refused also when the values did not come from `Old` ("cannot compare", never a silent pass;
+  accepted); list the member as assignable. A computed property whose getter builds an object from a
+  field (`AsArray => [Buf]`) carries no `Old` record, so when that field is excused and `Old` could not
+  copy its struct elements, an in-place change of them passes through the property (accepted); list
+  the computed property as assignable too. After the first `Old` copy in a process that could not
   copy struct elements, every compared pair costs up to two more weak-table lookups (read from the
   code, not measured). A struct with a field declared as `object`, `ValueType`, an interface or a
   class (other than `string`, an array or a delegate) has the run-time values of those fields looked at each time it is compared, and the look can
