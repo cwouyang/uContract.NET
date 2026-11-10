@@ -25,7 +25,12 @@ change of such state, for example a domain event raised into a private list, is 
 that member as assignable where the change is intended. `EnsureAssignable<T>()` now compares the
 runtime type of the two values, so a call with `T` = `object`, an interface or a base class compares
 what it skipped and can start to fail; under Native AOT such a call throws "cannot compare" until the
-runtime type is preserved: add the `[DynamicDependency(...)]` that the message names. Code that catches the
+runtime type is preserved: add the `[DynamicDependency(...)]` that the message names.
+`EnsureAssignable<T>()` now compares an `[InlineArray]` struct element by element on the .NET 8 and
+the .NET 10 runtimes, where earlier versions saw only element 0 on .NET 8 and could throw
+`NotSupportedException` on .NET 10: a change of a later element is now a violation, so list as assignable an inline-array member
+that may change; a pattern no longer excuses an inline array passed as `T`; under Native AOT preserve
+the inline-array types that the "cannot compare" message names. Code that catches the
 `InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or the
 `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. A `null` test
 or an `ArgumentNullException` handler around the `Old` + `EnsureAssignable` pair is no longer needed
@@ -382,8 +387,9 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `EnsureAssignable(this, Contract.Old(() => this))` written in a base class and run on a subclass
   instance, and a framework collection such as a `List<int>` passed as `object` when nothing in the
   application preserves it. A boxed value type throws only when its `Equals` reports the values
-  unequal; a primitive, an enum, an inline array, a value-type sequence that keeps the declared `T`
-  and a compiler-generated sequence are not affected. A subclass
+  unequal; a primitive, an enum, a value-type sequence that keeps the declared `T` and a
+  compiler-generated sequence are not affected, and neither is an inline array, which has rules of its
+  own (see the entry for #84). A subclass
   that adds no state and that nothing preserves throws too. The fix is the one the message names,
   with the type in C# syntax: `[DynamicDependency(DynamicallyAccessedMemberTypes.All,
   typeof(Shop.ExpressOrder))]` on a method that runs, or pass the values as their own type;
@@ -418,6 +424,56 @@ AOT](README.md#trimming-and-native-aot) in the README.
   message names, on `Main` or on any method that runs; remove a pattern that excused the private
   fields of a framework collection; materialise a query before the call; and check the state of a
   shared type with `Contract.Ensure`. (#40; ADR-0026)
+- **BREAKING**: `EnsureAssignable<T>()` compares an `[InlineArray]` struct element by element
+  wherever it meets two values of one inline-array type: as `T`, as the runtime type of the values
+  under another `T` (`object`, an interface that the inline array implements), and as a field, a
+  property, an element of an array or a list, a dictionary value or the value of an `object` member.
+  In 2.0.0 it saw only element 0 on the .NET 8 runtime (reflection and `ValueType.Equals` see only the
+  one declared field), so a change of a later element with an equal element 0 passed; it is now a
+  violation. An `Equals` of the inline array written by hand decides when it returns `true`; otherwise
+  the elements are compared in index order, as the elements of an array are (pointer and
+  function-pointer elements by address), and the built-in `Equals` is never called. Below the top level
+  a difference is reported as the member that holds the inline array, without an element index. At
+  the top level an inline array is compared as a whole and the patterns do not apply: before this
+  change `T` = the inline-array type compared its one field, so a pattern that named it could excuse
+  element 0. The
+  violation reads "actual and expected are not equal. {type} is an inline array, compared as a whole
+  element by element, so assignable patterns do not apply." An inline array that implements
+  `IEnumerable` follows this rule too, not the rule for a value-type sequence. A struct that has no
+  `Equals` written by hand and whose built-in `Equals` would reach an inline array's is compared by its
+  fields without that `Equals`: one with a field of an inline-array type or a `Nullable<>` of one, a
+  `record struct` or a `ValueTuple` with one, one with a nested such struct, and one whose field
+  declared as `object`, `ValueType`, an interface or a class holds such a value at run time, also
+  inside a record class, a `System.Tuple<…>` (or a class derived from one), or a C# or Visual Basic
+  anonymous object (for Visual Basic only through its `Key` properties). A struct or record whose
+  `Equals` is written by hand keeps it: it decides first, and an exception it throws propagates; a
+  record whose own typed `Equals(R)`, or that of a base record, is written by hand counts as such.
+  `Old<T>()` copies every element of an inline array; before this change its reflection copy copied
+  element 0 as a field and shared the other elements with the original, so an unchanged inline array
+  of reference elements was reported on every call after `Old` on .NET 8. It now passes, and an
+  in-place change of any element is reported. Without dynamic code (Native AOT) the call throws `InvalidOperationException` ("cannot
+  compare …"), also for equal values, where it cannot read the elements or `Old<T>()` could not copy
+  them; the message names the inline-array type and the path, and only the ways out that work for its
+  case. (1) Nothing preserves the inline-array type, so reflection does not list its element field:
+  preserve it with `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(X))]`, list the
+  member as assignable, or set `DBC_POST=off`. An `Equals` written by hand that says "unequal" gives
+  this exception too, where the JIT compares the elements. (2) On the .NET 8 runtime, struct elements:
+  list the member as assignable, run on the .NET 9 runtime or later, or set `DBC_POST=off`; preserving
+  the type does not help. (3) On the .NET 9 runtime or later, struct elements that hold references and
+  that an `Old` copy could not copy (the runtime offers no way without dynamic code to write them back,
+  so the copy shares what they refer to with the original; `Old` does not throw): list the member as
+  assignable, or set `DBC_POST=off`. Case 3 is decided before an `Equals` written by hand is asked, for
+  the inline array and for the structs that hold it by value at any depth. For a struct `T`, whose
+  copy carries no record of what was not copied, it refuses every such inline array that `T` holds by
+  value, also for values that did not come from `Old`, and the message still says "Contract.Old could
+  not copy". Case 3 was measured with unit tests that simulate a runtime without dynamic code on .NET
+  10; no Native AOT build on .NET 9 or later was run. The library uses dynamic code
+  (`MakeGenericMethod`) in one place, for struct elements, only where it is supported; its `IL3050` is
+  suppressed there with a justification, and the smoke program's Native AOT publish reports no warning.
+  Migrating: where a later element of an inline array may change, list the member that holds it as
+  assignable; under Native AOT add the `DynamicDependency` that the message names, or list the member;
+  for a test that matched the element-0 result or the old top-level message, expect the new one.
+  (#84; ADR-0021, ADR-0022, ADR-0026)
 - **BREAKING**: `EnsureImmutableCollection<T>()` returns a `null` `collection` instead of throwing
   `ArgumentNullException` when it does not check it: with postconditions off, or in a call made
   while another contract check is running. This is a second exception to "parameter validation
@@ -488,9 +544,26 @@ AOT](README.md#trimming-and-native-aot) in the README.
   example `DirectoryInfo.Root`) now makes the comparison grow without bound, where 2.0.0 overflowed
   the stack. Fields-only comparison would remove it; it was evaluated in
   [#46](https://github.com/cwouyang/uContract.NET/issues/46) and not adopted. (ADR-0022, ADR-0025)
-- Known limitation, unchanged from 2.0.0: for fixed-size buffers and `[InlineArray]` structs, the
-  elements after the first are invisible to reflection and to `ValueType.Equals`. A change there with
-  an equal first element passes silently. (ADR-0022)
+- Known limitation, unchanged from 2.0.0: for C# fixed-size buffers (`fixed int X[4]`), which are not
+  inline arrays, the elements after the first are invisible to reflection and to `ValueType.Equals`. A
+  change there with an equal first element passes silently, on the .NET 8 and the .NET 10 runtimes.
+  (ADR-0022)
+- Known limitations of the inline-array comparison (#84; ADR-0021, ADR-0022). A record that declares
+  its own field holding an inline array, under a base record whose typed `Equals(R)` is written by
+  hand, compares that field with the built-in `Equals`: on .NET 10 `NotSupportedException` propagates,
+  on .NET 8 only element 0 is seen; write the record's own typed `Equals`, or list the member as
+  assignable. Without dynamic code on the .NET 9 runtime or later, an `Equals` written by hand that is
+  asked first and reaches the inline array of an `Old` copy only through a reference (a struct's
+  `Equals` over a class, or under Native AOT the `Equals` of a class whose members reflection does not
+  show) can read the elements that the copy shares with the original and pass a change; list the member
+  as assignable. Under Native AOT a struct that has no `Equals` written by hand and that nothing
+  preserves cannot be looked into, so it is decided by its built-in `Equals`, also when it holds an
+  inline array: on .NET 8 a change in a later element passes (measured), on .NET 10 it throws
+  `NotSupportedException` (not measured); `[DynamicallyAccessedMembers]` on `T` does not preserve the
+  struct types of its fields, so preserve the struct with
+  `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]`, or list the member as
+  assignable. After the first `Old` copy in a process that could not copy struct elements, every
+  compared pair costs up to two more weak-table lookups.
 
 ### Fixed
 
@@ -533,6 +606,14 @@ AOT](README.md#trimming-and-native-aot) in the README.
   Under Native AOT such a property that reflection lists does not count as a visible member, because
   the fields behind it may not be preserved: a type of which reflection lists no other property or
   field is a type with no visible members (see the entry under Changed) (#40; ADR-0022).
+- `EnsureAssignable<T>()` no longer throws `NotSupportedException` ("Calling built-in Equals() or
+  GetHashCode() on type marked as InlineArray is invalid.") on the .NET 10 runtime when it meets an
+  `[InlineArray]` struct, also for equal values: as a member, an element, a boxed value, an `Old` copy,
+  or inside a struct whose built-in `Equals` reaches it (a `record struct` or a tuple with an inline
+  array, a struct that holds such a tuple, a struct whose `object` field holds an inline array). The
+  package targets `net8.0`, and an application on .NET 10 runs it on the .NET 10 runtime. An exception
+  thrown by an `Equals` written by hand still propagates (see the known limitations for a record under
+  a base record with a typed `Equals` written by hand) (#84; ADR-0022).
 
 ### Removed
 

@@ -421,6 +421,14 @@ public static class Contract
     ///     The copy is a read-only snapshot: delegates are shared, so raising an event on the copy notifies the
     ///     original's subscribers. Everything reachable is copied, so <c>Old(() =&gt; _balance)</c> is cheaper than
     ///     <c>Old(() =&gt; this)</c>.
+    ///     An inline array (a struct marked <see cref="InlineArrayAttribute" />) is copied element by element, as an
+    ///     array is: each reference element is replaced by its copy, and each struct element that holds references
+    ///     is read, has its references replaced and is written back, which needs dynamic code. Without dynamic code
+    ///     (Native AOT) the struct elements are left as a field walk leaves them: the references in element 0 are
+    ///     replaced, and the other elements share theirs with the original. This method does not throw then;
+    ///     <see cref="EnsureAssignable{T}" /> throws <see cref="InvalidOperationException" /> instead of comparing
+    ///     that inline array. Under Native AOT an inline array whose type nothing preserves is copied bitwise, and
+    ///     <see cref="EnsureAssignable{T}" /> cannot compare it either.
     ///     Native AOT and trimming: a field that the trimmer removed from reflection keeps its bitwise value, so
     ///     the object it refers to is shared with the original. The fields declared on <typeparamref name="T" />
     ///     are preserved; the private fields declared on its base classes may not be, and under Native AOT
@@ -1183,8 +1191,9 @@ public static class Contract
     ///     Also thrown under Native AOT when at the top level the runtime type of the values is not
     ///     <typeparamref name="T" />, they are not compared as a whole, and that runtime type shows no declared
     ///     member to reflection: for a class also when the two values are equal; for a value type only when its
-    ///     <c>Equals</c> reports them unequal (a primitive, an enum and an inline array are then a violation, as
-    ///     before), except two sequences of different runtime types, which ask no <c>Equals</c>: there a value
+    ///     <c>Equals</c> reports them unequal (a primitive and an enum are then a violation, as before; an inline
+    ///     array is compared by its elements, see the remarks), except two sequences of different runtime types,
+    ///     which ask no <c>Equals</c>: there a value
     ///     type throws as a class does, also when the two values are equal. No field, property, method or
     ///     constructor it declares is visible (a nested type or an event it declares does not count), which is how
     ///     Native AOT shows a type that nothing preserves (a framework collection included, when nothing in the
@@ -1240,6 +1249,13 @@ public static class Contract
     ///     Also thrown, in any build, when a value at the top level is a sequence built on a framework class that is
     ///     not a collection (see the remarks) and its runtime type is not <typeparamref name="T" />; it is not
     ///     enumerated.
+    ///     Also thrown, also when the two values are equal, when the elements of an inline array cannot be compared
+    ///     (see the remarks): under Native AOT when nothing preserves the inline-array type, so reflection does not
+    ///     list its element field; on the .NET 8 runtime without dynamic code when its elements are of a struct type
+    ///     other than a primitive or an enum; and
+    ///     without dynamic code on the .NET 9 runtime or later when its elements are structs that hold references
+    ///     and a <see cref="Old{T}" /> copy could not copy them. The message names the inline-array type and the
+    ///     path, and gives only the ways out that work for that case.
     /// </exception>
     /// <remarks>
     ///     This method uses reflection to compare the public instance properties (indexers and properties of a
@@ -1425,7 +1441,8 @@ public static class Contract
     ///     <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type or
     ///     <see cref="Array" />, and also when <typeparamref name="T" /> is any other type (<see cref="object" />,
     ///     an interface, a base class) and the two values are of one runtime type that is a string, a delegate
-    ///     type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, or an array type,
+    ///     type, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>, an array type, or an
+    ///     inline array (see below; also when <typeparamref name="T" /> is that inline-array type),
     ///     the two values are compared as a whole, as a member of that type is: a string with an ordinal <c>Equals</c>, a
     ///     delegate by its methods (not its targets, so the same method on another object is equal;
     ///     <see cref="Delegate" /> and <see cref="MulticastDelegate" /> count as delegate types, and two delegates of
@@ -1447,6 +1464,39 @@ public static class Contract
     ///     two boxes of one address as different pointer types (<c>int*</c> and <c>long*</c>) are equal. With
     ///     <typeparamref name="T" /> = <see cref="System.Reflection.Pointer" /> their members (the address and the
     ///     pointer type) are compared, as for any other class.
+    ///     An inline array (a struct marked <see cref="InlineArrayAttribute" />) is compared element by element
+    ///     wherever the comparison meets two values of one inline-array type: as <typeparamref name="T" /> or as the
+    ///     runtime type of the values under another <typeparamref name="T" />, and as a member, an element, a
+    ///     dictionary value or the value of an <see cref="object" /> member. When its <c>Equals</c> override is
+    ///     written by hand and returns true, the two are equal; otherwise its elements are compared pairwise, in
+    ///     index order, as the elements of an array are (pointers by address). Its built-in <c>Equals</c>, which
+    ///     sees only element 0 and throws <see cref="NotSupportedException" /> on the .NET 10 runtime, is never
+    ///     called. An override marked <see cref="CompilerGeneratedAttribute" />, one declared with <c>new</c>, and
+    ///     the <c>Equals</c> of a tuple or of <see cref="Nullable{T}" /> are not written by hand; a record whose own
+    ///     typed <c>Equals</c>, or that of a base record, is written by hand counts as written by hand. At the top
+    ///     level the patterns do not apply, and a violation says that the two values are not equal and are compared
+    ///     as that inline array element by element; below it, a difference is reported as the member that holds
+    ///     the inline array. A struct without an <c>Equals</c> written by hand whose built-in <c>Equals</c> would
+    ///     reach an inline array's (a field declared as an inline array, a nullable one, a record struct or tuple
+    ///     with one, a nested such struct, or a field declared <see cref="object" />, <see cref="ValueType" />, an
+    ///     interface or a class that holds one at run time, also inside a record class, a
+    ///     <c>System.Tuple&lt;…&gt;</c> or an anonymous object) is compared by its fields without asking that
+    ///     <c>Equals</c>. An exception thrown by an <c>Equals</c> written by hand propagates. A C# fixed-size buffer (<c>fixed int X[4]</c>) is not an inline
+    ///     array: only its element 0 is compared. The method throws <see cref="InvalidOperationException" /> when
+    ///     the elements cannot be compared (see the exceptions); without dynamic code on the .NET 9 runtime or later,
+    ///     for a struct <typeparamref name="T" /> that holds such an inline array by value this happens also for
+    ///     values that did not come from <see cref="Old{T}" />, because a struct copy carries no record of what was
+    ///     not copied. Known limitations: a record that declares its own field holding an inline array under a base
+    ///     record whose typed <c>Equals</c> is written by hand compares that field with the built-in
+    ///     <c>Equals</c> (.NET 10: <see cref="NotSupportedException" />; .NET 8: element 0 only), so write the
+    ///     record's own typed <c>Equals</c> or list the member as assignable; without dynamic code on the .NET 9
+    ///     runtime or later, an <c>Equals</c> written by hand that is asked first and reaches the inline array of an
+    ///     <see cref="Old{T}" /> copy only through a reference can read elements the copy shares with the original;
+    ///     and under Native AOT a struct without such an <c>Equals</c> whose fields nothing preserves is decided by
+    ///     its built-in <c>Equals</c> also when it holds an inline array (.NET 8: element 0 only; .NET 10:
+    ///     <see cref="NotSupportedException" />): preserve it with
+    ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]</c>, or list the member as
+    ///     assignable.
     ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
     ///     delegate, a boxed pointer, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
     ///     (two <c>Stream</c>s, two <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever
@@ -1459,9 +1509,9 @@ public static class Contract
     ///     (<see cref="System.Collections.IEnumerable" /> other than a string), which are compared as below.
     ///     For every other <typeparamref name="T" /> the two values are compared by the members of their runtime
     ///     type (as <typeparamref name="T" /> = that type would compare them; a value of a value type other than
-    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; a primitive, an enum and an
-    ///     inline array by <c>Equals</c> alone, and one without a field is then a violation; its <c>Equals</c>
-    ///     override runs, and an exception it throws ends the call), and the patterns apply to those members.
+    ///     <typeparamref name="T" /> with <c>Equals</c> first and then by its fields; a primitive and an enum by
+    ///     <c>Equals</c> alone, and one without a field is then a violation; its <c>Equals</c> override runs, and an
+    ///     exception it throws ends the call), and the patterns apply to those members.
     ///     When <typeparamref name="T" /> is a framework class other than <see cref="object" /> that the runtime
     ///     type derives from, the private fields of the base classes are compared up to and including
     ///     <typeparamref name="T" />. When <typeparamref name="T" /> is an
