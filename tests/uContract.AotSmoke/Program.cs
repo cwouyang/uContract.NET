@@ -909,6 +909,10 @@ public static class Program
     // Only the "cannot compare" message of an inline array whose element field is hidden says this.
     private const string HiddenElementFieldText =
         "it is an inline array whose element field is not visible to reflection";
+
+    // The clause of that message for struct elements, which preserving the type does not let .NET 8 read.
+    private const string HiddenElementFieldStructsText =
+        "(if its elements are structs, the .NET 8 runtime still cannot read them without dynamic code)";
     private const string ElementsEntry = "(the elements; assignable patterns do not apply to them)";
 
     private static readonly string[] s_frozenCodes = ["a", "b"];
@@ -2851,6 +2855,7 @@ public static class Program
                 .. NestedText("uContract.AotSmoke.UnseenIntBuffer", "UnseenIntBufferHolder.Buffer", "Buffer"),
                 "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.UnseenIntBuffer))]",
                 HiddenElementFieldText,
+                HiddenElementFieldStructsText,
             ]),
             Expect.Ok
         );
@@ -2864,7 +2869,8 @@ public static class Program
                 "cannot compare uContract.AotSmoke.UnseenBoxedBuffer",
                 "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.UnseenBoxedBuffer))]",
                 "DBC_POST=off",
-                HiddenElementFieldText
+                HiddenElementFieldText,
+                HiddenElementFieldStructsText
             ),
             Expect.Ok
         );

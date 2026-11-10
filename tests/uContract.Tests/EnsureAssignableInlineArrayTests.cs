@@ -2315,6 +2315,28 @@ public class EnsureAssignableInlineArrayTests
         return buffer;
     }
 
+    // Under Native AOT, an inline array that nothing preserves hides its element field; the JIT always shows it, so
+    // the message is built from what the comparison records then. Preserving the type does not let the .NET 8 runtime
+    // read struct elements, which the message says.
+    [Fact]
+    public void CannotCompareBelowWhole_WhenTheElementFieldOfAnInlineArrayIsHidden_SaysPreservingDoesNotHelpStructElementsOnDotNet8()
+    {
+        MemberComparison.HiddenMembers hidden = new(typeof(IntBuf3)) { ElementFieldHidden = true };
+
+        InvalidOperationException exception = MemberComparison.CannotCompareBelowWhole(typeof(IntBuf3), hidden);
+
+        Assert.Equal(
+            $"EnsureAssignable cannot compare {typeof(IntBuf3)} (reached through 'IntBuf3'): it is an inline array "
+                + "whose element field is not visible to reflection under Native AOT, so its element type is unknown "
+                + "and its elements cannot be read. Ways out: preserve it, for example with "
+                + "[DynamicDependency(DynamicallyAccessedMemberTypes.All, "
+                + "typeof(uContract.Tests.EnsureAssignableInlineArrayTests.IntBuf3))] on a method that runs (if its "
+                + "elements are structs, the .NET 8 runtime still cannot read them without dynamic code); or set "
+                + "DBC_POST=off (disables all postcondition checks).",
+            exception.Message
+        );
+    }
+
     [InlineArray(3)]
     private struct IntBuf3
     {

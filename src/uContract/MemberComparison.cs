@@ -727,7 +727,8 @@ internal static class MemberComparison
                 + "Ways out: "
                 + firstWayOut
                 + "preserve it, for example with "
-                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(inlineArrayType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(inlineArrayType)}; "
+                + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(inlineArrayType)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(inlineArrayType)} "
+                + "(if its elements are structs, the .NET 8 runtime still cannot read them without dynamic code); "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
     }
