@@ -627,19 +627,9 @@ internal static class MemberComparison
         string listAsAssignable =
             $"list '{SourceName(topLevelMember.RawName)}' as assignable (patterns are regular expressions "
             + $"matched against top-level member names, so use the plain member name{sharedName}); ";
-        if (hidden.ElementsNeedDynamicCode is { } elementType)
+        if (CannotCompareElements(hidden, path, listAsAssignable) is { } cannotCompareElements)
         {
-            return CannotReadStructElements(hidden.Type, elementType, path, listAsAssignable);
-        }
-
-        if (hidden.ElementsNotCopied is { } notCopied)
-        {
-            return CannotCompareUncopiedElements(hidden.Type, notCopied, path, listAsAssignable);
-        }
-
-        if (hidden.ElementFieldHidden)
-        {
-            return CannotReadHiddenElements(hidden.Type, path, listAsAssignable);
+            return cannotCompareElements;
         }
 
         string cannotList =
@@ -673,19 +663,9 @@ internal static class MemberComparison
     {
         string start = IsArrayTypeOrSystemArray(wholeType) ? "actual" : wholeType.Name;
         string path = $"{start}{hidden.PathBelowTopLevelMember}";
-        if (hidden.ElementsNeedDynamicCode is { } elementType)
+        if (CannotCompareElements(hidden, path) is { } cannotCompareElements)
         {
-            return CannotReadStructElements(hidden.Type, elementType, path);
-        }
-
-        if (hidden.ElementsNotCopied is { } notCopied)
-        {
-            return CannotCompareUncopiedElements(hidden.Type, notCopied, path);
-        }
-
-        if (hidden.ElementFieldHidden)
-        {
-            return CannotReadHiddenElements(hidden.Type, path);
+            return cannotCompareElements;
         }
 
         string cannotList =
@@ -706,6 +686,28 @@ internal static class MemberComparison
                 + $"[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof({CSharpTypeName.Of(hidden.Type)}))] on a method that runs{CSharpTypeName.WhereItCanBeWritten(hidden.Type)}; "
                 + "or set DBC_POST=off (disables all postcondition checks)."
         );
+    }
+
+    // The "cannot compare" exception for an inline array, reached through path, whose elements were left uncompared
+    // (see HiddenMembers: ElementsNeedDynamicCode, ElementsNotCopied, ElementFieldHidden); null when hidden is a type
+    // whose members are hidden instead. firstWayOut is empty, or a way out that ends with "; ".
+    private static InvalidOperationException? CannotCompareElements(
+        HiddenMembers hidden,
+        string path,
+        string firstWayOut = ""
+    )
+    {
+        if (hidden.ElementsNeedDynamicCode is { } elementType)
+        {
+            return CannotReadStructElements(hidden.Type, elementType, path, firstWayOut);
+        }
+
+        if (hidden.ElementsNotCopied is { } notCopied)
+        {
+            return CannotCompareUncopiedElements(hidden.Type, notCopied, path, firstWayOut);
+        }
+
+        return hidden.ElementFieldHidden ? CannotReadHiddenElements(hidden.Type, path, firstWayOut) : null;
     }
 
     // The comparison met an inline array of struct elements, reached through path, that this runtime reads only with

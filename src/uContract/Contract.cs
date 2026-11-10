@@ -2042,16 +2042,11 @@ public static class Contract
             throw MemberComparison.CannotCompareBelowWhole(Nullable.GetUnderlyingType(type) ?? type, context.Hidden);
         }
 
-        if (MemberComparison.IsInlineArray(type))
-        {
-            throw new PostconditionViolationException(
-                $"actual and expected are not equal. {type} is an inline array, compared as a whole element by "
-                    + "element, so assignable patterns do not apply."
-            );
-        }
-
+        string comparedHow = MemberComparison.IsInlineArray(type)
+            ? "is an inline array, compared as a whole element by element"
+            : "is compared as a whole";
         throw new PostconditionViolationException(
-            $"actual and expected are not equal. {type} is compared as a whole, so assignable patterns do not apply."
+            $"actual and expected are not equal. {type} {comparedHow}, so assignable patterns do not apply."
         );
     }
 
