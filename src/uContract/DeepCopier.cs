@@ -187,9 +187,13 @@ internal static class DeepCopier
 
         object?[] elements = StructElements.Read(elementType, ref data, length)!;
 
+        // A Nullable<> element without a value is read as null, and written back as null.
         for (int i = 0; i < length; i++)
         {
-            elements[i] = Replacement(elements[i]!, elementType, copying);
+            if (elements[i] is { } element)
+            {
+                elements[i] = Replacement(element, elementType, copying);
+            }
         }
 
         StructElements.Write(elementType, ref data, elements);

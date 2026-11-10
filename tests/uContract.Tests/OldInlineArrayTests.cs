@@ -459,6 +459,51 @@ public class OldInlineArrayTests
             + "postcondition checks).";
     }
 
+    // A Nullable<> element without a value reads as null, as an array element does, and stays null in the copy.
+    [Fact]
+    public void Old_WhenNullableStructElementsHaveNoValue_CopiesThemAsNoValue()
+    {
+        NBagged bagged = WithSecondNullableBag();
+
+        NBagged old = Contract.Old(() => bagged);
+
+        Assert.Null(old.Bags[0]);
+        Assert.Null(old.Bags[2]);
+        Assert.NotSame(bagged.Bags[1]!.Value.Items, old.Bags[1]!.Value.Items);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenNullableStructElementsWithoutAValueAreUnchangedAfterOld_DoesNotReportThem()
+    {
+        NBagged bagged = WithSecondNullableBag();
+        NBagged old = Contract.Old(() => bagged);
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(bagged, old));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void EnsureAssignable_WhenTheListOfTheOnlyNullableStructElementWithAValueChangedInPlaceAfterOld_ReportsTheField()
+    {
+        NBagged bagged = WithSecondNullableBag();
+        NBagged old = Contract.Old(() => bagged);
+        bagged.Bags[1]!.Value.Items!.Add(Added);
+
+        PostconditionViolationException exception = Assert.Throws<PostconditionViolationException>(() =>
+            Contract.EnsureAssignable(bagged, old)
+        );
+
+        Assert.Equal(Violation + "  - Bags", exception.Description);
+    }
+
+    private static NBagged WithSecondNullableBag()
+    {
+        NBagged bagged = new();
+        bagged.Bags[1] = new Bag { Items = [2] };
+        return bagged;
+    }
+
     private static string OldCouldNotCopy<TInlineArray, TElement>(string path, string member)
     {
         return $"EnsureAssignable cannot compare {typeof(TInlineArray)} (reached through '{path}'): it is an inline "
@@ -598,6 +643,17 @@ public class OldInlineArrayTests
     private sealed class BagRows
     {
         public BagBuf3[] Rows = [];
+    }
+
+    [InlineArray(3)]
+    private struct NBagBuf3
+    {
+        private Bag? _element;
+    }
+
+    private sealed class NBagged
+    {
+        public NBagBuf3 Bags;
     }
 
     private sealed class BaggedEntries
