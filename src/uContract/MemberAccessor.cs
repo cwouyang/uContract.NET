@@ -108,10 +108,17 @@ internal sealed class MemberAccessor
     public bool IsNonPublicField => _field is { IsPublic: false };
 
     /// <summary>
-    ///     True when the member is a field declared a reference type (object, an interface, ValueType, a class): a box
-    ///     it holds is the one stored in it. A property is never one: its getter may box a field afresh on every read.
+    ///     Gets the compiler-generated backing field of an auto-property (a positional member of a record struct is
+    ///     one), when it is listed with the property; null for a field and for a property computed by its getter.
     /// </summary>
-    public bool IsReferenceTypedField => _field is { FieldType.IsValueType: false };
+    public FieldInfo? BackingField { get; init; }
+
+    /// <summary>
+    ///     True when the member is a field, or an auto-property whose backing field is, declared a reference type
+    ///     (object, an interface, ValueType, a class): a box it holds is the one stored in that field. A property
+    ///     computed by its getter is never one: the getter may box a field afresh on every read.
+    /// </summary>
+    public bool IsReferenceTypedField => (_field ?? BackingField) is { FieldType.IsValueType: false };
 
     /// <summary>
     ///     True when the member is a read-only field (<c>readonly</c> in C#, <c>ReadOnly</c> in Visual Basic).

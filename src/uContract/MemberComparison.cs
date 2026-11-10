@@ -174,7 +174,7 @@ internal static class MemberComparison
             ),
         ];
         List<MemberAccessor> members = comparedProperties
-            .Select(p => new MemberAccessor(p, ExistingGetter(p)))
+            .Select(p => new MemberAccessor(p, ExistingGetter(p)) { BackingField = BackingFieldOf(p, fields) })
             .Concat(fields.Select(f => new MemberAccessor(f)))
             .ToList();
 
@@ -190,6 +190,21 @@ internal static class MemberComparison
         QualifyCollidingNames(members);
 
         return new TypeMetadata { Members = members, OwnMemberCount = ownMemberCount };
+    }
+
+    // The compiler-generated backing field of property among fields, told by its name (see SourceName) and its
+    // declaring type; null for a property computed by its getter. The backing field of a property declared on a base
+    // class is not among fields, so such a property is treated as computed (see MemberAccessor.IsReferenceTypedField).
+    private static FieldInfo? BackingFieldOf(PropertyInfo property, FieldInfo[] fields)
+    {
+        return Array.Find(
+            fields,
+            field =>
+                field.DeclaringType == property.DeclaringType
+                && SourceName(field.Name) is var name
+                && !string.Equals(name, field.Name, StringComparison.Ordinal)
+                && string.Equals(name, property.Name, StringComparison.Ordinal)
+        );
     }
 
     // Members of one raw name (ordinal), counted after the declarations of one virtual property are merged,
@@ -841,7 +856,8 @@ internal static class MemberComparison
 
     // A false return with context.Hidden set means "could not compare" (a type with no visible members
     // blocked the comparison), not "different". Callers must check it before reporting a difference.
-    // heldByReference: the pair is held in a field declared a reference type (see Walk.ChildHeldByReference).
+    // heldByReference: the pair is held in a field, or an auto-property whose backing field is, declared a reference
+    // type (see Walk.ChildHeldByReference).
     internal static bool AreEqual(
         object? actual,
         object? expected,
@@ -912,11 +928,12 @@ internal static class MemberComparison
     // Start, for a pair held by an object whose Old copy could not copy the inline-array types uncopiedInHolder (null
     // when there are none): a pair of objects tells for itself whether it belongs to such a copy (see
     // UncopiedInlineArrays), and a pair of values read from a struct is held where that struct is held. The walk
-    // returned passes this on to the pairs it holds by value; a box held in a field, or in an element of an inline
-    // array, declared a reference type (object, an interface, ValueType) is held through a reference, and callers pass
-    // null for it, so only its own record counts (the rule for a struct T covers only what T holds by value; see
-    // Contract._UncopiedHeldByValue). A property counts as held by value whatever its declared type: its getter may box
-    // a field afresh on every read, and such a box has no record. Elements of other sequences and dictionaries are
+    // returned passes this on to the pairs it holds by value; a box held in a field (an auto-property counts as its
+    // backing field), or in an element of an inline array, declared a reference type (object, an interface,
+    // ValueType) is held through a reference, and callers pass null for it, so only its own record counts (the rule for
+    // a struct T covers only what T holds by value; see Contract._UncopiedHeldByValue). A property computed by its
+    // getter counts as held by value whatever its declared type: the getter may box a field afresh on every read, and
+    // such a box has no record. Elements of other sequences and dictionaries are
     // held by value when they are value types at run time: their declared element type is not tracked.
     private static Walk? StartHeld(
         object? actual,
@@ -2048,9 +2065,10 @@ internal static class MemberComparison
 
         public object? ChildExpected { get; private set; }
 
-        // True when the current child is held in a field, or an element of an inline array, declared a reference type
-        // (object, an interface, ValueType), so that a boxed value there is held through a reference, not by value (see
-        // StartHeld). Never for a property: its getter may box a field afresh.
+        // True when the current child is held in a field (an auto-property counts as its backing field), or an element
+        // of an inline array, declared a reference type (object, an interface, ValueType), so that a boxed value there
+        // is held through a reference, not by value (see StartHeld). Never for a property computed by its getter: the
+        // getter may box a field afresh.
         public bool ChildHeldByReference { get; private set; }
 
         // The path segment of the current child, prepended when the child could not be compared.

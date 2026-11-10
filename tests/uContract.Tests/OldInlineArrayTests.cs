@@ -486,6 +486,71 @@ public class OldInlineArrayTests
         Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("ImmutableBoxes.Items[]", "Items"), cannotCompare.Message);
     }
 
+    // An auto-property, and a positional member of a record struct, is judged as its backing field: declared object,
+    // it holds a box through a reference.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructWhoseObjectAutoPropertyHoldsSuchAnInlineArrayNotFromOldWithoutDynamicCode_ComparesIt()
+    {
+        AutoPropHolder actual = new() { Value = WithBags() };
+        AutoPropHolder expected = new() { Value = WithBags() };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsARecordStructWhosePositionalObjectMemberHoldsSuchAnInlineArrayNotFromOldWithoutDynamicCode_ComparesIt()
+    {
+        PositionalHolder actual = new(WithBags());
+        PositionalHolder expected = new(WithBags());
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructWhoseObjectAutoPropertyHoldsSuchAnInlineArrayChangedInPlaceAfterOldWithoutDynamicCode_CannotCompareIt()
+    {
+        AutoPropHolder held = new() { Value = WithBags() };
+        AutoPropHolder old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => held));
+        ((BagBuf3)held.Value!)[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(held, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("AutoPropHolder.Value", "Value"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsARecordStructWhosePositionalObjectMemberHoldsSuchAnInlineArrayChangedInPlaceAfterOldWithoutDynamicCode_CannotCompareIt()
+    {
+        PositionalHolder held = new(WithBags());
+        PositionalHolder old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => held));
+        ((BagBuf3)held.Value)[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(held, old));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("PositionalHolder.Value", "Value"), cannotCompare.Message);
+    }
+
+    // Known limitation (revision 19): Old records the objects it copies; an object a computed property builds from a
+    // field on every read carries no record, so with that field excused, an in-place change of the elements Old left
+    // shared passes through the property. Way out: list the computed property as assignable too.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenAComputedPropertyWrapsAnExcusedFieldWhoseElementsOldCouldNotCopy_PassesAnInPlaceChangeAsAKnownLimitation()
+    {
+        WrappingClass wrapping = new() { Buf = WithBags() };
+        WrappingClass old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => wrapping));
+        wrapping.Buf[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(wrapping, old, "^Buf$"));
+
+        Assert.Null(exception);
+    }
+
     // An element declared object of an inline array that T holds by value is a reference too.
     [RuntimeHelpersBoxFact(exists: true)]
     public void EnsureAssignable_WhenTIsAStructWhoseInlineArrayOfObjectsHoldsSuchAnInlineArrayNotFromOldWithoutDynamicCode_ReportsTheField()
@@ -890,6 +955,21 @@ public class OldInlineArrayTests
     private struct ImmutableBoxes
     {
         public ImmutableArray<object> Items;
+    }
+
+    private struct AutoPropHolder
+    {
+        public object? Value { get; set; }
+    }
+
+    private readonly record struct PositionalHolder(object Value);
+
+    // AsArray builds a new array that holds a box of Buf on every read.
+    private sealed class WrappingClass
+    {
+        public BagBuf3 Buf;
+
+        public object[] AsArray => [Buf];
     }
 
     // Boxed boxes Buf afresh on every read.

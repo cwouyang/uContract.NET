@@ -2019,10 +2019,10 @@ public static class Contract
     // Tells which inline-array types the comparison refuses among those a struct T holds by value. An Old copy of a
     // struct T is an unboxed value with no record (see UncopiedInlineArrays), so every inline array whose struct
     // elements a copy leaves uncopied (see DeepCopier.LeavesStructElementsUncopied) is refused there, whether or not
-    // the values came from Old. A box that T holds in a field, or in an element of an inline array, declared a
-    // reference type is held through a reference: only the record on the box counts there (see
-    // MemberComparison.StartHeld). A property is not such a field: its getter may box a field afresh. Null when T is
-    // not a struct, or where this runtime writes struct elements.
+    // the values came from Old. A box that T holds in a field (an auto-property counts as its backing field), or in an
+    // element of an inline array, declared a reference type is held through a reference: only the record on the box
+    // counts there (see MemberComparison.StartHeld). A property computed by its getter is not: the getter may box a
+    // field afresh. Null when T is not a struct, or where this runtime writes struct elements.
     private static Func<Type, bool>? _UncopiedHeldByValue(Type declaredType)
     {
         return declaredType.IsValueType && !StructElements.CanWrite ? LeavesStructElementsUncopied : null;
