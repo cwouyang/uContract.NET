@@ -1517,6 +1517,30 @@ public class EnsureAssignableInlineArrayTests
         Assert.Equal(Violation + "  - Value", exception.Description);
     }
 
+    // Known limitation (revision 22): a framework struct whose hand-written Equals forwards to the value it holds
+    // (ValueTask<T> compares its result with EqualityComparer<T>.Default) counts as an Equals written by hand and
+    // decides first, so the built-in Equals of the inline array it holds is reached: on .NET 10 it throws.
+    [BuiltInInlineArrayEqualsFact(throws: true)]
+    public void EnsureAssignable_WhenAValueTaskHoldsAnInlineArrayResult_LetsTheNotSupportedExceptionPropagate()
+    {
+        PendingCounts actual = new() { Counts = new ValueTask<IntBuf3>(WithLaterElementChanged()) };
+        PendingCounts expected = new() { Counts = new ValueTask<IntBuf3>(new IntBuf3()) };
+
+        Assert.Throws<NotSupportedException>(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    // On .NET 8 that built-in Equals compares element 0 only, so a change of a later element passes.
+    [BuiltInInlineArrayEqualsFact(throws: false)]
+    public void EnsureAssignable_WhenOnlyALaterElementOfAValueTaskInlineArrayResultChanged_DoesNotSeeIt()
+    {
+        PendingCounts actual = new() { Counts = new ValueTask<IntBuf3>(WithLaterElementChanged()) };
+        PendingCounts expected = new() { Counts = new ValueTask<IntBuf3>(new IntBuf3()) };
+
+        Exception? exception = Record.Exception(() => Contract.EnsureAssignable(actual, expected));
+
+        Assert.Null(exception);
+    }
+
     [BuiltInInlineArrayEqualsFact(throws: false)]
     public void EnsureAssignable_WhenADerivedRecordsOwnInlineArraysUnderAHandWrittenBaseEqualsHaveEqualElements_DoesNotReportIt()
     {
@@ -3171,6 +3195,11 @@ public class EnsureAssignableInlineArrayTests
     private sealed class QuotaOwnerHolding
     {
         public QuotaOwner Value;
+    }
+
+    private sealed class PendingCounts
+    {
+        public ValueTask<IntBuf3> Counts;
     }
 
     private sealed record TolerantExtended(int Extra) : TolerantBase;
