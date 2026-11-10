@@ -868,6 +868,18 @@ internal struct UnseenBoxedBuffer
     private int _element;
 }
 
+// Nothing preserves it, so its fields are hidden; it has no hand-written Equals and holds a preserved inline array.
+internal struct UnseenListBufferStruct
+{
+    public KeptListBuffer Buffer;
+}
+
+// Passed as T; that preserves its field, not the fields of UnseenListBufferStruct.
+internal sealed class UnseenStructHolder
+{
+    public UnseenListBufferStruct Inner;
+}
+
 internal sealed record Expect(
     Type? ExceptionType,
     string[] Substrings,
@@ -893,6 +905,10 @@ public static class Program
     private const string NestedTypeName = "uContract.AotSmoke.CustomerInfo";
     private const string LineTypeName = "uContract.AotSmoke.LineElement";
     private const string PreservedLineTypeName = "uContract.AotSmoke.PreservedLine";
+
+    // Only the "cannot compare" message of an inline array whose element field is hidden says this.
+    private const string HiddenElementFieldText =
+        "it is an inline array whose element field is not visible to reflection";
     private const string ElementsEntry = "(the elements; assignable patterns do not apply to them)";
 
     private static readonly string[] s_frozenCodes = ["a", "b"];
@@ -2834,6 +2850,7 @@ public static class Program
             Expect.Throws<InvalidOperationException>([
                 .. NestedText("uContract.AotSmoke.UnseenIntBuffer", "UnseenIntBufferHolder.Buffer", "Buffer"),
                 "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.UnseenIntBuffer))]",
+                HiddenElementFieldText,
             ]),
             Expect.Ok
         );
@@ -2846,7 +2863,8 @@ public static class Program
             Expect.Throws<InvalidOperationException>(
                 "cannot compare uContract.AotSmoke.UnseenBoxedBuffer",
                 "[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(uContract.AotSmoke.UnseenBoxedBuffer))]",
-                "DBC_POST=off"
+                "DBC_POST=off",
+                HiddenElementFieldText
             ),
             Expect.Ok
         );
@@ -2892,6 +2910,21 @@ public static class Program
             OldUnseenIntBufferHolder,
             Expect.Value("copied"),
             Expect.Value("default")
+        );
+
+        // Mutation: element 2 replaced by a list with other elements; element 0 is one list shared by both sides.
+        // Visibility: T (UnseenStructHolder) and DynamicDependency(All, typeof(KeptListBuffer)); nothing preserves
+        // UnseenListBufferStruct, so its fields are hidden. Known limitation (spec revision 17): the struct shows no
+        // field, so its built-in Equals decides, and that sees only element 0 of the inline array on .NET 8; the
+        // difference in element 2 passes, where the JIT reports it (measured: passes). Ways out: preserve the struct
+        // with [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(UnseenListBufferStruct))], or list
+        // 'Inner' as assignable.
+        yield return new Check(
+            169,
+            "Unpreserved struct without Equals holding a preserved inline array, later element changed",
+            UnseenStructHoldingKeptListBufferLaterElementChanged,
+            Expect.Ok,
+            Expect.Ok
         );
     }
 
@@ -2968,6 +3001,19 @@ public static class Program
         KeptTolerantBufferHolder actual = new();
         KeptTolerantBufferHolder expected = new();
         actual.Buffer[2] = 7;
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptListBuffer))]
+    private static object? UnseenStructHoldingKeptListBufferLaterElementChanged()
+    {
+        List<int> shared = [0];
+        UnseenStructHolder actual = new();
+        UnseenStructHolder expected = new();
+        actual.Inner.Buffer[0] = shared;
+        expected.Inner.Buffer[0] = shared;
+        actual.Inner.Buffer[2] = [9];
+        expected.Inner.Buffer[2] = [2];
         return NoResult(() => Contract.EnsureAssignable(actual, expected));
     }
 
