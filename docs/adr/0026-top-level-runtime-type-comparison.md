@@ -263,11 +263,11 @@ one-element collection expression held as `IReadOnlyList<T>` or `IEnumerable<T>`
 [Issue #84](https://github.com/cwouyang/uContract.NET/issues/84) compares an `[InlineArray]` struct element by
 element and never asks its built-in `Equals`, which sees only element 0 on the .NET 8 runtime and throws
 `NotSupportedException` on the .NET 10 runtime; [ADR-0022](0022-faithful-old-copies-and-robust-comparison.md)
-(fourteenth Amendment) records the rules B1, B2 and B2a, the measurements and the limits. At the top level:
+(fourteenth Amendment) records the rules IA1, IA2 and IA3, the measurements and the limits. At the top level:
 
 - **An inline array is compared as a whole.** When `T` is an inline-array type, or `T` is another type
   (`object`, an interface that the inline array implements) and the runtime type of both values is one
-  inline-array type, the two values are compared as a whole by B1, as two arrays are
+  inline-array type, the two values are compared as a whole by IA1, as two arrays are
   (`Contract._CompareByRuntimeType` sends every inline array to `_CompareAsWhole`). The patterns do not
   apply and are not examined: before, `T` = the inline-array type compared its one field, so a pattern that
   named that field could excuse element 0 (spec author's call, approved with the spec). The violation reads
@@ -278,8 +278,8 @@ element and never asks its built-in `Equals`, which sees only element 0 on the .
   `T` = a `Nullable<>` of an inline array keeps the rule for a nullable value type and its message, "… is
   compared as a whole, so assignable patterns do not apply." (unit test
   `EnsureAssignable_WhenTIsANullableInlineArrayAndOnlyALaterElementChanged_ReportsTheTwoAsNotEqual`); its
-  values are compared by B1.
-- **An inline array that implements `IEnumerable`** follows B1 like any inline array, not the rule for a
+  values are compared by IA1.
+- **An inline array that implements `IEnumerable`** follows IA1 like any inline array, not the rule for a
   value-type sequence that keeps the declared `T` (Details, item 1): with `T` = `object` two such values of
   distinct lists with equal contents pass, and a changed later list is reported (unit tests
   `EnsureAssignable_WhenTIsObjectAndAnEnumerableInlineArrayHoldsDistinctListsWithEqualContents_Passes`,
@@ -290,7 +290,7 @@ element and never asks its built-in `Equals`, which sees only element 0 on the .
   Against a value of another runtime type that is not a sequence (a boxed `int`) it is a
   different-runtime-types violation (unit test
   `EnsureAssignable_WhenTIsObjectAndABoxedInlineArrayMeetsABoxedInt_ReportsDifferentRuntimeTypes`).
-- **A holder struct** (B2) and a struct of B2a, boxed as another `T`, are compared by their fields without
+- **A holder struct** (IA2) and a struct of IA3, boxed as another `T`, are compared by their fields without
   their built-in `Equals` (`_TopLevelMembers` asks `MemberComparison.IsComparedByFieldsWithoutEquals`
   before `Equals`); one with a user `Equals` is decided by it first, and an exception it throws propagates
   (unit tests `EnsureAssignable_WhenTIsObjectAndOnlyALaterElementOfABoxedHolderStructChanged_ReportsTheField`,
@@ -306,7 +306,7 @@ These statements, each quoted by its opening words, no longer hold as written:
 
 - Details, item 1: "A boxed value type other than `T`, other than such a sequence, is compared as a member
   is: its `Equals` first, then its fields. A primitive, an enum and an inline array are decided by `Equals`
-  alone." An inline array is compared as a whole by B1, and a holder struct by its fields without its
+  alone." An inline array is compared as a whole by IA1, and a holder struct by its fields without its
   `Equals`. A primitive and an enum are still decided by `Equals` alone.
 - Details, item 4: "a primitive, an enum and an inline array need no metadata and are not covered". An
   inline array is not covered by H3, but it needs the metadata of its element field (see above).
