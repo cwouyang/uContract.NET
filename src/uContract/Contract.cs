@@ -1681,7 +1681,13 @@ public static class Contract
     // A string, a delegate type, a nullable value type, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, and
     // an array type or System.Array are compared as one pair, as a member of that type is. Asked of T first and
     // then, at the top level, of the runtime type of the two values (see _CompareByRuntimeType); the member
-    // metadata of the type is not read.
+    // metadata of the type is not read. An inline array is not among them, though it is compared as a whole too: it is
+    // added where the runtime type decides (see _IsDecidedByRuntimeType and _CompareByRuntimeType), which a T that is
+    // an inline-array type also reaches. The other callers need it left out: _KeepsTheDeclaredType never meets one,
+    // since _CompareByRuntimeType settles every pair whose runtime type is an inline array first, and
+    // _ThrowIfShowsNoDeclaredMember meets one only as one of two sequences of different runtime types (an inline array
+    // that implements IEnumerable), which is compared by its elements, so the rule for a runtime type that shows no
+    // declared member applies to it as to any such sequence.
     private static bool _IsComparedAsWhole(Type type)
     {
         return type == typeof(string)
