@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using uContract.Exceptions;
 
@@ -443,6 +444,48 @@ public class OldInlineArrayTests
         Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("BoxHolder.Value", "Value"), cannotCompare.Message);
     }
 
+    // A property's getter may box a field afresh on every read, and such a box carries no record of the Old copy, so a
+    // property, whatever its declared type, is held where its holder is held.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenAnObjectPropertyOfAClassBoxesSuchAnInlineArrayFieldOfAnOldCopyWithoutDynamicCode_CannotCompareIt()
+    {
+        BoxingClass boxing = new() { Buf = WithBags() };
+        BoxingClass old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => boxing));
+        boxing.Buf[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(boxing, old, "^Buf$"));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("BoxingClass.Boxed", "Boxed"), cannotCompare.Message);
+    }
+
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenAnObjectPropertyOfAStructTBoxesSuchAnInlineArrayFieldOfAnOldCopyWithoutDynamicCode_CannotCompareIt()
+    {
+        BoxingStruct boxing = new() { Buf = WithBags() };
+        BoxingStruct old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => boxing));
+        boxing.Buf[2].Items!.Add(Added);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(boxing, old, "^Buf$"));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("BoxingStruct.Boxed", "Boxed"), cannotCompare.Message);
+    }
+
+    // Known limitation (revision 18): the elements of a sequence that a struct T holds by value are not tracked by
+    // their declared type, so a box among them is refused as if T held it by value, also when not from Old.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructWhoseImmutableArrayOfObjectsHoldsSuchAnInlineArrayNotFromOldWithoutDynamicCode_CannotCompareIt()
+    {
+        ImmutableBoxes actual = new() { Items = [WithBags()] };
+        ImmutableBoxes expected = new() { Items = [WithBags()] };
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() => Contract.EnsureAssignable(actual, expected));
+
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(OldCouldNotCopy<BagBuf3, Bag>("ImmutableBoxes.Items[]", "Items"), cannotCompare.Message);
+    }
+
     // An element declared object of an inline array that T holds by value is a reference too.
     [RuntimeHelpersBoxFact(exists: true)]
     public void EnsureAssignable_WhenTIsAStructWhoseInlineArrayOfObjectsHoldsSuchAnInlineArrayNotFromOldWithoutDynamicCode_ReportsTheField()
@@ -842,6 +885,26 @@ public class OldInlineArrayTests
     private struct BoxHolder
     {
         public object? Value;
+    }
+
+    private struct ImmutableBoxes
+    {
+        public ImmutableArray<object> Items;
+    }
+
+    // Boxed boxes Buf afresh on every read.
+    private sealed class BoxingClass
+    {
+        public BagBuf3 Buf;
+
+        public object Boxed => Buf;
+    }
+
+    private struct BoxingStruct
+    {
+        public BagBuf3 Buf;
+
+        public readonly object Boxed => Buf;
     }
 
     [InlineArray(2)]

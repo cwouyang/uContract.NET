@@ -108,6 +108,12 @@ internal sealed class MemberAccessor
     public bool IsNonPublicField => _field is { IsPublic: false };
 
     /// <summary>
+    ///     True when the member is a field declared a reference type (object, an interface, ValueType, a class): a box
+    ///     it holds is the one stored in it. A property is never one: its getter may box a field afresh on every read.
+    /// </summary>
+    public bool IsReferenceTypedField => _field is { FieldType.IsValueType: false };
+
+    /// <summary>
     ///     True when the member is a read-only field (<c>readonly</c> in C#, <c>ReadOnly</c> in Visual Basic).
     /// </summary>
     public bool IsReadOnlyField => _field is { IsInitOnly: true };

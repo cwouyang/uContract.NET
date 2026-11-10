@@ -841,7 +841,7 @@ internal static class MemberComparison
 
     // A false return with context.Hidden set means "could not compare" (a type with no visible members
     // blocked the comparison), not "different". Callers must check it before reporting a difference.
-    // heldByReference: the pair is held in a member declared a reference type (see Walk.ChildHeldByReference).
+    // heldByReference: the pair is held in a field declared a reference type (see Walk.ChildHeldByReference).
     internal static bool AreEqual(
         object? actual,
         object? expected,
@@ -912,9 +912,12 @@ internal static class MemberComparison
     // Start, for a pair held by an object whose Old copy could not copy the inline-array types uncopiedInHolder (null
     // when there are none): a pair of objects tells for itself whether it belongs to such a copy (see
     // UncopiedInlineArrays), and a pair of values read from a struct is held where that struct is held. The walk
-    // returned passes this on to the pairs it holds by value; a box held in a member or element declared a reference
-    // type (object, an interface, ValueType) is held through a reference, and callers pass null for it, so only its own
-    // record counts (the rule for a struct T covers only what T holds by value; see Contract._UncopiedHeldByValue).
+    // returned passes this on to the pairs it holds by value; a box held in a field, or in an element of an inline
+    // array, declared a reference type (object, an interface, ValueType) is held through a reference, and callers pass
+    // null for it, so only its own record counts (the rule for a struct T covers only what T holds by value; see
+    // Contract._UncopiedHeldByValue). A property counts as held by value whatever its declared type: its getter may box
+    // a field afresh on every read, and such a box has no record. Elements of other sequences and dictionaries are
+    // held by value when they are value types at run time: their declared element type is not tracked.
     private static Walk? StartHeld(
         object? actual,
         object? expected,
@@ -2045,8 +2048,9 @@ internal static class MemberComparison
 
         public object? ChildExpected { get; private set; }
 
-        // True when the current child is held in a member or element declared a reference type (object, an interface,
-        // ValueType), so that a boxed value there is held through a reference, not by value (see StartHeld).
+        // True when the current child is held in a field, or an element of an inline array, declared a reference type
+        // (object, an interface, ValueType), so that a boxed value there is held through a reference, not by value (see
+        // StartHeld). Never for a property: its getter may box a field afresh.
         public bool ChildHeldByReference { get; private set; }
 
         // The path segment of the current child, prepended when the child could not be compared.
@@ -2103,15 +2107,16 @@ internal static class MemberComparison
                 }
 
                 _comparedAny = true;
-                return Child(member.GetValue(actual), member.GetValue(expected), !member.MemberType.IsValueType);
+                return Child(member.GetValue(actual), member.GetValue(expected), member.IsReferenceTypedField);
             }
 
             return _comparedAny || !fieldsOnly ? Step.Equal : Step.Different;
         }
     }
 
-    // elementsHeldByReference: the elements are declared a reference type, so a boxed element is held through a
-    // reference (see StartHeld). False where the declared element type is a value type or is not known.
+    // elementsHeldByReference: the elements, of an inline array, are declared a reference type, so a boxed element is
+    // held through a reference (see StartHeld). False where the declared element type is a value type or is not known
+    // (the elements of other sequences).
     private sealed class CollectionWalk(object?[] actual, object?[] expected, bool elementsHeldByReference = false)
         : Walk
     {
