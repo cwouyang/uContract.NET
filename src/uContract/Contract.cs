@@ -1493,10 +1493,10 @@ public static class Contract
     ///     runtime or later, an <c>Equals</c> written by hand that is asked first and reaches the inline array of an
     ///     <see cref="Old{T}" /> copy only through a reference can read elements the copy shares with the original;
     ///     and under Native AOT a struct without such an <c>Equals</c> whose fields nothing preserves is decided by
-    ///     its built-in <c>Equals</c> also when it holds an inline array (.NET 8: element 0 only; .NET 10:
-    ///     <see cref="NotSupportedException" />): preserve it with
+    ///     its built-in <c>Equals</c> also when it holds an inline array (.NET 8: element 0 only, measured;
+    ///     .NET 10: <see cref="NotSupportedException" />, not measured): preserve it with
     ///     <c>[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]</c>, or list the member as
-    ///     assignable.
+    ///     assignable (neither way out was measured).
     ///     Two different instances of one runtime type that <see cref="Old{T}" /> shares, other than a string, a
     ///     delegate, a boxed pointer, a <c>FrozenSet&lt;T&gt;</c> or a <c>FrozenDictionary&lt;TKey, TValue&gt;</c>
     ///     (two <c>Stream</c>s, two <c>Regex</c>es, two <c>Component</c>s), are a violation by reference, whatever

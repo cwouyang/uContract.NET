@@ -28,9 +28,10 @@ what it skipped and can start to fail; under Native AOT such a call throws "cann
 runtime type is preserved: add the `[DynamicDependency(...)]` that the message names.
 `EnsureAssignable<T>()` now compares an `[InlineArray]` struct element by element on the .NET 8 and
 the .NET 10 runtimes, where earlier versions saw only element 0 on .NET 8 and could throw
-`NotSupportedException` on .NET 10: a change of a later element is now a violation, so list as assignable an inline-array member
-that may change; a pattern no longer excuses an inline array passed as `T`; under Native AOT preserve
-the inline-array types that the "cannot compare" message names. Code that catches the
+`NotSupportedException` on .NET 10: a change of a later element is now a violation, so list as
+assignable an inline-array member that may change; a pattern no longer excuses an inline array passed
+as `T`; where the call throws "cannot compare" for an inline array (Native AOT, or no dynamic code),
+follow the ways out that the message gives. Code that catches the
 `InvalidOperationException` that `Old<T>()` threw for a type it could not serialize, or the
 `JsonException` for a deep graph, can drop that handler: `Old<T>()` throws neither. A `null` test
 or an `ArgumentNullException` handler around the `Old` + `EnsureAssignable` pair is no longer needed
@@ -450,8 +451,10 @@ AOT](README.md#trimming-and-native-aot) in the README.
   record whose own typed `Equals(R)`, or that of a base record, is written by hand counts as such.
   `Old<T>()` copies every element of an inline array; before this change its reflection copy copied
   element 0 as a field and shared the other elements with the original, so an unchanged inline array
-  of reference elements was reported on every call after `Old` on .NET 8. It now passes, and an
-  in-place change of any element is reported. Without dynamic code (Native AOT) the call throws `InvalidOperationException` ("cannot
+  of mutable reference elements such as `List<int>` (the type measured) was reported on every call
+  after `Old` on .NET 8; elements of a type that `Old` shares, such as `string`, are the same instance
+  in the copy and were not (read from the code). It now passes, and an in-place change of any element
+  is reported. Without dynamic code (Native AOT) the call throws `InvalidOperationException` ("cannot
   compare …"), also for equal values, where it cannot read the elements or `Old<T>()` could not copy
   them; the message names the inline-array type and the path, and only the ways out that work for its
   case. (1) Nothing preserves the inline-array type, so reflection does not list its element field:
@@ -562,8 +565,13 @@ AOT](README.md#trimming-and-native-aot) in the README.
   `NotSupportedException` (not measured); `[DynamicallyAccessedMembers]` on `T` does not preserve the
   struct types of its fields, so preserve the struct with
   `[DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(S))]`, or list the member as
-  assignable. After the first `Old` copy in a process that could not copy struct elements, every
-  compared pair costs up to two more weak-table lookups.
+  assignable (neither way out was measured). After the first `Old` copy in a process that could not
+  copy struct elements, every compared pair costs up to two more weak-table lookups (read from the
+  code, not measured). A struct with a field declared as `object`, `ValueType`, an interface or a
+  class (other than `string`, an array or a delegate) has the run-time values of those fields looked at each time it is compared, and the look can
+  walk a whole graph of records: 2000 such structs that share one 2000-node record chain took 3.3 s on
+  .NET 8 and 4.9 s on .NET 10, measured at an intermediate commit of this change, before the look used
+  a work list, and not measured again.
 
 ### Fixed
 
