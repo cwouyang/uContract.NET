@@ -1189,8 +1189,10 @@ internal static class MemberComparison
     // Equals would reach an inline array's on either side (see NeedsFieldComparison) by its fields: the built-in
     // Equals of an inline array sees only element 0, and the .NET 10 runtime throws for it. Before any Equals is
     // asked, a pair that belongs to an Old copy which left struct elements uncopied (context.Uncopied) is refused
-    // when the struct holds such an inline array by value, through structs of any depth whatever their Equals (see
-    // FindUncopiedHeld): their Equals would find the shared elements equal.
+    // when the struct holds such an inline array by value, through structs of any depth, whatever the Equals of the
+    // struct and of those structs (see FindUncopiedHeld): an Equals would find the shared elements equal. For a
+    // struct T, context.Uncopied covers what T holds by value also when the values did not come from Old: a struct
+    // copy carries no record (see Contract._UncopiedHeldByValue).
     private static Walk? StartValues(
         object actual,
         object expected,
@@ -1210,8 +1212,11 @@ internal static class MemberComparison
             return new MemberWalk(GetOrCacheMetadata(type).Members, actual, expected, fieldsOnly: true);
         }
 
-        // A struct with a hand-written Equals that holds, by value, an inline array whose elements an Old copy left
-        // shared would find it equal, so the refusal comes first (see FindUncopiedHeld).
+        // A struct that holds, by value, an inline array whose struct elements an Old copy left uncopied is refused
+        // before its Equals is asked, whatever that Equals is: it would find the shared elements equal (see
+        // FindUncopiedHeld). A struct without a hand-written Equals that is a holder was sent to its fields above, and
+        // its inline array is refused there (see StartInlineArray). For a struct T this holds also for values that
+        // did not come from Old (see Contract._UncopiedHeldByValue).
         if (
             context.Uncopied is { } isUncopied
             && !type.IsPrimitive
@@ -1262,7 +1267,8 @@ internal static class MemberComparison
     }
 
     // Two values of one inline-array type: one whose struct elements the Old copy being compared could not copy
-    // (context.Uncopied) is refused first, before any Equals is asked (context.Hidden is set); then a hand-written
+    // (context.Uncopied; for an inline array that a struct T holds by value, also when the values did not come from
+    // Old) is refused first, before any Equals is asked (context.Hidden is set); then a hand-written
     // Equals that says "equal" decides; otherwise the n elements are compared pairwise, in index order, by the rules
     // for two elements of an array. The built-in ValueType.Equals is not asked: it sees only element 0, and the .NET
     // 10 runtime throws for it. An inline array of n elements of E is laid out as n consecutive values of E, so the

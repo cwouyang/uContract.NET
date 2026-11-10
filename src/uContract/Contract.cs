@@ -1692,14 +1692,13 @@ public static class Contract
     }
 
     // Returns true when the runtime type of the two values settled the comparison: a value that is compared as a
-    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array, an inline array
+    // whole (a string, a delegate, a FrozenSet<T> or a FrozenDictionary<TKey, TValue>, an array, or an inline array,
     // element by element as below the top level) or by reference (a shared type) is compared so whatever T is, and
-    // the patterns are not read; the built-in Equals of an inline array is not asked, also when reflection does not
-    // list its element field (Native AOT): the comparison then reports that it cannot compare it. Two
-    // values of different runtime types where either is such a value are a violation, except two sequences, which are
-    // left to _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the
-    // address and the pointer type, as before; under another T a boxed pointer is compared by address only, as a member
-    // is.
+    // the patterns are not read. The built-in Equals of an inline array is not asked, also when reflection does not
+    // list its element field (Native AOT): the comparison then reports that it cannot compare it. Two values of
+    // different runtime types where either is such a value are a violation, except two sequences, which are left to
+    // _CompareSequencesOfDifferentRuntimeTypes. T = Pointer (sealed) keeps the comparison by its members, the address
+    // and the pointer type, as before; under another T a boxed pointer is compared by address only, as a member is.
     private static bool _CompareByRuntimeType(Type declaredType, object actual, object expected)
     {
         if (declaredType == typeof(System.Reflection.Pointer))
