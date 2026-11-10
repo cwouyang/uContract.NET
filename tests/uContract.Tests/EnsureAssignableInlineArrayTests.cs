@@ -10,7 +10,9 @@ namespace uContract.Tests;
 // implement), they are compared element by element, by the rules for two elements of an array, whatever their
 // element type. The comparison never asks the built-in ValueType.Equals of an inline array, which sees only element 0
 // (and throws on .NET 10); a hand-written Equals of yours that reaches it still does. A struct that holds an inline
-// array is compared by its fields, and a C# fixed-size buffer is not an inline array.
+// array is compared by its fields, and a C# fixed-size buffer is not an inline array. Some tests turn dynamic code
+// off, process-wide state, so this class shares the collection of the other tests that mutate process-wide state.
+[Collection("EnvironmentVariables")]
 public class EnsureAssignableInlineArrayTests
 {
     private const string Violation = "Fields were modified that are not marked as assignable:\n";

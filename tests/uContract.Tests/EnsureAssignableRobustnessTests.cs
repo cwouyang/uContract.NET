@@ -6,6 +6,9 @@ using uContract.Exceptions;
 
 namespace uContract.Tests;
 
+// Some tests turn dynamic code off, process-wide state, so this class shares the collection of the other tests that
+// mutate process-wide state.
+[Collection("EnvironmentVariables")]
 public class EnsureAssignableRobustnessTests
 {
     [Fact]
