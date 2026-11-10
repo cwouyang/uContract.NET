@@ -20,6 +20,9 @@ public class OldInlineArrayTests
     // The inline-array field of the type that DefineFieldKeywordHolder emits.
     private const string EmittedBufField = "Buf";
 
+    // The patterns that excuse that field, passed to EnsureAssignable called through reflection.
+    private static readonly string[] EmittedBufPatterns = ["^Buf$"];
+
     [Fact]
     public void EnsureAssignable_WhenALaterListElementOfAnInlineArrayFieldChangedInPlaceAfterOld_ReportsTheField()
     {
@@ -547,7 +550,7 @@ public class OldInlineArrayTests
     [RuntimeHelpersBoxFact(exists: true)]
     public void EnsureAssignable_WhenAPropertyWithABackingFieldNameHasAHandWrittenGetterThatBoxesAnExcusedFieldOfAnOldCopy_CannotCompareIt()
     {
-        Type type = DefineFieldKeywordHolder();
+        Type type = DefineFieldKeywordHolder(asStruct: false);
         object held = Activator.CreateInstance(type)!;
         type.GetField(EmittedBufField)!.SetValue(held, WithPublicBags());
         object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => held));
@@ -562,15 +565,48 @@ public class OldInlineArrayTests
         );
     }
 
-    // public class FieldKeywordHolder { public PublicBagBuf3 Buf; private object <Value>k__BackingField;
-    //     public object Value { get => (object)Buf; } }, with a getter that is not marked [CompilerGenerated].
-    private static Type DefineFieldKeywordHolder()
+    // Pin (passed on its first run): the same shape as a struct T. Its Old copy is unboxed when passed as T, so the rule
+    // for a struct T refuses the property, which counts as computed.
+    [RuntimeHelpersBoxFact(exists: true)]
+    public void EnsureAssignable_WhenTIsAStructWhosePropertyWithABackingFieldNameHasAHandWrittenGetterThatBoxesAnExcusedField_CannotCompareIt()
+    {
+        Type type = DefineFieldKeywordHolder(asStruct: true);
+        object held = Activator.CreateInstance(type)!;
+        type.GetField(EmittedBufField)!.SetValue(held, WithPublicBags());
+        object old = TestRuntime.WithoutDynamicCode(() => Contract.Old(() => held));
+        ((PublicBagBuf3)type.GetField(EmittedBufField)!.GetValue(held)!)[2].Items!.Add(Added);
+        MethodInfo ensureAssignable = typeof(Contract)
+            .GetMethod(nameof(Contract.EnsureAssignable))!
+            .MakeGenericMethod(type);
+
+        Exception? exception = TestRuntime.WithoutDynamicCode(() =>
+            Record.Exception(() => ensureAssignable.Invoke(null, [held, old, EmittedBufPatterns]))
+        );
+
+        TargetInvocationException invocation = Assert.IsType<TargetInvocationException>(exception);
+        InvalidOperationException cannotCompare = Assert.IsType<InvalidOperationException>(invocation.InnerException);
+        Assert.Equal(
+            OldCouldNotCopy<PublicBagBuf3, PublicBag>("FieldKeywordStruct.Value", "Value"),
+            cannotCompare.Message
+        );
+    }
+
+    // public class FieldKeywordHolder (or struct FieldKeywordStruct) { public PublicBagBuf3 Buf;
+    //     private object <Value>k__BackingField; public object Value { get => (object)Buf; } }, with a getter that is
+    // not marked [CompilerGenerated].
+    private static Type DefineFieldKeywordHolder(bool asStruct)
     {
         string name = $"Emitted{Guid.NewGuid():N}";
-        TypeBuilder builder = AssemblyBuilder
+        ModuleBuilder module = AssemblyBuilder
             .DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.Run)
-            .DefineDynamicModule(name)
-            .DefineType(
+            .DefineDynamicModule(name);
+        TypeBuilder builder = asStruct
+            ? module.DefineType(
+                "Emitted.FieldKeywordStruct",
+                TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.SequentialLayout,
+                typeof(ValueType)
+            )
+            : module.DefineType(
                 "Emitted.FieldKeywordHolder",
                 TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class
             );
@@ -588,7 +624,11 @@ public class OldInlineArrayTests
         il.Emit(OpCodes.Box, typeof(PublicBagBuf3));
         il.Emit(OpCodes.Ret);
         builder.DefineProperty("Value", PropertyAttributes.None, typeof(object), Type.EmptyTypes).SetGetMethod(getter);
-        builder.DefineDefaultConstructor(MethodAttributes.Public);
+        if (!asStruct)
+        {
+            builder.DefineDefaultConstructor(MethodAttributes.Public);
+        }
+
         return builder.CreateType();
     }
 
