@@ -87,15 +87,7 @@ internal static class MemberComparison
             {
                 TypeMetadata metadata = CreateMetadata(t, t.GetProperties(BindingFlags.Public | BindingFlags.Instance));
                 metadata.HasHandWrittenTypedEquals =
-                    (
-                        t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                            .Any(method =>
-                                string.Equals(method.Name, nameof(Equals), StringComparison.Ordinal)
-                                && method.GetParameters() is [{ } parameter]
-                                && parameter.ParameterType == t
-                                && !method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
-                            ) && !IsAnonymousType(t)
-                    )
+                    DeclaresHandWrittenTypedEquals(t)
                     || (
                         t.BaseType is { } baseType
                         && !IsFrameworkClass(baseType)
@@ -104,6 +96,19 @@ internal static class MemberComparison
                 return metadata;
             }
         );
+
+        // True when t, not an anonymous type, declares a public Equals(t) that is not marked [CompilerGenerated]. A
+        // local function, so that the suppression above covers its reflection.
+        static bool DeclaresHandWrittenTypedEquals(Type t)
+        {
+            return t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Any(method =>
+                        string.Equals(method.Name, nameof(Equals), StringComparison.Ordinal)
+                        && method.GetParameters() is [{ } parameter]
+                        && parameter.ParameterType == t
+                        && !method.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                    ) && !IsAnonymousType(t);
+        }
     }
 
     // The members the top level compares for a runtime type other than T. When T is a framework class (other
