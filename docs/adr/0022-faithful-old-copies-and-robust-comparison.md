@@ -4225,8 +4225,8 @@ runtime and has none here; tests that pinned element 0 or the old top-level resu
 new result. Native
 AOT: smoke checks 161 to 169, listed in the ADR-0021 amendment of this date.
 
-**Known limitations.** The first three were put to the maintainer and accepted (spec revisions 12, 16
-and 17); the other three were found in review and recorded without a decision of the maintainer. The
+**Known limitations.** The first four were put to the maintainer and accepted (spec revisions 12, 16,
+17 and 18); the other three were found in review and recorded without a decision of the maintainer. The
 limitation on fixed-size buffers is above.
 
 - **A record's own inline array under a hand-written base `Equals`** (accepted by the user, revision 12). When a record
@@ -4256,6 +4256,14 @@ limitation on fixed-size buffers is above.
   does not list cannot be looked into, so it is decided by its built-in `Equals` as before, also when it
   holds an inline array ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date;
   smoke check 169).
+- **Boxes among the elements of a sequence that a struct `T` holds** (accepted by the user, revision 18:
+  "記為已知限制 (Recommended)"). Without dynamic code on the .NET 9 runtime or later, an inline array
+  that is an element of a sequence a struct `T` holds whose element type is not tracked per element
+  (`ImmutableArray<object>`, `ArraySegment<object>`, other enumerated sequences) is refused also when the
+  values did not come from `Old`: a loud "cannot compare" ("Contract.Old could not copy"), never a silent
+  pass ([ADR-0021](0021-postconditions-under-trimming-and-aot.md), amendment of this date; unit test
+  `EnsureAssignable_WhenTIsAStructWhoseImmutableArrayOfObjectsHoldsSuchAnInlineArrayNotFromOldWithoutDynamicCode_CannotCompareIt`). Way out: list the member as
+  assignable.
 - **Visual Basic anonymous types.** The look of IA3 follows only the fields behind `Key` properties, but
   once a field comparison starts for another reason, the member walk compares every member of the
   anonymous object, as it did before (found in review; no test pins it).
