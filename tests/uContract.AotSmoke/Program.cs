@@ -880,6 +880,19 @@ internal sealed class UnseenStructHolder
     public UnseenListBufferStruct Inner;
 }
 
+// Nothing preserves it, so its members are hidden; a record class, whose Equals is compiler-generated, holding a
+// preserved inline array.
+internal sealed record UnseenListBufferRecord
+{
+    public KeptListBuffer Buffer;
+}
+
+// Passed as T; that preserves its field, not the members of UnseenListBufferRecord.
+internal sealed class UnseenRecordHolder
+{
+    public UnseenListBufferRecord Inner = new();
+}
+
 // Nothing preserves it; not an inline array. Equal by its hand-written Equals whatever its field holds.
 internal struct UnseenTolerantPoint
 {
@@ -3063,6 +3076,59 @@ public static class Program
             ]),
             Expect.Ok
         );
+
+        // Mutation: element 2 replaced by a list with other elements; element 0 is one list shared by both sides.
+        // Visibility: T (UnseenRecordHolder) and DynamicDependency(All, typeof(KeptListBuffer)); nothing preserves
+        // UnseenListBufferRecord, so its members are hidden. Known limitation (spec revisions 17 and 22): a record
+        // class whose members reflection does not show is decided by its compiler-generated Equals, which compares the
+        // inline array with its built-in Equals, and that sees only element 0 on .NET 8; the difference in element 2
+        // passes, where the JIT reports it. Ways out: preserve the record with
+        // [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(UnseenListBufferRecord))], or list 'Inner' as
+        // assignable.
+        yield return new Check(
+            176,
+            "Unpreserved record class holding a preserved inline array, later element changed",
+            UnseenRecordHoldingKeptListBufferLaterElementChanged,
+            Expect.Ok,
+            Expect.Ok
+        );
+
+        // Control for check 176: with element 0 different, the record's Equals says "unequal", and its members cannot
+        // be listed, so the call cannot compare it; this shows that the record's Equals decides there. Mutation:
+        // element 0 holds different lists. Visibility: as check 176.
+        yield return new Check(
+            177,
+            "Unpreserved record class holding a preserved inline array, element 0 changed",
+            UnseenRecordHoldingKeptListBufferFirstElementChanged,
+            Expect.Throws<InvalidOperationException>(
+                "EnsureAssignable cannot compare uContract.AotSmoke.UnseenListBufferRecord",
+                "UnseenRecordHolder.Inner"
+            ),
+            Expect.Ok
+        );
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptListBuffer))]
+    private static object? UnseenRecordHoldingKeptListBufferFirstElementChanged()
+    {
+        UnseenRecordHolder actual = new();
+        UnseenRecordHolder expected = new();
+        actual.Inner.Buffer[0] = [9];
+        expected.Inner.Buffer[0] = [2];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
+    }
+
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(KeptListBuffer))]
+    private static object? UnseenRecordHoldingKeptListBufferLaterElementChanged()
+    {
+        List<int> shared = [0];
+        UnseenRecordHolder actual = new();
+        UnseenRecordHolder expected = new();
+        actual.Inner.Buffer[0] = shared;
+        expected.Inner.Buffer[0] = shared;
+        actual.Inner.Buffer[2] = [9];
+        expected.Inner.Buffer[2] = [2];
+        return NoResult(() => Contract.EnsureAssignable(actual, expected));
     }
 
     private static object? UnseenTolerantPointChanged()
